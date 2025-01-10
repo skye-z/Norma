@@ -3,6 +3,7 @@
 import (
     "flag"
     "log"
+    "strings"
     "time"
 
     "norma/internal/audio"
@@ -80,9 +81,19 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
     fallback := llm.MockStreamer{}
     if cfg.LLM.Provider == "ollama" {
         if err := llm.PingOllama(cfg.LLM.Endpoint, 2*time.Second); err == nil {
-            log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, cfg.LLM.Model)
+            model := strings.TrimSpace(cfg.LLM.Model)
+            if model == "" {
+                discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, 2*time.Second)
+                if derr != nil {
+                    log.Printf("[llm] discover model failed, fallback to mock: %v", derr)
+                    return fallback
+                }
+                model = discovered
+            }
+
+            log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
             return llm.FallbackStreamer{
-                Primary:  llm.NewOllamaStreamer(cfg.LLM.Endpoint, cfg.LLM.Model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond),
+                Primary:  llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond),
                 Fallback: fallback,
             }
         }

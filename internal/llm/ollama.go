@@ -30,6 +30,14 @@ type ollamaGenerateChunk struct {
     Error    string `json:"error"`
 }
 
+type ollamaTagsResponse struct {
+    Models []ollamaModel `json:"models"`
+}
+
+type ollamaModel struct {
+    Name string `json:"name"`
+}
+
 func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStreamer {
     if strings.TrimSpace(endpoint) == "" {
         endpoint = "http://127.0.0.1:11434"
@@ -45,6 +53,27 @@ func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStr
 }
 
 func PingOllama(endpoint string, timeout time.Duration) error {
+    _, err := listModels(endpoint, timeout)
+    return err
+}
+
+func DiscoverFirstLLMModel(endpoint string, timeout time.Duration) (string, error) {
+    models, err := listModels(endpoint, timeout)
+    if err != nil {
+        return "", err
+    }
+    for _, m := range models {
+        if isLikelyLLM(m.Name) {
+            return m.Name, nil
+        }
+    }
+    if len(models) > 0 {
+        return models[0].Name, nil
+    }
+    return "", fmt.Errorf("no ollama models found")
+}
+
+func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
     endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
     if endpoint == "" {
         endpoint = "http://127.0.0.1:11434"
@@ -52,20 +81,39 @@ func PingOllama(endpoint string, timeout time.Duration) error {
     if timeout <= 0 {
         timeout = 3 * time.Second
     }
+
     client := &http.Client{Timeout: timeout}
     req, err := http.NewRequest(http.MethodGet, endpoint+"/api/tags", nil)
     if err != nil {
-        return err
+        return nil, err
     }
+
     resp, err := client.Do(req)
     if err != nil {
-        return err
+        return nil, err
     }
     defer resp.Body.Close()
+
     if resp.StatusCode >= 300 {
-        return fmt.Errorf("status=%d", resp.StatusCode)
+        return nil, fmt.Errorf("status=%d", resp.StatusCode)
     }
-    return nil
+
+    var out ollamaTagsResponse
+    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+        return nil, fmt.Errorf("decode tags: %w", err)
+    }
+    return out.Models, nil
+}
+
+func isLikelyLLM(name string) bool {
+    n := strings.ToLower(strings.TrimSpace(name))
+    if n == "" {
+        return false
+    }
+    if strings.Contains(n, "embed") || strings.Contains(n, "rerank") {
+        return false
+    }
+    return true
 }
 
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {

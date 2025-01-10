@@ -70,7 +70,7 @@ func defaultConfig() Config {
         Audio:    AudioConfig{EnableWakeWord: true},
         LLM: LLMConfig{
             Provider:         "ollama",
-            Model:            "qwen2.5:7b-instruct-q4_K_M",
+            Model:            "",
             Endpoint:         "http://127.0.0.1:11434",
             RequestTimeoutMs: 45000,
         },
@@ -140,3 +140,4 @@ func setDefaults(v *viper.Viper, cfg Config) {
     v.SetDefault("perf.llm_first_token_threshold_ms", cfg.Perf.LLMFirstTokenThresholdMs)
     v.SetDefault("perf.degraded_rag_top_k", cfg.Perf.DegradedRAGTopK)
 }
+
