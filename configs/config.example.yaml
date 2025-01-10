@@ -1,0 +1,31 @@
+﻿app:
+  name: Norma
+  env: dev
+  log_level: info
+
+database:
+  path: data/norma.db
+
+audio:
+  enable_wake_word: true
+
+llm:
+  provider: ollama
+  model: qwen2.5:7b-instruct-q4_K_M
+  endpoint: http://127.0.0.1:11434
+  request_timeout_ms: 45000
+
+tts:
+  provider: xtts
+  voice: norma
+
+rag:
+  top_k: 6
+
+memory:
+  stm_token_budget: 2048
+
+perf:
+  auto_degrade: true
+  llm_first_token_threshold_ms: 1200
+  degraded_rag_top_k: 4

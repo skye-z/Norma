@@ -1,0 +1,40 @@
+﻿# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Go build artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# Local caches
+.gocache/
+.gomodcache/
+
+# Runtime data
+/data/
+/logs/
+*.db
+*.db-shm
+*.db-wal
+
+# Local config overrides
+configs/config.yaml
+
+# Live2D / model binaries
+model/
+
+# Wails / frontend build outputs (future)
+frontend/dist/
+frontend/node_modules/
