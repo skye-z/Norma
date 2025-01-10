@@ -9,14 +9,21 @@ database:
 audio:
   enable_wake_word: true
 
+asr:
+  provider: mock
+  endpoint: http://127.0.0.1:8081
+  request_timeout_ms: 10000
+
 llm:
   provider: ollama
   endpoint: http://127.0.0.1:11434
   request_timeout_ms: 45000
 
 tts:
-  provider: xtts
+  provider: mock
   voice: norma
+  endpoint: http://127.0.0.1:8020
+  request_timeout_ms: 30000
 
 rag:
   top_k: 6

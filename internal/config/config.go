@@ -12,6 +12,7 @@ type Config struct {
     App      AppConfig      `mapstructure:"app"`
     Database DatabaseConfig `mapstructure:"database"`
     Audio    AudioConfig    `mapstructure:"audio"`
+    ASR      ASRConfig      `mapstructure:"asr"`
     LLM      LLMConfig      `mapstructure:"llm"`
     TTS      TTSConfig      `mapstructure:"tts"`
     RAG      RAGConfig      `mapstructure:"rag"`
@@ -33,6 +34,12 @@ type AudioConfig struct {
     EnableWakeWord bool `mapstructure:"enable_wake_word"`
 }
 
+type ASRConfig struct {
+    Provider         string `mapstructure:"provider"`
+    Endpoint         string `mapstructure:"endpoint"`
+    RequestTimeoutMs int    `mapstructure:"request_timeout_ms"`
+}
+
 type LLMConfig struct {
     Provider         string `mapstructure:"provider"`
     Model            string `mapstructure:"model"`
@@ -41,8 +48,10 @@ type LLMConfig struct {
 }
 
 type TTSConfig struct {
-    Provider string `mapstructure:"provider"`
-    Voice    string `mapstructure:"voice"`
+    Provider         string `mapstructure:"provider"`
+    Voice            string `mapstructure:"voice"`
+    Endpoint         string `mapstructure:"endpoint"`
+    RequestTimeoutMs int    `mapstructure:"request_timeout_ms"`
 }
 
 type RAGConfig struct {
@@ -68,6 +77,11 @@ func defaultConfig() Config {
         },
         Database: DatabaseConfig{Path: "data/norma.db"},
         Audio:    AudioConfig{EnableWakeWord: true},
+        ASR: ASRConfig{
+            Provider:         "mock",
+            Endpoint:         "http://127.0.0.1:8081",
+            RequestTimeoutMs: 10000,
+        },
         LLM: LLMConfig{
             Provider:         "ollama",
             Model:            "",
@@ -75,8 +89,10 @@ func defaultConfig() Config {
             RequestTimeoutMs: 45000,
         },
         TTS: TTSConfig{
-            Provider: "xtts",
-            Voice:    "norma",
+            Provider:         "mock",
+            Voice:            "norma",
+            Endpoint:         "http://127.0.0.1:8020",
+            RequestTimeoutMs: 30000,
         },
         RAG:    RAGConfig{TopK: 6},
         Memory: MemoryConfig{STMTokenBudget: 2048},
@@ -124,6 +140,10 @@ func setDefaults(v *viper.Viper, cfg Config) {
 
     v.SetDefault("audio.enable_wake_word", cfg.Audio.EnableWakeWord)
 
+    v.SetDefault("asr.provider", cfg.ASR.Provider)
+    v.SetDefault("asr.endpoint", cfg.ASR.Endpoint)
+    v.SetDefault("asr.request_timeout_ms", cfg.ASR.RequestTimeoutMs)
+
     v.SetDefault("llm.provider", cfg.LLM.Provider)
     v.SetDefault("llm.model", cfg.LLM.Model)
     v.SetDefault("llm.endpoint", cfg.LLM.Endpoint)
@@ -131,6 +151,8 @@ func setDefaults(v *viper.Viper, cfg Config) {
 
     v.SetDefault("tts.provider", cfg.TTS.Provider)
     v.SetDefault("tts.voice", cfg.TTS.Voice)
+    v.SetDefault("tts.endpoint", cfg.TTS.Endpoint)
+    v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
 
     v.SetDefault("rag.top_k", cfg.RAG.TopK)
 
@@ -140,4 +162,3 @@ func setDefaults(v *viper.Viper, cfg Config) {
     v.SetDefault("perf.llm_first_token_threshold_ms", cfg.Perf.LLMFirstTokenThresholdMs)
     v.SetDefault("perf.degraded_rag_top_k", cfg.Perf.DegradedRAGTopK)
 }
-

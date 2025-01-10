@@ -1,6 +1,7 @@
 ﻿package main
 
 import (
+    "context"
     "flag"
     "log"
     "strings"
@@ -43,12 +44,17 @@ func main() {
 
     _ = live2d.NewBridge(rt.Bus)
 
-    tts := audio.NewMockTTS()
+    tts := chooseTTS(cfg)
     streamer := chooseLLMStreamer(cfg)
     _ = runtime.NewOrchestrator(rt, index.MockRetriever{}, streamer, tts, cfg.RAG.TopK, quality)
 
     rt.Bus.Subscribe("rag.ready", func(evt bus.Event) {
         log.Printf("[demo] rag.ready chunks=%v", evt.Payload)
+    })
+    rt.Bus.Subscribe("asr.partial", func(evt bus.Event) {
+        if s, ok := evt.Payload.(string); ok {
+            log.Printf("[demo] asr.partial=%q", s)
+        }
     })
     rt.Bus.Subscribe("llm.token", func(evt bus.Event) {
         if s, ok := evt.Payload.(string); ok {
@@ -68,13 +74,65 @@ func main() {
     log.Printf("[%s] started env=%s db=%s state=%s", cfg.App.Name, cfg.App.Env, cfg.Database.Path, rt.State.Get())
 
     if *demo {
-        rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "demo-session", TraceID: "demo-trace", Payload: "帮我规划今天的开发任务"})
-        time.Sleep(4 * time.Second)
+        runDemoInputPipeline(cfg, rt)
+        time.Sleep(6 * time.Second)
         log.Printf("[demo] final state=%s degraded=%v", rt.State.Get(), quality.IsDegraded())
         return
     }
 
     select {}
+}
+
+func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
+    sessionID := "demo-session"
+    traceID := "demo-trace"
+
+    pipe := audio.Pipeline{
+        VAD: audio.NewEnergyVAD(0.02),
+        ASR: chooseASR(cfg),
+    }
+    source := audio.NewMockFrameSource(audio.DefaultDemoFrames(), 40*time.Millisecond)
+
+    go func() {
+        if err := pipe.Run(
+            context.Background(),
+            source,
+            func() { log.Printf("[demo] vad.speech_start") },
+            func(partial string) {
+                rt.Bus.Publish(bus.Event{Name: "asr.partial", SessionID: sessionID, TraceID: traceID, Payload: partial})
+            },
+            func(final string) {
+                rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: sessionID, TraceID: traceID, Payload: final})
+            },
+        ); err != nil {
+            log.Printf("[demo] audio pipeline failed: %v", err)
+        }
+    }()
+}
+func chooseASR(cfg *config.Config) audio.ASR {
+    fallback := audio.MockASR{FinalText: "帮我规划今天的开发任务"}
+    switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
+    case "http", "whisper", "whispercpp":
+        if cfg.ASR.Endpoint == "" {
+            return fallback
+        }
+        return audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
+    default:
+        return fallback
+    }
+}
+
+func chooseTTS(cfg *config.Config) audio.TTS {
+    fallback := audio.NewMockTTS()
+    switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
+    case "http", "xtts":
+        if cfg.TTS.Endpoint == "" {
+            return fallback
+        }
+        return audio.NewHTTPTTS(cfg.TTS.Endpoint, cfg.TTS.Voice, time.Duration(cfg.TTS.RequestTimeoutMs)*time.Millisecond)
+    default:
+        return fallback
+    }
 }
 
 func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
