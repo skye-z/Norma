@@ -13,6 +13,10 @@ asr:
   provider: mock
   endpoint: http://127.0.0.1:8081
   request_timeout_ms: 10000
+  binary_path: ""
+  model_path: ""
+  language: zh
+  threads: 4
 
 llm:
   provider: ollama
