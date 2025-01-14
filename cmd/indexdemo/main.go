@@ -8,15 +8,23 @@ import (
 	"os/signal"
 	"syscall"
 
+	"norma/internal/db"
 	"norma/internal/index"
 )
 
 func main() {
 	dir := flag.String("dir", "docs", "directory to watch")
+	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	engine, err := db.NewEngine(*dbPath, false)
+	if err != nil {
+		log.Fatalf("init db: %v", err)
+	}
+	defer engine.Close()
 
 	q := index.NewMemoryQueue(128)
 	w, err := index.NewWatcher(q)
@@ -29,7 +37,8 @@ func main() {
 		log.Fatalf("watch dir: %v", err)
 	}
 
-	worker := index.NewWorker(q, index.TextExtractor{})
+	store := index.NewSQLiteStore(engine)
+	worker := index.NewWorkerWithSink(q, index.TextExtractor{}, store)
 
 	go func() {
 		if err := worker.Run(ctx); err != nil {

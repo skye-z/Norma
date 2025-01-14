@@ -10,10 +10,15 @@ import (
 type Worker struct {
 	queue     Queue
 	extractor Extractor
+	sink      Sink
 }
 
 func NewWorker(queue Queue, extractor Extractor) *Worker {
 	return &Worker{queue: queue, extractor: extractor}
+}
+
+func NewWorkerWithSink(queue Queue, extractor Extractor, sink Sink) *Worker {
+	return &Worker{queue: queue, extractor: extractor, sink: sink}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -25,6 +30,11 @@ func (w *Worker) Run(ctx context.Context) error {
 
 		switch task.Kind {
 		case "delete":
+			if w.sink != nil {
+				if err := w.sink.Delete(task.Path); err != nil {
+					log.Printf("[index] delete failed path=%s err=%v", task.Path, err)
+				}
+			}
 			log.Printf("[index] delete path=%s", task.Path)
 		default:
 			text, err := w.extractor.Extract(task.Path)
@@ -33,6 +43,12 @@ func (w *Worker) Run(ctx context.Context) error {
 				continue
 			}
 			chunks := chunkText(text, 500)
+			if w.sink != nil {
+				if err := w.sink.Upsert(task.Path, chunks); err != nil {
+					log.Printf("[index] upsert failed path=%s err=%v", task.Path, err)
+					continue
+				}
+			}
 			log.Printf("[index] upsert path=%s chunks=%d", task.Path, len(chunks))
 		}
 	}
