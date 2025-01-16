@@ -70,6 +70,10 @@ func (s *DiskVectorStore) Delete(path string) error {
 	return s.save()
 }
 
+func (s *DiskVectorStore) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
+	return s.SearchVector(ctx, embedF32(query), topK)
+}
+
 func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []float32, topK int) ([]Chunk, error) {
 	_ = ctx
 	if topK <= 0 {
@@ -134,6 +138,15 @@ func (s *DiskVectorStore) save() error {
 
 func chunkID(path string, i int) string {
 	return path + "#" + strconv.Itoa(i)
+}
+
+func embedF32(text string) []float32 {
+	vec64 := embed(text)
+	out := make([]float32, len(vec64))
+	for i, v := range vec64 {
+		out[i] = float32(v)
+	}
+	return out
 }
 
 func embed(text string) []float64 {

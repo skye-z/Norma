@@ -81,6 +81,10 @@ func (s *SQLiteStore) Delete(path string) error {
 }
 
 func (s *SQLiteStore) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
+	return s.SearchText(ctx, query, topK)
+}
+
+func (s *SQLiteStore) SearchText(ctx context.Context, query string, topK int) ([]Chunk, error) {
 	_ = ctx
 	if topK <= 0 {
 		topK = 5

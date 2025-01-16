@@ -15,6 +15,7 @@ import (
 func main() {
 	dir := flag.String("dir", "docs", "directory to watch")
 	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
+	vecPath := flag.String("vec", "data/vector_index.json", "vector index path")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -37,8 +38,13 @@ func main() {
 		log.Fatalf("watch dir: %v", err)
 	}
 
-	store := index.NewSQLiteStore(engine)
-	worker := index.NewWorkerWithSink(q, index.TextExtractor{}, store)
+	fts := index.NewSQLiteStore(engine)
+	vec, err := index.NewDiskVectorStore(*vecPath)
+	if err != nil {
+		log.Fatalf("init vector store: %v", err)
+	}
+	sink := index.NewCompositeSink(fts, vec)
+	worker := index.NewWorkerWithSink(q, index.TextExtractor{}, sink)
 
 	go func() {
 		if err := worker.Run(ctx); err != nil {
