@@ -36,6 +36,12 @@ func (w *Watcher) AddRecursive(root string) error {
 		if err != nil {
 			return err
 		}
+		if shouldSkipPath(path) {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if d.IsDir() {
 			return w.watcher.Add(path)
 		}
@@ -56,6 +62,9 @@ func (w *Watcher) Run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
+			if shouldSkipPath(ev.Name) {
+				continue
+			}
 
 			if isCreateOrWrite(ev.Op) && isIndexable(ev.Name) {
 				_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "upsert"})
@@ -64,7 +73,6 @@ func (w *Watcher) Run(ctx context.Context) error {
 				_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "delete"})
 			}
 			if ev.Op&fsnotify.Create == fsnotify.Create {
-				// If a new directory appears, add it to watcher.
 				_ = w.watcher.Add(ev.Name)
 			}
 		case _, ok := <-w.watcher.Errors:
@@ -80,6 +88,9 @@ func isCreateOrWrite(op fsnotify.Op) bool {
 }
 
 func isIndexable(path string) bool {
+	if shouldSkipPath(path) {
+		return false
+	}
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".txt", ".md":
