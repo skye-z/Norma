@@ -12,7 +12,7 @@ import (
 
 func main() {
 	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
-	action := flag.String("action", "search", "add|search|delete")
+	action := flag.String("action", "search", "add|search|delete|compact")
 	kind := flag.String("kind", "fact", "fact|preference|event")
 	text := flag.String("text", "", "memory content or query")
 	importance := flag.Int("importance", 5, "0-10")
@@ -47,6 +47,12 @@ func main() {
 			log.Fatalf("delete: %v", err)
 		}
 		fmt.Printf("deleted: id=%d\n", *id)
+	case "compact":
+		deleted, err := svc.Compact(ctx)
+		if err != nil {
+			log.Fatalf("compact: %v", err)
+		}
+		fmt.Printf("compacted: deleted=%d\n", deleted)
 	default:
 		hits, err := svc.Search(ctx, *text, *limit)
 		if err != nil {

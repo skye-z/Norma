@@ -98,3 +98,49 @@ func normalizeKind(kind string) string {
 		return KindFact
 	}
 }
+
+// Compact deduplicates memory by kind+content and keeps highest-importance latest item.
+func (s *Service) Compact(ctx context.Context) (int64, error) {
+	_ = ctx
+	rows := make([]model.Memory, 0, 1024)
+	if err := s.engine.Find(&rows); err != nil {
+		return 0, err
+	}
+
+	type kept struct {
+		ID         int64
+		Importance int
+		UpdatedAt  time.Time
+	}
+	byKey := map[string]kept{}
+	for _, r := range rows {
+		k := r.Kind + "::" + strings.TrimSpace(r.Content)
+		cur, ok := byKey[k]
+		if !ok {
+			byKey[k] = kept{ID: r.ID, Importance: r.Importance, UpdatedAt: r.UpdatedAt}
+			continue
+		}
+		if r.Importance > cur.Importance || (r.Importance == cur.Importance && r.UpdatedAt.After(cur.UpdatedAt)) {
+			byKey[k] = kept{ID: r.ID, Importance: r.Importance, UpdatedAt: r.UpdatedAt}
+		}
+	}
+
+	keep := map[int64]struct{}{}
+	for _, k := range byKey {
+		keep[k.ID] = struct{}{}
+	}
+
+	var deleted int64
+	for _, r := range rows {
+		if _, ok := keep[r.ID]; ok {
+			continue
+		}
+		affected, err := s.engine.ID(r.ID).Delete(&model.Memory{})
+		if err != nil {
+			return deleted, err
+		}
+		deleted += affected
+	}
+
+	return deleted, nil
+}

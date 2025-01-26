@@ -36,3 +36,35 @@ func TestMemoryServiceAddSearchDelete(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 }
+
+func TestMemoryCompact(t *testing.T) {
+	engine, err := db.NewEngine(filepath.Join(t.TempDir(), "c.db"), false)
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+	defer engine.Close()
+
+	svc := NewService(engine)
+	_, _ = svc.Add(context.Background(), KindFact, "同一事实", 1)
+	_, _ = svc.Add(context.Background(), KindFact, "同一事实", 8)
+	_, _ = svc.Add(context.Background(), KindEvent, "事件A", 5)
+
+	deleted, err := svc.Compact(context.Background())
+	if err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	if deleted == 0 {
+		t.Fatalf("expected compact to delete duplicates")
+	}
+
+	hits, err := svc.Search(context.Background(), "同一事实", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 deduped row, got %d", len(hits))
+	}
+	if hits[0].Importance != 8 {
+		t.Fatalf("expected higher importance kept, got %d", hits[0].Importance)
+	}
+}
