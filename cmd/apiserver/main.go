@@ -8,6 +8,7 @@ import (
 	"norma/internal/api"
 	"norma/internal/db"
 	"norma/internal/memory"
+	"norma/internal/runtime"
 )
 
 func main() {
@@ -22,11 +23,15 @@ func main() {
 	defer engine.Close()
 
 	svc := memory.NewService(engine)
-	h := api.NewMemoryHandler(svc)
-	mux := http.NewServeMux()
-	h.Register(mux)
+	mh := api.NewMemoryHandler(svc)
+	rt := runtime.New()
+	rh := api.NewRuntimeHandler(rt.Bus)
 
-	log.Printf("memory api listening on %s", *addr)
+	mux := http.NewServeMux()
+	mh.Register(mux)
+	rh.Register(mux)
+
+	log.Printf("api server listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
