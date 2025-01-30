@@ -1,0 +1,73 @@
+﻿html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #f4f1ea;
+  color: #202223;
+  font-family: "Nunito", "Segoe UI", sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+.panel {
+  background: #fffdfa;
+  border: 1px solid #dfd4c3;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.panel h1,
+.panel h2 {
+  margin: 0 0 8px 0;
+}
+
+.hint {
+  margin: 0 0 12px 0;
+  color: #6a6358;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed #ebe2d5;
+}
+
+.btn {
+  margin-top: 12px;
+  background: #2f6b5f;
+  color: #ffffff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.logs pre {
+  height: 70vh;
+  overflow: auto;
+  background: #f7f3eb;
+  border: 1px solid #e9dfcf;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  .logs pre {
+    height: 40vh;
+  }
+}
