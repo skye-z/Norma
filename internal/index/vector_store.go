@@ -20,13 +20,21 @@ type vectorDoc struct {
 
 // DiskVectorStore is a lightweight persisted vector index (HNSW placeholder).
 type DiskVectorStore struct {
-	mu   sync.RWMutex
-	path string
-	docs []vectorDoc
+	mu       sync.RWMutex
+	path     string
+	docs     []vectorDoc
+	embedder Embedder
 }
 
 func NewDiskVectorStore(path string) (*DiskVectorStore, error) {
-	s := &DiskVectorStore{path: path}
+	return NewDiskVectorStoreWithEmbedder(path, HashEmbedder{})
+}
+
+func NewDiskVectorStoreWithEmbedder(path string, embedder Embedder) (*DiskVectorStore, error) {
+	if embedder == nil {
+		embedder = HashEmbedder{}
+	}
+	s := &DiskVectorStore{path: path, embedder: embedder}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -46,11 +54,15 @@ func (s *DiskVectorStore) Upsert(path string, chunks []string) error {
 	s.docs = filtered
 
 	for i, c := range chunks {
+		v32, err := s.embedder.Embed(context.Background(), c)
+		if err != nil {
+			v32 = embedF32(c)
+		}
 		s.docs = append(s.docs, vectorDoc{
 			ChunkID: chunkID(path, i),
 			Path:    path,
 			Content: c,
-			Vec:     embed(c),
+			Vec:     to64(v32),
 		})
 	}
 	return s.save()
@@ -71,7 +83,11 @@ func (s *DiskVectorStore) Delete(path string) error {
 }
 
 func (s *DiskVectorStore) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
-	return s.SearchVector(ctx, embedF32(query), topK)
+	q, err := s.embedder.Embed(ctx, query)
+	if err != nil {
+		q = embedF32(query)
+	}
+	return s.SearchVector(ctx, q, topK)
 }
 
 func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []float32, topK int) ([]Chunk, error) {
@@ -80,10 +96,7 @@ func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []flo
 		topK = 5
 	}
 
-	q := make([]float64, len(queryEmbedding))
-	for i, v := range queryEmbedding {
-		q[i] = float64(v)
-	}
+	q := to64(queryEmbedding)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -167,6 +180,14 @@ func embed(text string) []float64 {
 		vec[i] /= norm
 	}
 	return vec
+}
+
+func to64(v []float32) []float64 {
+	out := make([]float64, len(v))
+	for i, x := range v {
+		out[i] = float64(x)
+	}
+	return out
 }
 
 func cosine(a, b []float64) float64 {
