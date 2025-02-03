@@ -62,8 +62,13 @@ body {
   border-bottom: 1px dashed #e7d8c2;
 }
 
-.btn {
+.actions {
+  display: flex;
+  gap: 8px;
   margin-top: 12px;
+}
+
+.btn {
   background: #2e6758;
   color: #ffffff;
   border: 0;
@@ -72,8 +77,16 @@ body {
   cursor: pointer;
 }
 
+.btn.secondary {
+  background: #8b6844;
+}
+
+.btn.secondary.active {
+  background: #b2482b;
+}
+
 .btn:hover {
-  background: #255447;
+  filter: brightness(0.94);
 }
 
 .logs pre {
@@ -94,6 +107,10 @@ body {
   .stage {
     height: 50vh;
     min-height: 320px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
   }
 
   .logs pre {

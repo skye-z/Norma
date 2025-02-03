@@ -9,6 +9,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
+const appTitle = "Norma"
+
 //go:embed all:frontend/dist
 var assets embed.FS
 
@@ -16,7 +18,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:         "Norma",
+		Title:         appTitle,
 		Width:         460,
 		Height:        760,
 		Frameless:     true,

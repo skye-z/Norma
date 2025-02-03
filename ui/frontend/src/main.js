@@ -19,7 +19,10 @@ document.querySelector('#app').innerHTML = `
       <div class="row"><span>Motion:</span> <strong id="motion">-</strong></div>
       <div class="row"><span>Mouth:</span> <strong id="mouth">-</strong></div>
       <div class="row"><span>Status:</span> <strong id="status">initializing...</strong></div>
-      <button id="refresh" class="btn">Reconnect SSE</button>
+      <div class="actions">
+        <button id="refresh" class="btn">Reconnect SSE</button>
+        <button id="passthrough" class="btn secondary">Enable Click-Through</button>
+      </div>
     </section>
     <section class="panel logs">
       <h2>Runtime Events</h2>
@@ -33,6 +36,7 @@ const mouthEl = document.getElementById('mouth');
 const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const refreshBtn = document.getElementById('refresh');
+const passthroughBtn = document.getElementById('passthrough');
 const stageEl = document.getElementById('stage');
 
 const MOTION_ALIAS = {
@@ -51,10 +55,55 @@ let Live2DModel;
 let mouthTarget = 0;
 let mouthCurrent = 0;
 let closers = [];
+let mousePassthrough = false;
 
 function appendLog(line) {
   const ts = new Date().toLocaleTimeString();
   logEl.textContent = `[${ts}] ${line}\n` + logEl.textContent;
+}
+
+function wailsApp() {
+  if (window.go && window.go.main && window.go.main.App) {
+    return window.go.main.App;
+  }
+  return null;
+}
+
+function syncPassthroughBtn() {
+  passthroughBtn.textContent = mousePassthrough ? 'Disable Click-Through' : 'Enable Click-Through';
+  passthroughBtn.classList.toggle('active', mousePassthrough);
+}
+
+async function togglePassthrough() {
+  const appApi = wailsApp();
+  if (!appApi || typeof appApi.SetMousePassthrough !== 'function') {
+    appendLog('wails bridge unavailable: click-through toggle only works in desktop app');
+    return;
+  }
+
+  const next = !mousePassthrough;
+  const result = await appApi.SetMousePassthrough(next);
+  if (typeof result === 'string' && result.startsWith('ok')) {
+    mousePassthrough = next;
+    syncPassthroughBtn();
+    appendLog(`click-through: ${mousePassthrough ? 'enabled' : 'disabled'}`);
+    return;
+  }
+
+  appendLog(`click-through failed: ${String(result)}`);
+}
+
+async function hydratePassthrough() {
+  const appApi = wailsApp();
+  if (!appApi || typeof appApi.MousePassthrough !== 'function') {
+    return;
+  }
+  try {
+    mousePassthrough = Boolean(await appApi.MousePassthrough());
+    syncPassthroughBtn();
+  } catch {
+    // keep default state in browser mode
+  }
 }
 
 function loadScript(src) {
@@ -245,6 +294,9 @@ window.addEventListener('resize', () => {
 });
 
 refreshBtn.addEventListener('click', connectAll);
+passthroughBtn.addEventListener('click', togglePassthrough);
 
+syncPassthroughBtn();
+hydratePassthrough();
 initLive2D();
 connectAll();
