@@ -1,10 +1,10 @@
-﻿html,
+html,
 body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #f4f1ea;
-  color: #202223;
+  background: radial-gradient(circle at 20% 20%, #f7efe1 0%, #efe0cb 45%, #e3cfb7 100%);
+  color: #1f2520;
   font-family: "Nunito", "Segoe UI", sans-serif;
 }
 
@@ -14,16 +14,23 @@ body {
 
 .page {
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: minmax(360px, 520px) 1fr;
   gap: 16px;
   padding: 16px;
+  box-sizing: border-box;
 }
 
 .panel {
-  background: #fffdfa;
-  border: 1px solid #dfd4c3;
-  border-radius: 12px;
-  padding: 16px;
+  background: rgba(255, 250, 244, 0.92);
+  border: 1px solid #d8c7af;
+  border-radius: 14px;
+  padding: 14px;
+  backdrop-filter: blur(1px);
+}
+
+.stage-panel {
+  display: flex;
+  flex-direction: column;
 }
 
 .panel h1,
@@ -33,19 +40,31 @@ body {
 
 .hint {
   margin: 0 0 12px 0;
-  color: #6a6358;
+  color: #645946;
+}
+
+.stage {
+  width: 100%;
+  height: 60vh;
+  min-height: 360px;
+  border-radius: 12px;
+  border: 1px solid #dcc9ad;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 248, 238, 0.95), rgba(245, 230, 208, 0.9) 55%, rgba(232, 208, 177, 0.95));
+  overflow: hidden;
+  margin-bottom: 10px;
 }
 
 .row {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
-  border-bottom: 1px dashed #ebe2d5;
+  border-bottom: 1px dashed #e7d8c2;
 }
 
 .btn {
   margin-top: 12px;
-  background: #2f6b5f;
+  background: #2e6758;
   color: #ffffff;
   border: 0;
   border-radius: 8px;
@@ -53,21 +72,31 @@ body {
   cursor: pointer;
 }
 
-.logs pre {
-  height: 70vh;
-  overflow: auto;
-  background: #f7f3eb;
-  border: 1px solid #e9dfcf;
-  border-radius: 8px;
-  padding: 12px;
+.btn:hover {
+  background: #255447;
 }
 
-@media (max-width: 900px) {
+.logs pre {
+  height: calc(100vh - 120px);
+  overflow: auto;
+  background: #fbf4ea;
+  border: 1px solid #e8dac6;
+  border-radius: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 980px) {
   .page {
     grid-template-columns: 1fr;
   }
 
+  .stage {
+    height: 50vh;
+    min-height: 320px;
+  }
+
   .logs pre {
-    height: 40vh;
+    height: 36vh;
   }
 }
