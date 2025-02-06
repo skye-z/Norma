@@ -5,10 +5,19 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+
+	hnsw "github.com/Bithack/go-hnsw"
+)
+
+const (
+	defaultHNSWM              = 16
+	defaultHNSWEFConstruction = 200
+	defaultHNSWEFSearch       = 64
 )
 
 type vectorDoc struct {
@@ -18,12 +27,16 @@ type vectorDoc struct {
 	Vec     []float64 `json:"vec"`
 }
 
-// DiskVectorStore is a lightweight persisted vector index (HNSW placeholder).
+// DiskVectorStore persists vector metadata and serves ANN search with HNSW.
 type DiskVectorStore struct {
-	mu       sync.RWMutex
-	path     string
-	docs     []vectorDoc
-	embedder Embedder
+	mu           sync.RWMutex
+	path         string
+	docs         []vectorDoc
+	embedder     Embedder
+	hnswIndex    *hnsw.Hnsw
+	hnswM        int
+	hnswEFBuild  int
+	hnswEFSearch int
 }
 
 func NewDiskVectorStore(path string) (*DiskVectorStore, error) {
@@ -34,7 +47,13 @@ func NewDiskVectorStoreWithEmbedder(path string, embedder Embedder) (*DiskVector
 	if embedder == nil {
 		embedder = HashEmbedder{}
 	}
-	s := &DiskVectorStore{path: path, embedder: embedder}
+	s := &DiskVectorStore{
+		path:         path,
+		embedder:     embedder,
+		hnswM:        defaultHNSWM,
+		hnswEFBuild:  defaultHNSWEFConstruction,
+		hnswEFSearch: defaultHNSWEFSearch,
+	}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -65,6 +84,10 @@ func (s *DiskVectorStore) Upsert(path string, chunks []string) error {
 			Vec:     to64(v32),
 		})
 	}
+
+	if err := s.rebuildHNSWLocked(); err != nil {
+		return err
+	}
 	return s.save()
 }
 
@@ -79,6 +102,10 @@ func (s *DiskVectorStore) Delete(path string) error {
 		}
 	}
 	s.docs = filtered
+
+	if err := s.rebuildHNSWLocked(); err != nil {
+		return err
+	}
 	return s.save()
 }
 
@@ -96,10 +123,57 @@ func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []flo
 		topK = 5
 	}
 
-	q := to64(queryEmbedding)
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	if len(s.docs) == 0 {
+		return nil, nil
+	}
+
+	if s.hnswIndex != nil && len(queryEmbedding) > 0 {
+		hits := s.searchHNSWLocked(queryEmbedding, topK)
+		if len(hits) > 0 {
+			return hits, nil
+		}
+	}
+
+	return s.searchLinearLocked(queryEmbedding, topK), nil
+}
+
+func (s *DiskVectorStore) searchHNSWLocked(queryEmbedding []float32, topK int) []Chunk {
+	if s.hnswIndex == nil {
+		return nil
+	}
+
+	ef := s.hnswEFSearch
+	if ef < topK*2 {
+		ef = topK * 2
+	}
+
+	result := s.hnswIndex.Search(hnsw.Point(queryEmbedding), ef, topK)
+	hits := make([]Chunk, 0, topK)
+	for result.Len() > 0 {
+		item := result.Pop()
+		if item == nil {
+			break
+		}
+		docIdx := int(item.ID) - 1
+		if docIdx < 0 || docIdx >= len(s.docs) {
+			continue
+		}
+		doc := s.docs[docIdx]
+		score := 1.0 / (1.0 + float64(item.D))
+		hits = append(hits, Chunk{DocID: doc.Path, ChunkID: doc.ChunkID, Score: score, Content: doc.Content})
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
+	if len(hits) > topK {
+		hits = hits[:topK]
+	}
+	return hits
+}
+
+func (s *DiskVectorStore) searchLinearLocked(queryEmbedding []float32, topK int) []Chunk {
+	q := to64(queryEmbedding)
 
 	type hit struct {
 		doc   vectorDoc
@@ -118,13 +192,38 @@ func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []flo
 	for _, h := range hits {
 		out = append(out, Chunk{DocID: h.doc.Path, ChunkID: h.doc.ChunkID, Score: h.score, Content: h.doc.Content})
 	}
-	return out, nil
+	return out
+}
+
+func (s *DiskVectorStore) rebuildHNSWLocked() error {
+	if len(s.docs) == 0 {
+		s.hnswIndex = nil
+		return nil
+	}
+
+	dim := len(s.docs[0].Vec)
+	if dim == 0 {
+		s.hnswIndex = nil
+		return nil
+	}
+
+	zero := make(hnsw.Point, dim)
+	idx := hnsw.New(s.hnswM, s.hnswEFBuild, zero)
+	idx.Grow(len(s.docs) + 1)
+
+	for i, d := range s.docs {
+		idx.Add(to32(d.Vec, dim), uint32(i+1))
+	}
+
+	s.hnswIndex = idx
+	return nil
 }
 
 func (s *DiskVectorStore) load() error {
 	if s.path == "" {
 		return nil
 	}
+
 	b, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -135,18 +234,53 @@ func (s *DiskVectorStore) load() error {
 	if len(b) == 0 {
 		return nil
 	}
-	return json.Unmarshal(b, &s.docs)
+	if err := json.Unmarshal(b, &s.docs); err != nil {
+		return err
+	}
+
+	hnswPath := s.hnswPath()
+	if _, err := os.Stat(hnswPath); err == nil {
+		if idx, _, loadErr := hnsw.Load(hnswPath); loadErr == nil {
+			s.hnswIndex = idx
+			return nil
+		}
+	}
+
+	return s.rebuildHNSWLocked()
 }
 
 func (s *DiskVectorStore) save() error {
 	if s.path == "" {
 		return nil
 	}
+
 	b, err := json.MarshalIndent(s.docs, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, b, 0o644)
+	if err := os.WriteFile(s.path, b, 0o644); err != nil {
+		return err
+	}
+
+	if s.hnswIndex != nil {
+		if err := os.MkdirAll(filepath.Dir(s.hnswPath()), 0o755); err != nil {
+			return err
+		}
+		if err := s.hnswIndex.Save(s.hnswPath()); err != nil {
+			return err
+		}
+	} else {
+		_ = os.Remove(s.hnswPath())
+	}
+
+	return nil
+}
+
+func (s *DiskVectorStore) hnswPath() string {
+	if s.path == "" {
+		return ""
+	}
+	return s.path + ".hnsw"
 }
 
 func chunkID(path string, i int) string {
@@ -186,6 +320,17 @@ func to64(v []float32) []float64 {
 	out := make([]float64, len(v))
 	for i, x := range v {
 		out[i] = float64(x)
+	}
+	return out
+}
+
+func to32(v []float64, dim int) []float32 {
+	if dim <= 0 {
+		dim = len(v)
+	}
+	out := make([]float32, dim)
+	for i := 0; i < dim && i < len(v); i++ {
+		out[i] = float32(v[i])
 	}
 	return out
 }
