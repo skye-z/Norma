@@ -1,302 +1,271 @@
+﻿
 import './style.css';
 import * as PIXI from 'pixi.js';
 
-window.PIXI = PIXI;
+const apiBase = 'http://127.0.0.1:8090';
+const modelURL = `${apiBase}/static/model/runtime/hiyori_pro_t11.model3.json`;
+const coreURL = `${apiBase}/static/model/runtime/live2dcubismcore.min.js`;
 
-const eventApiBase = 'http://127.0.0.1:8090';
-const modelUrl = `${eventApiBase}/static/model/runtime/hiyori_pro_t11.model3.json`;
-const cubismCoreCandidates = [
-  `${eventApiBase}/static/model/runtime/live2dcubismcore.min.js`,
-  'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
-];
+const params = new URLSearchParams(window.location.search);
+const isDebug = params.get('debug') === '1';
+const isSettings = params.get('settings') === '1';
 
-document.querySelector('#app').innerHTML = `
-  <main class="page">
-    <section class="panel stage-panel">
-      <h1>Norma Live2D Preview</h1>
-      <p class="hint">Model: <code>/model/runtime/hiyori_pro_t11.model3.json</code></p>
-      <div id="stage" class="stage"></div>
-      <div class="row"><span>Motion:</span> <strong id="motion">-</strong></div>
-      <div class="row"><span>Mouth:</span> <strong id="mouth">-</strong></div>
-      <div class="row"><span>Status:</span> <strong id="status">initializing...</strong></div>
-      <div class="actions">
-        <button id="refresh" class="btn">Reconnect SSE</button>
-        <button id="passthrough" class="btn secondary">Enable Click-Through</button>
-      </div>
-    </section>
-    <section class="panel logs">
-      <h2>Runtime Events</h2>
-      <pre id="log"></pre>
-    </section>
-  </main>
-`;
+if (isSettings) {
+  document.querySelector('#app').innerHTML = `<main class="settings-page"><section class="settings-panel"><h1>Norma 设置</h1></section></main>`;
+} else if (isDebug) {
+  document.querySelector('#app').innerHTML = `
+    <main class="debug-page">
+      <section class="debug-panel">
+        <h1>Norma 调试面板</h1>
+        <div class="speech-row">
+          <input id="txt" class="txt" value="你好，我是诺玛。" />
+          <button id="speak" class="btn">语音预览</button>
+        </div>
+        <div class="control-grid">
+          <button class="btn m" data-m="Idle">Idle</button>
+          <button class="btn m" data-m="Tap">Tap</button>
+          <button class="btn m" data-m="Flick">Flick</button>
+        </div>
+        <div class="range-row"><label>口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
+        <div class="range-row"><label>视线X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+        <div class="range-row"><label>视线Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+        <pre id="log"></pre>
+      </section>
+    </main>
+  `;
+} else {
+  document.querySelector('#app').innerHTML = `
+    <main class="companion-shell">
+      <div id="stage" class="stage companion-stage wails-drag"></div>
+      <div id="status" class="status-dot">正在初始化...</div>
+    </main>
+  `;
+}
 
-const motionEl = document.getElementById('motion');
-const mouthEl = document.getElementById('mouth');
-const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
-const refreshBtn = document.getElementById('refresh');
-const passthroughBtn = document.getElementById('passthrough');
-const stageEl = document.getElementById('stage');
-
-const MOTION_ALIAS = {
-  idle: 'Idle',
-  tap: 'Tap',
-  flick: 'Flick',
-  flickdown: 'FlickDown',
-  flickup: 'FlickUp',
-  tapbody: 'Tap@Body',
-  flickbody: 'Flick@Body'
+const log = (msg) => {
+  if (!logEl) return;
+  const ts = new Date().toLocaleTimeString();
+  logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
 };
 
-let app;
-let model;
-let Live2DModel;
-let mouthTarget = 0;
-let mouthCurrent = 0;
-let closers = [];
-let mousePassthrough = false;
-
-function appendLog(line) {
-  const ts = new Date().toLocaleTimeString();
-  logEl.textContent = `[${ts}] ${line}\n` + logEl.textContent;
-}
-
-function wailsApp() {
-  if (window.go && window.go.main && window.go.main.App) {
-    return window.go.main.App;
-  }
-  return null;
-}
-
-function syncPassthroughBtn() {
-  passthroughBtn.textContent = mousePassthrough ? 'Disable Click-Through' : 'Enable Click-Through';
-  passthroughBtn.classList.toggle('active', mousePassthrough);
-}
-
-async function togglePassthrough() {
-  const appApi = wailsApp();
-  if (!appApi || typeof appApi.SetMousePassthrough !== 'function') {
-    appendLog('wails bridge unavailable: click-through toggle only works in desktop app');
-    return;
-  }
-
-  const next = !mousePassthrough;
-  const result = await appApi.SetMousePassthrough(next);
-  if (typeof result === 'string' && result.startsWith('ok')) {
-    mousePassthrough = next;
-    syncPassthroughBtn();
-    appendLog(`click-through: ${mousePassthrough ? 'enabled' : 'disabled'}`);
-    return;
-  }
-
-  appendLog(`click-through failed: ${String(result)}`);
-}
-
-async function hydratePassthrough() {
-  const appApi = wailsApp();
-  if (!appApi || typeof appApi.MousePassthrough !== 'function') {
-    return;
-  }
+async function publish(name, payload) {
   try {
-    mousePassthrough = Boolean(await appApi.MousePassthrough());
-    syncPassthroughBtn();
-  } catch {
-    // keep default state in browser mode
+    await fetch(`${apiBase}/runtime/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, payload })
+    });
+  } catch (err) {
+    log(`发送失败: ${String(err)}`);
   }
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`load script failed: ${src}`));
-    document.head.appendChild(script);
+if (isDebug) {
+  document.querySelectorAll('.m').forEach((btn) => {
+    btn.addEventListener('click', () => publish('live2d.motion', { group: btn.dataset.m, index: 0 }));
+  });
+
+  document.getElementById('mouth')?.addEventListener('input', (e) => {
+    publish('live2d.mouth', { level: Number(e.target.value) });
+  });
+
+  const emitEye = () => {
+    publish('live2d.eye', {
+      x: Number(document.getElementById('ex')?.value || 0),
+      y: Number(document.getElementById('ey')?.value || 0)
+    });
+  };
+  document.getElementById('ex')?.addEventListener('input', emitEye);
+  document.getElementById('ey')?.addEventListener('input', emitEye);
+
+  document.getElementById('speak')?.addEventListener('click', () => {
+    const text = String(document.getElementById('txt')?.value || '').trim();
+    if (!text) return;
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'zh-CN';
+    const timer = setInterval(() => publish('live2d.mouth', { level: 0.2 + Math.random() * 0.8 }), 90);
+    utter.onend = () => {
+      clearInterval(timer);
+      publish('live2d.mouth', { level: 0 });
+    };
+    utter.onerror = utter.onend;
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utter);
   });
 }
+if (!isDebug && !isSettings) {
+  const stage = document.getElementById('stage');
+  const statusEl = document.getElementById('status');
 
-async function ensureCubismCore() {
-  if (window.Live2DCubismCore) {
-    return;
-  }
-
-  let lastErr;
-  for (const src of cubismCoreCandidates) {
-    try {
-      await loadScript(src);
-      if (window.Live2DCubismCore) {
-        appendLog(`cubism core loaded: ${src}`);
-        return;
-      }
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-
-  throw lastErr || new Error('cubism core unavailable');
-}
-
-async function ensureLive2DModule() {
-  if (Live2DModel) {
-    return;
-  }
-
-  const mod = await import('pixi-live2d-display/cubism4');
-  Live2DModel = mod.Live2DModel;
-}
-
-function parseMouthLevel(payload) {
-  if (typeof payload === 'number') {
-    return payload;
-  }
-  if (payload && typeof payload === 'object') {
-    if (typeof payload.level === 'number') {
-      return payload.level;
-    }
-    if (typeof payload.value === 'number') {
-      return payload.value;
-    }
-    if (typeof payload.open === 'number') {
-      return payload.open;
-    }
-  }
-  return 0;
-}
-
-function normalizeMotion(payload) {
-  if (!payload) {
-    return { group: 'Idle', index: 0 };
-  }
-
-  if (typeof payload === 'string') {
-    const key = payload.replace(/[^a-zA-Z]/g, '').toLowerCase();
-    return { group: MOTION_ALIAS[key] || payload, index: 0 };
-  }
-
-  if (typeof payload === 'object') {
-    const rawGroup = String(payload.group || payload.name || payload.motion || 'Idle');
-    const key = rawGroup.replace(/[^a-zA-Z]/g, '').toLowerCase();
-    const group = MOTION_ALIAS[key] || rawGroup;
-    const index = Number.isInteger(payload.index) ? payload.index : 0;
-    return { group, index };
-  }
-
-  return { group: 'Idle', index: 0 };
-}
-
-function connectEvent(name, onData) {
-  const es = new EventSource(`${eventApiBase}/runtime/events?name=${encodeURIComponent(name)}`);
-  es.onopen = () => {
-    statusEl.textContent = 'connected';
-    appendLog(`connected: ${name}`);
+  const state = {
+    app: null,
+    model: null,
+    mouthTarget: 0,
+    mouthCurrent: 0,
+    targetX: 0,
+    targetY: 0,
+    eyeX: 0,
+    eyeY: 0,
+    eventSources: []
   };
-  es.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onData(data);
-      appendLog(`${name}: ${JSON.stringify(data.payload)}`);
-    } catch (err) {
-      appendLog(`parse error: ${String(err)}`);
-    }
-  };
-  es.onerror = () => {
-    statusEl.textContent = 'disconnected';
-    appendLog(`disconnected: ${name}`);
-  };
-  return () => es.close();
-}
 
-function connectAll() {
-  closers.forEach((c) => c());
-  closers = [];
+  const setStatus = (text) => {
+    if (statusEl) statusEl.textContent = text;
+  };
 
-  closers.push(
-    connectEvent('live2d.motion', async (evt) => {
-      const m = normalizeMotion(evt.payload);
-      motionEl.textContent = `${m.group}[${m.index}]`;
-      if (!model) {
-        return;
-      }
+  function closeEvents() {
+    state.eventSources.forEach((es) => {
+      try { es.close(); } catch (_) {}
+    });
+    state.eventSources = [];
+  }
+
+  function createEventSource(name, onPayload) {
+    const es = new EventSource(`${apiBase}/runtime/events?name=${encodeURIComponent(name)}`);
+    es.onmessage = (e) => {
       try {
-        await model.motion(m.group, m.index, 3);
-      } catch (err) {
-        appendLog(`motion failed: ${String(err)}`);
-      }
-    })
-  );
-
-  closers.push(
-    connectEvent('live2d.mouth', (evt) => {
-      const level = Math.max(0, Math.min(1.2, parseMouthLevel(evt.payload)));
-      mouthTarget = level;
-      mouthEl.textContent = level.toFixed(2);
-    })
-  );
-}
-
-function layoutModel() {
-  if (!app || !model || !stageEl) {
-    return;
+        const data = JSON.parse(e.data);
+        onPayload(data.payload);
+      } catch (_) {}
+    };
+    return es;
   }
 
-  const width = stageEl.clientWidth || 360;
-  const height = stageEl.clientHeight || 480;
-  app.renderer.resize(width, height);
+  function connectEvents() {
+    closeEvents();
 
-  const sx = width * 0.65 / model.width;
-  const sy = height * 0.88 / model.height;
-  const scale = Math.min(sx, sy);
-  model.scale.set(scale);
-  model.x = width / 2;
-  model.y = height * 0.96;
-  model.anchor.set(0.5, 1);
-}
-
-async function initLive2D() {
-  app = new PIXI.Application({
-    resizeTo: stageEl,
-    autoStart: true,
-    antialias: true,
-    backgroundAlpha: 0
-  });
-  stageEl.innerHTML = '';
-  stageEl.appendChild(app.view);
-
-  try {
-    await ensureCubismCore();
-    await ensureLive2DModule();
-
-    model = await Live2DModel.from(modelUrl, { autoInteract: false });
-    app.stage.addChild(model);
-    layoutModel();
-
-    app.ticker.add(() => {
-      if (!model || !model.internalModel || !model.internalModel.coreModel) {
-        return;
-      }
-      mouthCurrent += (mouthTarget - mouthCurrent) * 0.28;
-      model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthCurrent);
+    const motionES = createEventSource('live2d.motion', async (payload) => {
+      if (!state.model) return;
+      const group = typeof payload === 'string' ? payload : String(payload?.group || 'Idle');
+      const index = Number.isInteger(payload?.index) ? payload.index : 0;
+      await state.model.motion(group, index, 3).catch(() => undefined);
     });
 
-    await model.motion('Idle', 0, 1);
-    appendLog('live2d loaded');
-    statusEl.textContent = 'ready';
-  } catch (err) {
-    statusEl.textContent = 'live2d load failed';
-    appendLog(`live2d load failed: ${String(err)}`);
+    const mouthES = createEventSource('live2d.mouth', (payload) => {
+      if (typeof payload === 'number') {
+        state.mouthTarget = payload;
+      } else if (typeof payload?.level === 'number') {
+        state.mouthTarget = payload.level;
+      } else {
+        state.mouthTarget = String(payload || '').toLowerCase() === 'speaking' ? 0.7 : 0;
+      }
+    });
+
+    const eyeES = createEventSource('live2d.eye', (payload) => {
+      if (Number.isFinite(Number(payload?.x))) state.targetX = Number(payload.x);
+      if (Number.isFinite(Number(payload?.y))) state.targetY = Number(payload.y);
+    });
+
+    const reloadES = createEventSource('live2d.reload', async () => {
+      await reloadCompanion();
+    });
+
+    state.eventSources.push(motionES, mouthES, eyeES, reloadES);
   }
+
+  function destroyRenderer() {
+    closeEvents();
+    if (state.app) {
+      try {
+        state.app.destroy(true, { children: true, texture: true, baseTexture: true });
+      } catch (_) {}
+      state.app = null;
+    }
+    state.model = null;
+    state.mouthTarget = 0;
+    state.mouthCurrent = 0;
+    state.eyeX = 0;
+    state.eyeY = 0;
+    if (stage) stage.innerHTML = '';
+  }
+
+  async function ensureCore() {
+    if (window.Live2DCubismCore) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = coreURL;
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('live2d core load failed'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function initCompanion() {
+    destroyRenderer();
+    connectEvents();
+    setStatus('正在加载模型...');
+
+    await ensureCore();
+    const mod = await import('pixi-live2d-display/cubism4');
+
+    state.app = new PIXI.Application({
+      resizeTo: stage,
+      antialias: true,
+      autoDensity: true,
+      resolution: window.devicePixelRatio || 1,
+      backgroundAlpha: 0
+    });
+    stage.appendChild(state.app.view);
+
+    state.model = await mod.Live2DModel.from(modelURL, { autoInteract: false });
+    state.app.stage.addChild(state.model);
+
+    state.model.anchor.set(0.5, 1);
+    state.model.x = stage.clientWidth / 2;
+    state.model.y = stage.clientHeight * 0.985;
+    state.model.scale.set(Math.min(stage.clientWidth * 1.08 / state.model.width, stage.clientHeight * 1.22 / state.model.height));
+    await state.model.motion('Idle', 0, 1).catch(() => undefined);
+
+    state.app.ticker.add(() => {
+      if (!state.model?.internalModel?.coreModel) return;
+      const core = state.model.internalModel.coreModel;
+
+      state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
+      core.setParameterValueById('ParamMouthOpenY', state.mouthCurrent);
+
+      state.eyeX += (state.targetX - state.eyeX) * 0.18;
+      state.eyeY += (state.targetY - state.eyeY) * 0.18;
+      core.setParameterValueById('ParamEyeBallX', state.eyeX);
+      core.setParameterValueById('ParamEyeBallY', state.eyeY);
+      core.setParameterValueById('ParamAngleX', state.eyeX * 18);
+      core.setParameterValueById('ParamAngleY', state.eyeY * 12);
+      core.setParameterValueById('ParamBodyAngleX', state.eyeX * 8);
+    });
+
+    setStatus('已就绪');
+  }
+
+  async function reloadCompanion() {
+    setStatus('正在重载...');
+    try {
+      await initCompanion();
+      setStatus('已就绪');
+    } catch (err) {
+      setStatus('重载失败');
+      console.error(err);
+    }
+  }
+
+  stage.addEventListener('mousemove', (evt) => {
+    const r = stage.getBoundingClientRect();
+    state.targetX = Math.max(-1, Math.min(1, ((evt.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
+    state.targetY = Math.max(-1, Math.min(1, ((evt.clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+  });
+  stage.addEventListener('mouseleave', () => {
+    state.targetX = 0;
+    state.targetY = 0;
+  });
+
+  window.addEventListener('beforeunload', () => {
+    destroyRenderer();
+  });
+
+  initCompanion().catch((err) => {
+    setStatus('加载失败');
+    console.error(err);
+  });
 }
-
-window.addEventListener('resize', () => {
-  layoutModel();
-});
-
-refreshBtn.addEventListener('click', connectAll);
-passthroughBtn.addEventListener('click', togglePassthrough);
-
-syncPassthroughBtn();
-hydratePassthrough();
-initLive2D();
-connectAll();

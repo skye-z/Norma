@@ -17,6 +17,7 @@ func main() {
 	addr := flag.String("addr", ":8090", "http listen address")
 	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
 	modelDir := flag.String("model-dir", "model", "live2d model directory")
+	configPath := flag.String("config", "configs/config.yaml", "runtime config path")
 	flag.Parse()
 
 	engine, err := db.NewEngine(*dbPath, false)
@@ -29,11 +30,14 @@ func main() {
 	mh := api.NewMemoryHandler(svc)
 	rt := runtime.New()
 	rh := api.NewRuntimeHandler(rt.Bus)
+	sh := api.NewSettingsHandler(*configPath, rt.Bus)
 
 	mux := http.NewServeMux()
 	mh.Register(mux)
 	rh.Register(mux)
+	sh.Register(mux)
 	registerStaticModel(mux, *modelDir)
+	registerStaticDebug(mux, "web/debug")
 
 	log.Printf("api server listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, withCORS(mux)); err != nil {
@@ -57,11 +61,27 @@ func registerStaticModel(mux *http.ServeMux, modelDir string) {
 	log.Printf("static model route: /static/model/ -> %s", absDir)
 }
 
+func registerStaticDebug(mux *http.ServeMux, debugDir string) {
+	absDir, err := filepath.Abs(debugDir)
+	if err != nil {
+		log.Printf("skip static debug route: resolve %q failed: %v", debugDir, err)
+		return
+	}
+	info, err := os.Stat(absDir)
+	if err != nil || !info.IsDir() {
+		log.Printf("skip static debug route: invalid dir %q", absDir)
+		return
+	}
+	fs := http.FileServer(http.Dir(absDir))
+	mux.Handle("/static/debug/", http.StripPrefix("/static/debug/", fs))
+	log.Printf("static debug route: /static/debug/ -> %s", absDir)
+}
+
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

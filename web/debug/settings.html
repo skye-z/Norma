@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Norma 设置</title>
+  <link rel="stylesheet" href="./panel.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Norma 设置</h1>
+      <div class="grid2">
+        <label>LLM Provider</label><input id="llm_provider" />
+        <label>LLM Endpoint</label><input id="llm_endpoint" />
+        <label>LLM Model</label><input id="llm_model" />
+        <label>LLM Timeout(ms)</label><input id="llm_timeout" type="number" />
+
+        <label>ASR Provider</label><input id="asr_provider" />
+        <label>ASR Endpoint</label><input id="asr_endpoint" />
+
+        <label>TTS Provider</label><input id="tts_provider" />
+        <label>TTS Endpoint</label><input id="tts_endpoint" />
+
+        <label>RAG TopK</label><input id="rag_topk" type="number" />
+        <label>STM Budget</label><input id="stm_budget" type="number" />
+
+        <label>Auto Degrade</label><input id="perf_auto" type="checkbox" />
+        <label>First Token Threshold(ms)</label><input id="perf_first" type="number" />
+        <label>Degraded RAG TopK</label><input id="perf_topk" type="number" />
+      </div>
+      <div class="row"><button id="load">重新读取</button><button id="save">保存配置</button><a href="./index.html">返回调试</a></div>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script type="module" src="./settings.js"></script>
+</body>
+</html>

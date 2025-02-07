@@ -1,0 +1,8 @@
+body { margin: 0; font-family: Segoe UI, sans-serif; background: #f7efe1; }
+.wrap { padding: 16px; }
+.card { background: #fffaf4; border: 1px solid #d8c7af; border-radius: 12px; padding: 12px; max-width: 920px; }
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: 220px 1fr; gap: 8px; margin-bottom: 12px; }
+input[type="text"], input:not([type]), input[type="number"] { width: 100%; box-sizing: border-box; }
+button { background: #2e6758; color: #fff; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+pre { background: #fbf4ea; border: 1px solid #e8dac6; border-radius: 8px; padding: 8px; min-height: 140px; white-space: pre-wrap; }
