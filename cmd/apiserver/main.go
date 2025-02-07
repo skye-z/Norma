@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"norma/internal/api"
 	"norma/internal/db"
@@ -33,6 +34,7 @@ func main() {
 	sh := api.NewSettingsHandler(*configPath, rt.Bus)
 
 	mux := http.NewServeMux()
+	api.RegisterHealth(mux, time.Now())
 	mh.Register(mux)
 	rh.Register(mux)
 	sh.Register(mux)

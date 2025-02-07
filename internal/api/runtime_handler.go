@@ -75,6 +75,10 @@ func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Flush once so clients can establish SSE before first event.
+	_, _ = fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
 	eventCh := make(chan bus.Event, 16)
 	unsub := h.bus.Subscribe(name, func(evt bus.Event) {
 		select {

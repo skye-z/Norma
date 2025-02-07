@@ -11,24 +11,24 @@ const isDebug = params.get('debug') === '1';
 const isSettings = params.get('settings') === '1';
 
 if (isSettings) {
-  document.querySelector('#app').innerHTML = `<main class="settings-page"><section class="settings-panel"><h1>Norma 设置</h1></section></main>`;
+  document.querySelector('#app').innerHTML = `<main class="settings-page"><section class="settings-panel"><h1>Norma Settings</h1></section></main>`;
 } else if (isDebug) {
   document.querySelector('#app').innerHTML = `
     <main class="debug-page">
       <section class="debug-panel">
-        <h1>Norma 调试面板</h1>
+        <h1>Norma Debug Panel</h1>
         <div class="speech-row">
-          <input id="txt" class="txt" value="你好，我是诺玛。" />
-          <button id="speak" class="btn">语音预览</button>
+          <input id="txt" class="txt" value="Hello, I am Norma." />
+          <button id="speak" class="btn">Speak</button>
         </div>
         <div class="control-grid">
           <button class="btn m" data-m="Idle">Idle</button>
           <button class="btn m" data-m="Tap">Tap</button>
           <button class="btn m" data-m="Flick">Flick</button>
         </div>
-        <div class="range-row"><label>口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
-        <div class="range-row"><label>视线X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-        <div class="range-row"><label>视线Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+        <div class="range-row"><label>Mouth</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
+        <div class="range-row"><label>EyeX</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+        <div class="range-row"><label>EyeY</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
         <pre id="log"></pre>
       </section>
     </main>
@@ -37,7 +37,6 @@ if (isSettings) {
   document.querySelector('#app').innerHTML = `
     <main class="companion-shell">
       <div id="stage" class="stage companion-stage wails-drag"></div>
-      <div id="status" class="status-dot">正在初始化...</div>
     </main>
   `;
 }
@@ -49,6 +48,22 @@ const log = (msg) => {
   logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForApiReady(timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const resp = await fetch(`${apiBase}/healthz`, { cache: 'no-store' });
+      if (resp.ok) {
+        return true;
+      }
+    } catch (_) {}
+    await sleep(350);
+  }
+  return false;
+}
+
 async function publish(name, payload) {
   try {
     await fetch(`${apiBase}/runtime/publish`, {
@@ -57,7 +72,7 @@ async function publish(name, payload) {
       body: JSON.stringify({ name, payload })
     });
   } catch (err) {
-    log(`发送失败: ${String(err)}`);
+    log(`publish failed: ${String(err)}`);
   }
 }
 
@@ -76,6 +91,7 @@ if (isDebug) {
       y: Number(document.getElementById('ey')?.value || 0)
     });
   };
+
   document.getElementById('ex')?.addEventListener('input', emitEye);
   document.getElementById('ey')?.addEventListener('input', emitEye);
 
@@ -84,22 +100,20 @@ if (isDebug) {
     if (!text) return;
 
     const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'zh-CN';
+    utter.lang = 'en-US';
     const timer = setInterval(() => publish('live2d.mouth', { level: 0.2 + Math.random() * 0.8 }), 90);
     utter.onend = () => {
       clearInterval(timer);
       publish('live2d.mouth', { level: 0 });
     };
     utter.onerror = utter.onend;
-
     speechSynthesis.cancel();
     speechSynthesis.speak(utter);
   });
 }
+
 if (!isDebug && !isSettings) {
   const stage = document.getElementById('stage');
-  const statusEl = document.getElementById('status');
-
   const state = {
     app: null,
     model: null,
@@ -112,13 +126,22 @@ if (!isDebug && !isSettings) {
     eventSources: []
   };
 
-  const setStatus = (text) => {
-    if (statusEl) statusEl.textContent = text;
-  };
+  function normalizeMotion(payload) {
+    const aliases = { thinking: 'Tap', tapbody: 'Tap@Body', flickbody: 'Flick@Body', idle: 'Idle' };
+    if (typeof payload === 'string') {
+      const key = payload.replace(/[^a-zA-Z]/g, '').toLowerCase();
+      return aliases[key] || payload;
+    }
+    const raw = String(payload?.group || payload?.motion || payload?.name || 'Idle');
+    const key = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
+    return aliases[key] || raw;
+  }
 
   function closeEvents() {
     state.eventSources.forEach((es) => {
-      try { es.close(); } catch (_) {}
+      try {
+        es.close();
+      } catch (_) {}
     });
     state.eventSources = [];
   }
@@ -131,6 +154,9 @@ if (!isDebug && !isSettings) {
         onPayload(data.payload);
       } catch (_) {}
     };
+    es.onerror = () => {
+      console.warn(`[live2d] event source reconnecting: ${name}`);
+    };
     return es;
   }
 
@@ -139,9 +165,18 @@ if (!isDebug && !isSettings) {
 
     const motionES = createEventSource('live2d.motion', async (payload) => {
       if (!state.model) return;
-      const group = typeof payload === 'string' ? payload : String(payload?.group || 'Idle');
+      const group = normalizeMotion(payload);
       const index = Number.isInteger(payload?.index) ? payload.index : 0;
-      await state.model.motion(group, index, 3).catch(() => undefined);
+      try {
+        await state.model.motion(group, index, 3);
+      } catch (_) {
+        for (const fallback of ['Tap', 'Flick', 'Idle']) {
+          try {
+            await state.model.motion(fallback, 0, 3);
+            break;
+          } catch (_) {}
+        }
+      }
     });
 
     const mouthES = createEventSource('live2d.mouth', (payload) => {
@@ -195,9 +230,13 @@ if (!isDebug && !isSettings) {
   }
 
   async function initCompanion() {
+    const apiReady = await waitForApiReady(8000);
+    if (!apiReady) {
+      throw new Error('api server is not ready');
+    }
+
     destroyRenderer();
     connectEvents();
-    setStatus('正在加载模型...');
 
     await ensureCore();
     const mod = await import('pixi-live2d-display/cubism4');
@@ -223,6 +262,7 @@ if (!isDebug && !isSettings) {
     state.app.ticker.add(() => {
       if (!state.model?.internalModel?.coreModel) return;
       const core = state.model.internalModel.coreModel;
+      const t = performance.now() / 1000;
 
       state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
       core.setParameterValueById('ParamMouthOpenY', state.mouthCurrent);
@@ -234,19 +274,21 @@ if (!isDebug && !isSettings) {
       core.setParameterValueById('ParamAngleX', state.eyeX * 18);
       core.setParameterValueById('ParamAngleY', state.eyeY * 12);
       core.setParameterValueById('ParamBodyAngleX', state.eyeX * 8);
+      core.setParameterValueById('ParamBreath', 0.5 + Math.sin(t * 1.8) * 0.5);
+      core.setParameterValueById('ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2);
+      core.setParameterValueById('ParamAngleZ', Math.sin(t * 1.1) * 2.0);
     });
-
-    setStatus('已就绪');
   }
 
   async function reloadCompanion() {
-    setStatus('正在重载...');
-    try {
-      await initCompanion();
-      setStatus('已就绪');
-    } catch (err) {
-      setStatus('重载失败');
-      console.error(err);
+    for (let i = 1; i <= 6; i += 1) {
+      try {
+        await initCompanion();
+        return;
+      } catch (err) {
+        console.error(`[live2d] init failed (attempt ${i}/6)`, err);
+        await sleep(Math.min(1200 * i, 5000));
+      }
     }
   }
 
@@ -255,6 +297,7 @@ if (!isDebug && !isSettings) {
     state.targetX = Math.max(-1, Math.min(1, ((evt.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
     state.targetY = Math.max(-1, Math.min(1, ((evt.clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
   });
+
   stage.addEventListener('mouseleave', () => {
     state.targetX = 0;
     state.targetY = 0;
@@ -264,8 +307,7 @@ if (!isDebug && !isSettings) {
     destroyRenderer();
   });
 
-  initCompanion().catch((err) => {
-    setStatus('加载失败');
+  reloadCompanion().catch((err) => {
     console.error(err);
   });
 }
