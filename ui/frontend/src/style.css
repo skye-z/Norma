@@ -136,3 +136,30 @@ body,
   padding: 12px;
   background: radial-gradient(circle at 20% 20%, #f7efe1 0%, #efe0cb 45%, #e3cfb7 100%);
 }
+.debug-toast {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  max-width: 280px;
+  min-height: 24px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #f4f7fb;
+  background: rgba(10, 14, 18, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+  z-index: 20;
+  --wails-draggable: no-drag;
+  transition: opacity 0.22s ease;
+}
+
+.debug-toast.hidden {
+  opacity: 0;
+}
+
+.debug-toast.visible {
+  opacity: 1;
+}

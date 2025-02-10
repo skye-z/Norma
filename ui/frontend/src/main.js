@@ -1,5 +1,4 @@
-﻿
-import './style.css';
+﻿import './style.css';
 import * as PIXI from 'pixi.js';
 
 const apiBase = 'http://127.0.0.1:8090';
@@ -36,6 +35,7 @@ if (isSettings) {
 } else {
   document.querySelector('#app').innerHTML = `
     <main class="companion-shell">
+      <div id="debug-toast" class="debug-toast hidden"></div>
       <div id="stage" class="stage companion-stage wails-drag"></div>
     </main>
   `;
@@ -78,18 +78,24 @@ async function publish(name, payload) {
 
 if (isDebug) {
   document.querySelectorAll('.m').forEach((btn) => {
-    btn.addEventListener('click', () => publish('live2d.motion', { group: btn.dataset.m, index: 0 }));
+    btn.addEventListener('click', () => {
+      const group = btn.dataset.m;
+      publish('live2d.motion', { group, index: 0 });
+      publish('debug.notice', { text: `motion -> ${group}` });
+    });
   });
 
   document.getElementById('mouth')?.addEventListener('input', (e) => {
-    publish('live2d.mouth', { level: Number(e.target.value) });
+    const level = Number(e.target.value);
+    publish('live2d.mouth', { level });
+    publish('debug.notice', { text: `mouth -> ${level.toFixed(2)}` });
   });
 
   const emitEye = () => {
-    publish('live2d.eye', {
-      x: Number(document.getElementById('ex')?.value || 0),
-      y: Number(document.getElementById('ey')?.value || 0)
-    });
+    const x = Number(document.getElementById('ex')?.value || 0);
+    const y = Number(document.getElementById('ey')?.value || 0);
+    publish('live2d.eye', { x, y });
+    publish('debug.notice', { text: `eye -> (${x.toFixed(2)}, ${y.toFixed(2)})` });
   };
 
   document.getElementById('ex')?.addEventListener('input', emitEye);
@@ -98,6 +104,7 @@ if (isDebug) {
   document.getElementById('speak')?.addEventListener('click', () => {
     const text = String(document.getElementById('txt')?.value || '').trim();
     if (!text) return;
+    publish('debug.notice', { text: `speak -> ${text.slice(0, 24)}` });
 
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'en-US';
@@ -111,9 +118,9 @@ if (isDebug) {
     speechSynthesis.speak(utter);
   });
 }
-
 if (!isDebug && !isSettings) {
   const stage = document.getElementById('stage');
+  const toast = document.getElementById('debug-toast');
   const state = {
     app: null,
     model: null,
@@ -123,8 +130,36 @@ if (!isDebug && !isSettings) {
     targetY: 0,
     eyeX: 0,
     eyeY: 0,
-    eventSources: []
+    eventSources: [],
+    toastQueue: [],
+    toastRunning: false,
+    baseX: 0,
+    baseY: 0
   };
+
+  function enqueueToast(text) {
+    if (!toast || !text) return;
+    state.toastQueue.push(String(text));
+    if (!state.toastRunning) {
+      drainToasts();
+    }
+  }
+
+  async function drainToasts() {
+    if (!toast || state.toastRunning) return;
+    state.toastRunning = true;
+    while (state.toastQueue.length > 0) {
+      const next = state.toastQueue.shift();
+      toast.textContent = next;
+      toast.classList.remove('hidden');
+      toast.classList.add('visible');
+      await sleep(3000);
+      toast.classList.remove('visible');
+      toast.classList.add('hidden');
+      await sleep(180);
+    }
+    state.toastRunning = false;
+  }
 
   function normalizeMotion(payload) {
     const aliases = { thinking: 'Tap', tapbody: 'Tap@Body', flickbody: 'Flick@Body', idle: 'Idle' };
@@ -167,6 +202,7 @@ if (!isDebug && !isSettings) {
       if (!state.model) return;
       const group = normalizeMotion(payload);
       const index = Number.isInteger(payload?.index) ? payload.index : 0;
+      enqueueToast(`cmd motion: ${group}#${index}`);
       try {
         await state.model.motion(group, index, 3);
       } catch (_) {
@@ -187,18 +223,25 @@ if (!isDebug && !isSettings) {
       } else {
         state.mouthTarget = String(payload || '').toLowerCase() === 'speaking' ? 0.7 : 0;
       }
+      enqueueToast(`cmd mouth: ${state.mouthTarget.toFixed(2)}`);
     });
 
     const eyeES = createEventSource('live2d.eye', (payload) => {
       if (Number.isFinite(Number(payload?.x))) state.targetX = Number(payload.x);
       if (Number.isFinite(Number(payload?.y))) state.targetY = Number(payload.y);
+      enqueueToast(`cmd eye: (${state.targetX.toFixed(2)}, ${state.targetY.toFixed(2)})`);
     });
 
     const reloadES = createEventSource('live2d.reload', async () => {
+      enqueueToast('runtime reload received');
       await reloadCompanion();
     });
 
-    state.eventSources.push(motionES, mouthES, eyeES, reloadES);
+    const noticeES = createEventSource('debug.notice', (payload) => {
+      enqueueToast(typeof payload?.text === 'string' ? payload.text : String(payload || 'debug.notice'));
+    });
+
+    state.eventSources.push(motionES, mouthES, eyeES, reloadES, noticeES);
   }
 
   function destroyRenderer() {
@@ -230,10 +273,13 @@ if (!isDebug && !isSettings) {
   }
 
   async function initCompanion() {
+    enqueueToast('init: waiting api server');
     const apiReady = await waitForApiReady(8000);
     if (!apiReady) {
+      enqueueToast('init failed: api server not ready');
       throw new Error('api server is not ready');
     }
+    enqueueToast('init: api ready');
 
     destroyRenderer();
     connectEvents();
@@ -256,13 +302,21 @@ if (!isDebug && !isSettings) {
     state.model.anchor.set(0.5, 1);
     state.model.x = stage.clientWidth / 2;
     state.model.y = stage.clientHeight * 0.985;
+    state.baseX = state.model.x;
+    state.baseY = state.model.y;
     state.model.scale.set(Math.min(stage.clientWidth * 1.08 / state.model.width, stage.clientHeight * 1.22 / state.model.height));
     await state.model.motion('Idle', 0, 1).catch(() => undefined);
+    enqueueToast('state -> idle');
 
     state.app.ticker.add(() => {
+      const t = performance.now() / 1000;
+      if (state.model) {
+        state.model.x = state.baseX + Math.sin(t * 0.9) * 1.5;
+        state.model.y = state.baseY + Math.sin(t * 1.2) * 3.5;
+        state.model.rotation = Math.sin(t * 0.7) * 0.01;
+      }
       if (!state.model?.internalModel?.coreModel) return;
       const core = state.model.internalModel.coreModel;
-      const t = performance.now() / 1000;
 
       state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
       core.setParameterValueById('ParamMouthOpenY', state.mouthCurrent);
@@ -286,10 +340,12 @@ if (!isDebug && !isSettings) {
         await initCompanion();
         return;
       } catch (err) {
+        enqueueToast(`init retry ${i}/6`);
         console.error(`[live2d] init failed (attempt ${i}/6)`, err);
         await sleep(Math.min(1200 * i, 5000));
       }
     }
+    enqueueToast('init aborted after retries');
   }
 
   stage.addEventListener('mousemove', (evt) => {
