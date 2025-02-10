@@ -63,13 +63,16 @@ func (a *App) initTrayMenu() {
 	refreshToggleMenu(a.isForcePassthrough())
 
 	go func() {
+		defer func() {
+			if recover() != nil {
+				// Avoid exiting tray event loop due to unexpected runtime panic.
+			}
+		}()
 		for {
 			select {
 			case <-menuToggle.ClickedCh:
-				go func() {
-					enabled := a.ToggleForcePassthrough()
-					refreshToggleMenu(enabled)
-				}()
+				enabled := a.ToggleForcePassthrough()
+				refreshToggleMenu(enabled)
 			case <-menuDebug.ClickedCh:
 				go a.openExternalURL(debugURL())
 			case <-menuSettings.ClickedCh:

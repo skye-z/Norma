@@ -1,4 +1,4 @@
-﻿import './style.css';
+import './style.css';
 import * as PIXI from 'pixi.js';
 
 const apiBase = 'http://127.0.0.1:8090';
@@ -156,6 +156,7 @@ if (!isDebug && !isSettings) {
       await sleep(3000);
       toast.classList.remove('visible');
       toast.classList.add('hidden');
+      toast.textContent = '';
       await sleep(180);
     }
     state.toastRunning = false;
@@ -348,10 +349,18 @@ if (!isDebug && !isSettings) {
     enqueueToast('init aborted after retries');
   }
 
-  stage.addEventListener('mousemove', (evt) => {
+  function setEyeTargetByClientPoint(clientX, clientY) {
     const r = stage.getBoundingClientRect();
-    state.targetX = Math.max(-1, Math.min(1, ((evt.clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
-    state.targetY = Math.max(-1, Math.min(1, ((evt.clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+    state.targetX = Math.max(-1, Math.min(1, ((clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
+    state.targetY = Math.max(-1, Math.min(1, ((clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+  }
+
+  stage.addEventListener('mousemove', (evt) => {
+    setEyeTargetByClientPoint(evt.clientX, evt.clientY);
+  });
+
+  window.addEventListener('mousemove', (evt) => {
+    setEyeTargetByClientPoint(evt.clientX, evt.clientY);
   });
 
   stage.addEventListener('mouseleave', () => {
