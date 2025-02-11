@@ -154,3 +154,58 @@ func cursorInModelInteractRect(hwnd uintptr) (bool, error) {
 	inside := c.X >= left && c.X <= right && c.Y >= top && c.Y <= bottom
 	return inside, nil
 }
+
+func cursorNormalizedInWindow(hwnd uintptr) (float64, float64, error) {
+	var c point
+	r1, _, e1 := procGetCursorPos.Call(uintptr(unsafe.Pointer(&c)))
+	if r1 == 0 {
+		if e1 != syscall.Errno(0) {
+			return 0, 0, e1
+		}
+		return 0, 0, errors.New("GetCursorPos failed")
+	}
+
+	var wr rect
+	r2, _, e2 := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&wr)))
+	if r2 == 0 {
+		if e2 != syscall.Errno(0) {
+			return 0, 0, e2
+		}
+		return 0, 0, errors.New("GetWindowRect failed")
+	}
+
+	w := wr.Right - wr.Left
+	h := wr.Bottom - wr.Top
+	if w <= 0 || h <= 0 {
+		return 0, 0, errors.New("window size invalid")
+	}
+
+	left := wr.Left + int32(float64(w)*0.25)
+	right := wr.Left + int32(float64(w)*0.75)
+	top := wr.Top + int32(float64(h)*0.08)
+	bottom := wr.Top + int32(float64(h)*0.98)
+
+	rw := right - left
+	rh := bottom - top
+	if rw <= 0 || rh <= 0 {
+		return 0, 0, errors.New("interaction rect invalid")
+	}
+
+	x := ((float64(c.X-left) / float64(rw)) - 0.5) * 2
+	y := ((float64(c.Y-top) / float64(rh)) - 0.5) * 2
+
+	if x > 1 {
+		x = 1
+	}
+	if x < -1 {
+		x = -1
+	}
+	if y > 1 {
+		y = 1
+	}
+	if y < -1 {
+		y = -1
+	}
+
+	return x, y, nil
+}

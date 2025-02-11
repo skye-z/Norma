@@ -15,6 +15,9 @@ type App struct {
 	mu               sync.RWMutex
 	mousePassthrough bool
 	forcePassthrough bool
+	eyeLastX         float64
+	eyeLastY         float64
+	eyeLastAt        time.Time
 }
 
 // NewApp creates a new App application struct
@@ -87,8 +90,31 @@ func (a *App) autoPassthroughLoop() {
 				_ = setMousePassthroughByHandle(hwnd, enablePassthrough)
 				a.setMousePassthrough(enablePassthrough)
 			}
+
+			a.publishEyeIfNeeded(hwnd)
 		}
 	}
+}
+
+func (a *App) publishEyeIfNeeded(hwnd uintptr) {
+	x, y, err := cursorNormalizedInWindow(hwnd)
+	if err != nil {
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	now := time.Now()
+	if now.Sub(a.eyeLastAt) < 80*time.Millisecond {
+		return
+	}
+
+	a.eyeLastX = x
+	a.eyeLastY = y
+	a.eyeLastAt = now
+
+	_ = publishRuntimeEvent("live2d.eye", map[string]any{"x": x, "y": y})
 }
 
 func (a *App) setMousePassthrough(enabled bool) {

@@ -136,13 +136,12 @@ body,
   padding: 12px;
   background: radial-gradient(circle at 20% 20%, #f7efe1 0%, #efe0cb 45%, #e3cfb7 100%);
 }
-.debug-toast {
+.debug-log-panel {
   position: absolute;
   left: 12px;
   top: 10px;
-  max-width: 280px;
-  min-height: 24px;
-  padding: 6px 10px;
+  width: 320px;
+  max-width: calc(100vw - 24px);
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.35;
@@ -150,16 +149,23 @@ body,
   background: rgba(10, 14, 18, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(3px);
-  pointer-events: none;
   z-index: 20;
   --wails-draggable: no-drag;
-  transition: opacity 0.22s ease;
 }
 
-.debug-toast.hidden {
-  opacity: 0;
+.debug-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px;
+  max-height: calc(3 * 1.35em + 12px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: nowrap;
 }
 
-.debug-toast.visible {
-  opacity: 1;
+.debug-log-list li {
+  margin: 0;
+  padding: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }

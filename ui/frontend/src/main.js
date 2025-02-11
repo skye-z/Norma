@@ -35,7 +35,9 @@ if (isSettings) {
 } else {
   document.querySelector('#app').innerHTML = `
     <main class="companion-shell">
-      <div id="debug-toast" class="debug-toast hidden"></div>
+      <section id="debug-log-panel" class="debug-log-panel">
+        <ul id="debug-log-list" class="debug-log-list"></ul>
+      </section>
       <div id="stage" class="stage companion-stage wails-drag"></div>
     </main>
   `;
@@ -120,7 +122,7 @@ if (isDebug) {
 }
 if (!isDebug && !isSettings) {
   const stage = document.getElementById('stage');
-  const toast = document.getElementById('debug-toast');
+  const logList = document.getElementById('debug-log-list');
   const state = {
     app: null,
     model: null,
@@ -131,35 +133,30 @@ if (!isDebug && !isSettings) {
     eyeX: 0,
     eyeY: 0,
     eventSources: [],
-    toastQueue: [],
-    toastRunning: false,
+    logs: [],
     baseX: 0,
     baseY: 0
   };
 
-  function enqueueToast(text) {
-    if (!toast || !text) return;
-    state.toastQueue.push(String(text));
-    if (!state.toastRunning) {
-      drainToasts();
+  function appendLog(text) {
+    if (!logList || !text) return;
+    const line = String(text);
+    const nearBottom = logList.scrollTop + logList.clientHeight >= logList.scrollHeight - 8;
+    state.logs.push(line);
+    if (state.logs.length > 30) {
+      state.logs.splice(0, state.logs.length - 30);
     }
-  }
-
-  async function drainToasts() {
-    if (!toast || state.toastRunning) return;
-    state.toastRunning = true;
-    while (state.toastQueue.length > 0) {
-      const next = state.toastQueue.shift();
-      toast.textContent = next;
-      toast.classList.remove('hidden');
-      toast.classList.add('visible');
-      await sleep(3000);
-      toast.classList.remove('visible');
-      toast.classList.add('hidden');
-      toast.textContent = '';
-      await sleep(180);
+    while (logList.firstChild) {
+      logList.removeChild(logList.firstChild);
     }
-    state.toastRunning = false;
+    state.logs.forEach((item) => {
+      const li = document.createElement('li');
+      li.textContent = item;
+      logList.appendChild(li);
+    });
+    if (nearBottom) {
+      logList.scrollTop = logList.scrollHeight;
+    }
   }
 
   function normalizeMotion(payload) {
@@ -203,7 +200,7 @@ if (!isDebug && !isSettings) {
       if (!state.model) return;
       const group = normalizeMotion(payload);
       const index = Number.isInteger(payload?.index) ? payload.index : 0;
-      enqueueToast(`cmd motion: ${group}#${index}`);
+      appendLog(`cmd motion: ${group}#${index}`);
       try {
         await state.model.motion(group, index, 3);
       } catch (_) {
@@ -224,22 +221,23 @@ if (!isDebug && !isSettings) {
       } else {
         state.mouthTarget = String(payload || '').toLowerCase() === 'speaking' ? 0.7 : 0;
       }
-      enqueueToast(`cmd mouth: ${state.mouthTarget.toFixed(2)}`);
+      appendLog(`cmd mouth: ${state.mouthTarget.toFixed(2)}`);
     });
 
     const eyeES = createEventSource('live2d.eye', (payload) => {
       if (Number.isFinite(Number(payload?.x))) state.targetX = Number(payload.x);
       if (Number.isFinite(Number(payload?.y))) state.targetY = Number(payload.y);
-      enqueueToast(`cmd eye: (${state.targetX.toFixed(2)}, ${state.targetY.toFixed(2)})`);
+      applyFocusNormalized(state.targetX, state.targetY);
+      appendLog(`cmd eye: (${state.targetX.toFixed(2)}, ${state.targetY.toFixed(2)})`);
     });
 
     const reloadES = createEventSource('live2d.reload', async () => {
-      enqueueToast('runtime reload received');
+      appendLog('runtime reload received');
       await reloadCompanion();
     });
 
     const noticeES = createEventSource('debug.notice', (payload) => {
-      enqueueToast(typeof payload?.text === 'string' ? payload.text : String(payload || 'debug.notice'));
+      appendLog(typeof payload?.text === 'string' ? payload.text : String(payload || 'debug.notice'));
     });
 
     state.eventSources.push(motionES, mouthES, eyeES, reloadES, noticeES);
@@ -273,14 +271,59 @@ if (!isDebug && !isSettings) {
     });
   }
 
+  function writeParam(core, id, value) {
+    if (typeof core.setParameterValueById === 'function') {
+      core.setParameterValueById(id, value);
+      return;
+    }
+    if (typeof core.addParameterValueById === 'function') {
+      const current = typeof core.getParameterValueById === 'function' ? core.getParameterValueById(id) : 0;
+      core.addParameterValueById(id, value - current);
+    }
+  }
+  function focusByNormalized(x, y, instant = false) {
+    if (!state.model) return;
+    const nx = Math.max(-1, Math.min(1, x));
+    const ny = Math.max(-1, Math.min(1, y));
+    const controller = state.model?.internalModel?.focusController;
+    if (controller && typeof controller.focus === 'function') {
+      controller.focus(nx, ny, instant);
+    }
+  }
+
+  function installGazeBridge() {
+    const internal = state.model?.internalModel;
+    if (!internal || internal.__normaGazePatched) return;
+
+    const originalUpdateFocus = typeof internal.updateFocus === 'function' ? internal.updateFocus.bind(internal) : null;
+
+    internal.updateFocus = function normaUpdateFocus() {
+      if (originalUpdateFocus) {
+        originalUpdateFocus();
+      }
+      const core = internal.coreModel;
+      if (!core || typeof core.addParameterValueById !== 'function') return;
+
+      const gx = Math.max(-1, Math.min(1, state.targetX));
+      const gy = Math.max(-1, Math.min(1, state.targetY));
+      core.addParameterValueById('ParamEyeBallX', gx * 1.1);
+      core.addParameterValueById('ParamEyeBallY', gy * 1.1);
+      core.addParameterValueById('ParamAngleX', gx * 26);
+      core.addParameterValueById('ParamAngleY', gy * 20);
+      core.addParameterValueById('ParamBodyAngleX', gx * 10);
+    };
+
+    internal.__normaGazePatched = true;
+    appendLog('gaze bridge installed');
+  }
   async function initCompanion() {
-    enqueueToast('init: waiting api server');
+    appendLog('init: waiting api server');
     const apiReady = await waitForApiReady(8000);
     if (!apiReady) {
-      enqueueToast('init failed: api server not ready');
+      appendLog('init failed: api server not ready');
       throw new Error('api server is not ready');
     }
-    enqueueToast('init: api ready');
+    appendLog('init: api ready');
 
     destroyRenderer();
     connectEvents();
@@ -299,6 +342,7 @@ if (!isDebug && !isSettings) {
 
     state.model = await mod.Live2DModel.from(modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
+    installGazeBridge();
 
     state.model.anchor.set(0.5, 1);
     state.model.x = stage.clientWidth / 2;
@@ -307,7 +351,7 @@ if (!isDebug && !isSettings) {
     state.baseY = state.model.y;
     state.model.scale.set(Math.min(stage.clientWidth * 1.08 / state.model.width, stage.clientHeight * 1.22 / state.model.height));
     await state.model.motion('Idle', 0, 1).catch(() => undefined);
-    enqueueToast('state -> idle');
+    appendLog('state -> idle');
 
     state.app.ticker.add(() => {
       const t = performance.now() / 1000;
@@ -319,19 +363,13 @@ if (!isDebug && !isSettings) {
       if (!state.model?.internalModel?.coreModel) return;
       const core = state.model.internalModel.coreModel;
 
-      state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
-      core.setParameterValueById('ParamMouthOpenY', state.mouthCurrent);
+      focusByNormalized(state.targetX, state.targetY, true);
 
-      state.eyeX += (state.targetX - state.eyeX) * 0.18;
-      state.eyeY += (state.targetY - state.eyeY) * 0.18;
-      core.setParameterValueById('ParamEyeBallX', state.eyeX);
-      core.setParameterValueById('ParamEyeBallY', state.eyeY);
-      core.setParameterValueById('ParamAngleX', state.eyeX * 18);
-      core.setParameterValueById('ParamAngleY', state.eyeY * 12);
-      core.setParameterValueById('ParamBodyAngleX', state.eyeX * 8);
-      core.setParameterValueById('ParamBreath', 0.5 + Math.sin(t * 1.8) * 0.5);
-      core.setParameterValueById('ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2);
-      core.setParameterValueById('ParamAngleZ', Math.sin(t * 1.1) * 2.0);
+      state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
+      writeParam(core, 'ParamMouthOpenY', state.mouthCurrent);
+      writeParam(core, 'ParamBreath', 0.5 + Math.sin(t * 1.8) * 0.5);
+      writeParam(core, 'ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2);
+      writeParam(core, 'ParamAngleZ', Math.sin(t * 1.1) * 2.0);
     });
   }
 
@@ -341,19 +379,27 @@ if (!isDebug && !isSettings) {
         await initCompanion();
         return;
       } catch (err) {
-        enqueueToast(`init retry ${i}/6`);
+        appendLog(`init retry ${i}/6`);
         console.error(`[live2d] init failed (attempt ${i}/6)`, err);
         await sleep(Math.min(1200 * i, 5000));
       }
     }
-    enqueueToast('init aborted after retries');
+    appendLog('init aborted after retries');
   }
 
   function setEyeTargetByClientPoint(clientX, clientY) {
     const r = stage.getBoundingClientRect();
-    state.targetX = Math.max(-1, Math.min(1, ((clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
-    state.targetY = Math.max(-1, Math.min(1, ((clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+    const x = Math.max(-1, Math.min(1, ((clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
+    const y = Math.max(-1, Math.min(1, ((clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+    state.targetX = x;
+    state.targetY = y;
+    applyFocusNormalized(x, y);
   }
+
+  function applyFocusNormalized(x, y, instant = false) {
+    focusByNormalized(x, y, instant);
+  }
+
 
   stage.addEventListener('mousemove', (evt) => {
     setEyeTargetByClientPoint(evt.clientX, evt.clientY);
@@ -366,6 +412,7 @@ if (!isDebug && !isSettings) {
   stage.addEventListener('mouseleave', () => {
     state.targetX = 0;
     state.targetY = 0;
+    applyFocusNormalized(0, 0);
   });
 
   window.addEventListener('beforeunload', () => {
