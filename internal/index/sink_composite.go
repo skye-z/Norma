@@ -1,4 +1,4 @@
-﻿package index
+package index
 
 // CompositeSink fan-outs writes to multiple sinks.
 type CompositeSink struct {

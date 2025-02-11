@@ -1,4 +1,4 @@
-﻿package audio
+package audio
 
 // EndpointDetector emits speech start/end signals.
 type EndpointDetector struct {

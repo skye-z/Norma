@@ -1,4 +1,4 @@
-﻿package live2d
+package live2d
 
 import "norma/internal/runtime/bus"
 

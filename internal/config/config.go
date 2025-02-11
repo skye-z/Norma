@@ -24,6 +24,7 @@ type AppConfig struct {
 	Name     string `mapstructure:"name"`
 	Env      string `mapstructure:"env"`
 	LogLevel string `mapstructure:"log_level"`
+	LogDir   string `mapstructure:"log_dir"`
 }
 
 type DatabaseConfig struct {
@@ -59,7 +60,8 @@ type TTSConfig struct {
 }
 
 type RAGConfig struct {
-	TopK int `mapstructure:"top_k"`
+	TopK            int    `mapstructure:"top_k"`
+	VectorIndexPath string `mapstructure:"vector_index_path"`
 }
 
 type MemoryConfig struct {
@@ -78,6 +80,7 @@ func defaultConfig() Config {
 			Name:     "Norma",
 			Env:      "dev",
 			LogLevel: "info",
+			LogDir:   "logs",
 		},
 		Database: DatabaseConfig{Path: "data/norma.db"},
 		Audio:    AudioConfig{EnableWakeWord: true},
@@ -102,7 +105,10 @@ func defaultConfig() Config {
 			Endpoint:         "http://127.0.0.1:8020",
 			RequestTimeoutMs: 30000,
 		},
-		RAG:    RAGConfig{TopK: 6},
+		RAG: RAGConfig{
+			TopK:            6,
+			VectorIndexPath: "data/vector_index.json",
+		},
 		Memory: MemoryConfig{STMTokenBudget: 2048},
 		Perf: PerfConfig{
 			AutoDegrade:              true,
@@ -143,6 +149,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("app.name", cfg.App.Name)
 	v.SetDefault("app.env", cfg.App.Env)
 	v.SetDefault("app.log_level", cfg.App.LogLevel)
+	v.SetDefault("app.log_dir", cfg.App.LogDir)
 
 	v.SetDefault("database.path", cfg.Database.Path)
 
@@ -167,6 +174,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
 
 	v.SetDefault("rag.top_k", cfg.RAG.TopK)
+	v.SetDefault("rag.vector_index_path", cfg.RAG.VectorIndexPath)
 
 	v.SetDefault("memory.stm_token_budget", cfg.Memory.STMTokenBudget)
 

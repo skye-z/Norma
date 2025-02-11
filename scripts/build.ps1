@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$Version = "dev",
   [string]$OutDir = "dist"
 )

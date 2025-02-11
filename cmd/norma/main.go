@@ -4,8 +4,12 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"xorm.io/xorm"
 
 	"norma/internal/audio"
 	"norma/internal/config"
@@ -14,6 +18,7 @@ import (
 	"norma/internal/live2d"
 	"norma/internal/llm"
 	"norma/internal/metrics"
+	"norma/internal/ops"
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
@@ -27,6 +32,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+
+	logCloser, err := ops.SetupLogRouting(cfg.App.LogDir)
+	if err != nil {
+		log.Fatalf("init log routing: %v", err)
+	}
+	defer func() {
+		if cerr := logCloser.Close(); cerr != nil {
+			log.Printf("close log routing: %v", cerr)
+		}
+	}()
 
 	engine, err := db.NewEngine(cfg.Database.Path, cfg.App.Env == "dev")
 	if err != nil {
@@ -46,7 +61,8 @@ func main() {
 
 	tts := chooseTTS(cfg)
 	streamer := chooseLLMStreamer(cfg)
-	_ = runtime.NewOrchestrator(rt, index.MockRetriever{}, streamer, tts, cfg.RAG.TopK, quality)
+	retriever := chooseRetriever(cfg, engine)
+	_ = runtime.NewOrchestrator(rt, retriever, streamer, tts, cfg.RAG.TopK, quality)
 
 	rt.Bus.Subscribe("rag.ready", func(evt bus.Event) {
 		log.Printf("[demo] rag.ready chunks=%v", evt.Payload)
@@ -163,4 +179,28 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 		log.Printf("[llm] ollama unavailable, fallback to mock")
 	}
 	return fallback
+}
+
+func chooseRetriever(cfg *config.Config, engine *xorm.Engine) index.Retriever {
+	fts := index.NewSQLiteStore(engine)
+
+	vecPath := strings.TrimSpace(cfg.RAG.VectorIndexPath)
+	if vecPath == "" {
+		vecPath = "data/vector_index.json"
+	}
+	if dir := filepath.Dir(vecPath); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("[rag] create vector index dir failed, fallback to text-only retriever: %v", err)
+			return index.NewHybridRetriever(nil, fts, nil)
+		}
+	}
+
+	vec, err := index.NewDiskVectorStore(vecPath)
+	if err != nil {
+		log.Printf("[rag] init vector store failed, fallback to text-only retriever: %v", err)
+		return index.NewHybridRetriever(nil, fts, nil)
+	}
+
+	log.Printf("[rag] use hybrid retriever vector=%s", vecPath)
+	return index.NewHybridRetriever(vec, fts, nil)
 }
