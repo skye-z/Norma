@@ -7,6 +7,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$report = [ordered]@{
+    timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+    root = $Root
+    config_path = $ConfigPath
+    preflight = "unknown"
+    llm_provider = ""
+    llm_endpoint = ""
+    llm_reachable = $false
+    tts_provider = ""
+    tts_endpoint = ""
+    tts_reachable = $false
+    launch_attempted = $false
+    launch_mode = "none"
+    warnings = @()
+}
+
+function Add-ReportWarning([string]$msg) {
+    $report.warnings = @($report.warnings) + $msg
+}
+
 function Write-Step([string]$msg) {
     Write-Host "[STEP] $msg" -ForegroundColor Cyan
 }
@@ -16,6 +36,7 @@ function Write-Ok([string]$msg) {
 }
 
 function Write-Warn([string]$msg) {
+    Add-ReportWarning $msg
     Write-Host "[WARN] $msg" -ForegroundColor Yellow
 }
 
@@ -92,10 +113,23 @@ function Wait-Endpoint {
     return $false
 }
 
+function Write-StartupReport {
+    $logDir = Join-Path (Get-Location) "logs"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Force $logDir | Out-Null
+    }
+    $reportPath = Join-Path $logDir "startup_report.json"
+    $json = $report | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($reportPath, $json, [System.Text.UTF8Encoding]::new($false))
+    Write-Ok "startup report written: logs/startup_report.json"
+}
+
 Push-Location $Root
 try {
     if (-not (Test-Path $ConfigPath)) {
         Write-Fail "config not found: $ConfigPath"
+        $report.preflight = "config_missing"
+        Write-StartupReport
         exit 1
     }
 
@@ -104,8 +138,13 @@ try {
         & powershell -ExecutionPolicy Bypass -File "scripts/preflight.ps1" -Root "." -ConfigPath $ConfigPath
         if ($LASTEXITCODE -ne 0) {
             Write-Fail "preflight failed"
+            $report.preflight = "failed"
+            Write-StartupReport
             exit 1
         }
+        $report.preflight = "passed"
+    } else {
+        $report.preflight = "skipped"
     }
 
     $cfg = Get-Content -Encoding utf8 $ConfigPath
@@ -113,6 +152,11 @@ try {
     $llmEndpoint = Get-ConfigValue -Lines $cfg -Section "llm" -Key "endpoint"
     $ttsProvider = (Get-ConfigValue -Lines $cfg -Section "tts" -Key "provider").ToLowerInvariant()
     $ttsEndpoint = Get-ConfigValue -Lines $cfg -Section "tts" -Key "endpoint"
+
+    $report.llm_provider = $llmProvider
+    $report.llm_endpoint = $llmEndpoint
+    $report.tts_provider = $ttsProvider
+    $report.tts_endpoint = $ttsEndpoint
 
     Write-Step "Dependency health check"
 
@@ -132,6 +176,7 @@ try {
         } else {
             Write-Ok "ollama reachable: $llmEndpoint"
         }
+        $report.llm_reachable = (Test-TcpEndpoint -Endpoint $llmEndpoint)
     }
 
     if ($ttsProvider -eq "http" -or $ttsProvider -eq "xtts") {
@@ -151,6 +196,7 @@ try {
         } else {
             Write-Ok "tts reachable: $ttsEndpoint"
         }
+        $report.tts_reachable = (Test-TcpEndpoint -Endpoint $ttsEndpoint)
     }
 
     Write-Step "Startup self-check summary"
@@ -161,19 +207,25 @@ try {
 
     if ($NoLaunch) {
         Write-Ok "NoLaunch enabled, skip app launch"
+        Write-StartupReport
         return
     }
 
     Write-Step "Launch Norma"
+    $report.launch_attempted = $true
     if (Test-Path "norma.exe") {
-        Start-Process -FilePath ".\norma.exe" | Out-Null
+        Start-Process -FilePath ".\\norma.exe" | Out-Null
+        $report.launch_mode = "binary"
         Write-Ok "launched .\\norma.exe"
     } else {
         $env:GOCACHE = Join-Path (Get-Location) '.gocache'
         $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
         Start-Process -FilePath "go" -ArgumentList "run", "./cmd/norma" -WindowStyle Normal | Out-Null
+        $report.launch_mode = "go_run"
         Write-Ok "launched go run ./cmd/norma"
     }
+
+    Write-StartupReport
 }
 finally {
     Pop-Location
