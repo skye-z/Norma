@@ -205,6 +205,12 @@ try {
     Write-Host "  tts.provider=$ttsProvider"
     Write-Host "  tts.endpoint=$ttsEndpoint"
 
+    if ($env:NORMA_ENABLE_WATCHDOG -eq "1") {
+        Write-Step "Start dependency watchdog in background"
+        Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/watchdog.ps1", "-Root", ".", "-ConfigPath", $ConfigPath -WindowStyle Hidden | Out-Null
+        Write-Ok "watchdog started"
+    }
+
     if ($NoLaunch) {
         Write-Ok "NoLaunch enabled, skip app launch"
         Write-StartupReport
