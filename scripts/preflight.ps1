@@ -173,7 +173,12 @@ try {
         $asrTtsLine = $tail | Where-Object { $_ -match '\[metric\] tts_first_chunk_ms=' } | Select-Object -Last 1
 
         if ($null -eq $summaryLine -or $null -eq $asrLlmLine -or $null -eq $asrTtsLine) {
-            Add-Warn "missing structured metric lines in logs/app.log (need llm_first_token_ms, tts_first_chunk_ms, summary)"
+            $hasSession = $tail | Where-Object { $_ -match 'session=' } | Select-Object -First 1
+            if ($null -ne $hasSession) {
+                Add-Warn "missing structured metric lines in logs/app.log (need llm_first_token_ms, tts_first_chunk_ms, summary)"
+            } else {
+                Add-Ok "no recent session logs; skip strict metric-line check"
+            }
         } else {
             Add-Ok "structured metric lines detected in logs/app.log"
         }
