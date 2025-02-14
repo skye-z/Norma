@@ -11,7 +11,7 @@ $textExtensions = @(
 )
 
 $excludeDirs = @(
-    ".git", "node_modules", ".gomodcache", ".gocache", "dist", "build"
+    ".git", "node_modules", ".gomodcache", ".gocache", "dist", "build", "diagnostics"
 )
 
 $utf8Strict = [System.Text.UTF8Encoding]::new($false, $true)
