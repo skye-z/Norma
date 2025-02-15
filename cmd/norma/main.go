@@ -64,6 +64,22 @@ func main() {
 	retriever := chooseRetriever(cfg, engine)
 	_ = runtime.NewOrchestrator(rt, retriever, streamer, tts, cfg.RAG.TopK, quality)
 
+	rt.Bus.Subscribe("audio.vad.start", func(evt bus.Event) {
+		log.Printf("[audio] vad.start session=%s", evt.SessionID)
+	})
+	rt.Bus.Subscribe("audio.vad.stop", func(evt bus.Event) {
+		log.Printf("[audio] vad.stop session=%s", evt.SessionID)
+	})
+	rt.Bus.Subscribe("audio.play.start", func(evt bus.Event) {
+		log.Printf("[audio] play.start payload=%v", evt.Payload)
+	})
+	rt.Bus.Subscribe("audio.play.end", func(evt bus.Event) {
+		log.Printf("[audio] play.end payload=%v", evt.Payload)
+	})
+	rt.Bus.Subscribe("error", func(evt bus.Event) {
+		log.Printf("[error] payload=%v", evt.Payload)
+	})
+
 	rt.Bus.Subscribe("rag.ready", func(evt bus.Event) {
 		log.Printf("[demo] rag.ready chunks=%v", evt.Payload)
 	})
@@ -113,7 +129,13 @@ func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
 		if err := pipe.Run(
 			context.Background(),
 			source,
-			func() { log.Printf("[demo] vad.speech_start") },
+			func() {
+				rt.Bus.Publish(bus.Event{Name: "audio.vad.start", SessionID: sessionID, TraceID: traceID})
+				log.Printf("[demo] vad.speech_start")
+			},
+			func() {
+				rt.Bus.Publish(bus.Event{Name: "audio.vad.stop", SessionID: sessionID, TraceID: traceID})
+			},
 			func(partial string) {
 				rt.Bus.Publish(bus.Event{Name: "asr.partial", SessionID: sessionID, TraceID: traceID, Payload: partial})
 			},
@@ -125,6 +147,7 @@ func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
 		}
 	}()
 }
+
 func chooseASR(cfg *config.Config) audio.ASR {
 	fallback := audio.MockASR{FinalText: "帮我规划今天的开发任务"}
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {

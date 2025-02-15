@@ -33,7 +33,7 @@ func TestPipelineUsesFrameASR(t *testing.T) {
 	src := NewMockFrameSource(DefaultDemoFrames(), 1*time.Millisecond)
 
 	finalCount := 0
-	err := pipe.Run(context.Background(), src, nil, func(string) {}, func(string) {
+	err := pipe.Run(context.Background(), src, nil, nil, func(string) {}, func(string) {
 		finalCount++
 	})
 	if err != nil {

@@ -10,6 +10,7 @@ func (p *Pipeline) Run(
 	ctx context.Context,
 	source FrameSource,
 	onSpeechStart func(),
+	onSpeechEnd func(),
 	onPartial func(string),
 	onFinal func(string),
 ) error {
@@ -46,6 +47,9 @@ func (p *Pipeline) Run(
 		}
 
 		if end {
+			if onSpeechEnd != nil {
+				onSpeechEnd()
+			}
 			if fasr, ok := p.ASR.(FrameASR); ok {
 				if err := fasr.TranscribeFrames(ctx, utterance, onPartial, onFinal); err != nil {
 					return err
