@@ -30,3 +30,7 @@ foreach ($t in $targets) {
 }
 
 Write-Host "Build complete. Output => $OutDir"
+
+Write-Host "Running release layout check ..."
+powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDir $OutDir
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

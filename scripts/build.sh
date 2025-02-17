@@ -21,3 +21,6 @@ build linux amd64 ""
 build darwin amd64 ""
 
 echo "Build complete. Output => ${OUT_DIR}"
+
+echo "Running release layout check ..."
+bash ./scripts/check-release-layout.sh "$OUT_DIR"
