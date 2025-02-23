@@ -12,6 +12,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Change gate
+        shell: pwsh
+        run: ./scripts/check-change-gate.ps1 -Root .
+      - name: Go fmt gate
+        shell: pwsh
+        run: ./scripts/check-gofmt.ps1 -Root .
       - name: UTF-8 gate
         shell: pwsh
         run: ./scripts/check-utf8.ps1 -Root .

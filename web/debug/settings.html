@@ -3,47 +3,109 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 运行时设置</title>
+  <title>Norma 运行时设置页</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <h1>Norma 运行时设置</h1>
-      <div class="grid2">
-        <label>LLM Provider</label><input id="llm_provider" />
-        <label>LLM Endpoint</label><input id="llm_endpoint" />
-        <label>LLM Model</label><input id="llm_model" />
-        <label>LLM Timeout(ms)</label><input id="llm_timeout" type="number" />
-
-        <label>ASR Provider</label><input id="asr_provider" />
-        <label>ASR Endpoint</label><input id="asr_endpoint" />
-        <label>ASR Stream Endpoint</label><input id="asr_stream_endpoint" />
-
-        <label>TTS Provider</label><input id="tts_provider" />
-        <label>TTS Endpoint</label><input id="tts_endpoint" />
-        <label>TTS 首句优先</label><input id="tts_sentence_first" type="checkbox" />
-
-        <label>Wake Mode</label><input id="audio_wake_mode" />
-        <label>Silence Frames</label><input id="audio_silence" type="number" />
-        <label>Interrupt During Speaking</label><input id="audio_interrupt" type="checkbox" />
-        <label>AEC Enabled</label><input id="audio_aec" type="checkbox" />
-        <label>NS Enabled</label><input id="audio_ns" type="checkbox" />
-        <label>Audio Scene</label><input id="audio_scene" />
-
-        <label>RAG TopK</label><input id="rag_topk" type="number" />
-        <label>STM Budget</label><input id="stm_budget" type="number" />
-        <label>STM 保留重要对话</label><input id="stm_keep_important" type="checkbox" />
-        <label>自动摘要写入</label><input id="memory_summary_auto" type="checkbox" />
-
-        <label>Auto Degrade</label><input id="perf_auto" type="checkbox" />
-        <label>First Token Threshold(ms)</label><input id="perf_first" type="number" />
-        <label>Degraded RAG TopK</label><input id="perf_topk" type="number" />
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <div>
+          <div class="brand-title">NORMA / SETTINGS CONSOLE</div>
+          <span class="brand-sub">运行时、安全与性能配置</span>
+        </div>
       </div>
-      <div class="row"><button id="load">重新读取</button><button id="save">保存配置</button><a href="./index.html">返回诊断</a></div>
-      <pre id="log"></pre>
+      <nav class="nav-tabs">
+        <a href="./index.html">运行时诊断</a>
+        <a href="./memory.html">记忆管理</a>
+        <a href="./metrics.html">指标看板</a>
+        <a class="active" href="./settings.html">运行时设置</a>
+      </nav>
+      <span class="status-chip">热更新已启用</span>
+    </header>
+
+    <section class="hero">
+      <span class="hero-tag">Runtime Config</span>
+      <h1>运行时设置页</h1>
+      <p>集中维护 LLM、ASR、TTS、音频、记忆、性能与安全策略。这里的每次保存都会写回运行时配置，并广播热更新事件。</p>
+      <div class="hero-actions">
+        <button id="load">重新读取</button>
+        <button id="save" class="primary">保存配置</button>
+      </div>
     </section>
-  </main>
+
+    <section class="layout layout-3">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模型与语音</h2>
+          <span class="mini-note">LLM / ASR / TTS</span>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div><label for="llm_provider">LLM Provider</label><input id="llm_provider" /></div>
+            <div><label for="llm_model">LLM Model</label><input id="llm_model" /></div>
+            <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" /></div>
+            <div><label for="llm_timeout">LLM 超时（毫秒）</label><input id="llm_timeout" type="number" /></div>
+            <div><label for="asr_provider">ASR Provider</label><input id="asr_provider" /></div>
+            <div class="full"><label for="asr_endpoint">ASR Endpoint</label><input id="asr_endpoint" /></div>
+            <div class="full"><label for="asr_stream_endpoint">ASR 流式 Endpoint</label><input id="asr_stream_endpoint" /></div>
+            <div><label for="tts_provider">TTS Provider</label><input id="tts_provider" /></div>
+            <div><label for="tts_endpoint">TTS Endpoint</label><input id="tts_endpoint" /></div>
+            <div class="full"><label><input id="tts_sentence_first" type="checkbox" /> 启用短句优先首包策略</label></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>交互与性能</h2>
+          <span class="mini-note">Audio / Memory / Perf</span>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div><label for="audio_wake_mode">唤醒模式</label><input id="audio_wake_mode" /></div>
+            <div><label for="audio_silence">静音帧阈值</label><input id="audio_silence" type="number" /></div>
+            <div><label><input id="audio_interrupt" type="checkbox" /> 讲话中可被打断</label></div>
+            <div><label><input id="audio_aec" type="checkbox" /> 启用 AEC</label></div>
+            <div><label><input id="audio_ns" type="checkbox" /> 启用降噪</label></div>
+            <div><label for="audio_scene">音频场景</label><input id="audio_scene" /></div>
+            <div><label for="rag_topk">RAG TopK</label><input id="rag_topk" type="number" /></div>
+            <div><label for="stm_budget">STM Token 预算</label><input id="stm_budget" type="number" /></div>
+            <div><label><input id="stm_keep_important" type="checkbox" /> 保留重要对话</label></div>
+            <div><label><input id="memory_summary_auto" type="checkbox" /> 自动写入摘要</label></div>
+            <div><label><input id="perf_auto" type="checkbox" /> 启用自动降级</label></div>
+            <div><label for="perf_first">首 token 阈值（毫秒）</label><input id="perf_first" type="number" /></div>
+            <div><label for="perf_topk">降级后 TopK</label><input id="perf_topk" type="number" /></div>
+            <div><label for="perf_audio_chunk">降级后音频块大小</label><input id="perf_audio_chunk" type="number" /></div>
+            <div><label for="perf_alert_llm">LLM 告警阈值</label><input id="perf_alert_llm" type="number" /></div>
+            <div><label for="perf_alert_tts">TTS 告警阈值</label><input id="perf_alert_tts" type="number" /></div>
+            <div class="full"><label for="perf_baseline_file">基线文件路径</label><input id="perf_baseline_file" /></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>安全策略</h2>
+          <span class="mini-note">Security Policy</span>
+        </div>
+        <div class="panel-body stack">
+          <div class="form-grid">
+            <div class="full"><label><input id="security_allow_remote" type="checkbox" /> 允许远程 Provider</label></div>
+            <div class="full"><label for="security_hosts">允许的远程主机（逗号分隔）</label><input id="security_hosts" placeholder="127.0.0.1,localhost" /></div>
+            <div class="full"><label for="security_tools">工具白名单（逗号分隔）</label><input id="security_tools" placeholder="open_local_file,export_diagnostics" /></div>
+            <div class="full"><label><input id="security_confirm" type="checkbox" /> 高风险操作需要二次确认</label></div>
+            <div class="full"><label for="security_purge_proof_dir">删除证明目录</label><input id="security_purge_proof_dir" /></div>
+          </div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">配置日志</div>
+            <pre id="log" class="console"></pre>
+          </div>
+        </div>
+      </section>
+    </section>
+  </div>
   <script type="module" src="./settings.js"></script>
 </body>
 </html>

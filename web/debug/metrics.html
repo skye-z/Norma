@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Norma 指标看板页</title>
+  <link rel="stylesheet" href="./panel.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <div>
+          <div class="brand-title">NORMA / METRICS CONSOLE</div>
+          <span class="brand-sub">埋点、样本与告警导出</span>
+        </div>
+      </div>
+      <nav class="nav-tabs">
+        <a href="./index.html">运行时诊断</a>
+        <a href="./memory.html">记忆管理</a>
+        <a class="active" href="./metrics.html">指标看板</a>
+        <a href="./settings.html">运行时设置</a>
+      </nav>
+      <span class="status-chip">指标流已订阅</span>
+    </header>
+
+    <section class="hero">
+      <span class="hero-tag">Telemetry</span>
+      <h1>指标看板页</h1>
+      <p>集中查看 ASR、LLM、TTS、RAG、播放链路的计数器、最近延迟样本和告警信息。导出按钮会下载当前快照，适合做问题回放或构建基线。</p>
+      <div class="hero-actions">
+        <button id="refresh" class="primary">刷新指标</button>
+        <button id="export">导出 JSON</button>
+      </div>
+    </section>
+
+    <section class="layout layout-3">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>总览</h2>
+          <span class="mini-note">Quick Stats</span>
+        </div>
+        <div class="panel-body stack">
+          <div class="metric-grid">
+            <div class="metric-tile"><div class="metric-label">计数器数量</div><div class="metric-value" id="counterCount">0</div></div>
+            <div class="metric-tile"><div class="metric-label">最近样本数</div><div class="metric-value" id="recentCount">0</div></div>
+            <div class="metric-tile"><div class="metric-label">告警数量</div><div class="metric-value" id="alertCount">0</div></div>
+          </div>
+          <p class="footer-note">看板每 3 秒自动刷新一次；如果导出为空，通常代表链路还没有产生新样本。</p>
+        </div>
+      </aside>
+
+      <main class="panel">
+        <div class="panel-head">
+          <h2>计数器快照</h2>
+          <span class="mini-note">Counter Snapshot</span>
+        </div>
+        <div class="panel-body">
+          <pre id="counters" class="console"></pre>
+        </div>
+      </main>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>告警与样本</h2>
+          <span class="mini-note">Alerts / Recent</span>
+        </div>
+        <div class="panel-body stack">
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">最近延迟</div>
+            <pre id="recent" class="console"></pre>
+          </div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">告警列表</div>
+            <pre id="alerts" class="console"></pre>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </div>
+  <script type="module" src="./metrics.js"></script>
+</body>
+</html>

@@ -2,7 +2,12 @@ const api = 'http://127.0.0.1:8090';
 const logEl = document.getElementById('log');
 
 const byId = (id) => document.getElementById(id);
-const log = (s) => { if (logEl) logEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + logEl.textContent; };
+const csv = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+const log = (s) => {
+  if (logEl) {
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + logEl.textContent;
+  }
+};
 
 function apply(cfg) {
   byId('llm_provider').value = cfg.llm?.provider || '';
@@ -33,6 +38,16 @@ function apply(cfg) {
   byId('perf_auto').checked = !!cfg.perf?.auto_degrade;
   byId('perf_first').value = cfg.perf?.llm_first_token_threshold_ms || 1200;
   byId('perf_topk').value = cfg.perf?.degraded_rag_top_k || 4;
+  byId('perf_audio_chunk').value = cfg.perf?.degraded_audio_chunk_size || 4096;
+  byId('perf_alert_llm').value = cfg.perf?.alert_llm_first_token_ms || 1500;
+  byId('perf_alert_tts').value = cfg.perf?.alert_tts_first_chunk_ms || 1200;
+  byId('perf_baseline_file').value = cfg.perf?.baseline_file || 'configs/perf-baseline.json';
+
+  byId('security_allow_remote').checked = !!cfg.security?.allow_remote_providers;
+  byId('security_hosts').value = (cfg.security?.allowed_remote_hosts || []).join(',');
+  byId('security_tools').value = (cfg.security?.tool_whitelist || []).join(',');
+  byId('security_confirm').checked = !!cfg.security?.high_risk_confirm;
+  byId('security_purge_proof_dir').value = cfg.security?.purge_proof_dir || 'diagnostics/purge-proofs';
 }
 
 function collect(base) {
@@ -65,6 +80,16 @@ function collect(base) {
   cfg.perf.auto_degrade = !!byId('perf_auto').checked;
   cfg.perf.llm_first_token_threshold_ms = Number(byId('perf_first').value || 1200);
   cfg.perf.degraded_rag_top_k = Number(byId('perf_topk').value || 4);
+  cfg.perf.degraded_audio_chunk_size = Number(byId('perf_audio_chunk').value || 4096);
+  cfg.perf.alert_llm_first_token_ms = Number(byId('perf_alert_llm').value || 1500);
+  cfg.perf.alert_tts_first_chunk_ms = Number(byId('perf_alert_tts').value || 1200);
+  cfg.perf.baseline_file = byId('perf_baseline_file').value.trim();
+
+  cfg.security.allow_remote_providers = !!byId('security_allow_remote').checked;
+  cfg.security.allowed_remote_hosts = csv(byId('security_hosts').value);
+  cfg.security.tool_whitelist = csv(byId('security_tools').value);
+  cfg.security.high_risk_confirm = !!byId('security_confirm').checked;
+  cfg.security.purge_proof_dir = byId('security_purge_proof_dir').value.trim();
   return cfg;
 }
 
@@ -72,10 +97,10 @@ let current = null;
 
 async function load() {
   const resp = await fetch(`${api}/settings/runtime`);
-  if (!resp.ok) throw new Error(`load failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(`读取配置失败: ${resp.status}`);
   current = await resp.json();
   apply(current);
-  log('已读取配置。');
+  log('已读取当前运行时配置。');
 }
 
 async function save() {
@@ -88,9 +113,9 @@ async function save() {
   });
   if (!resp.ok) {
     const err = await resp.text();
-    throw new Error(`save failed: ${resp.status} ${err}`);
+    throw new Error(`保存配置失败: ${resp.status} ${err}`);
   }
-  log('保存成功，已触发热更新事件。');
+  log('配置保存成功，已广播热更新事件。');
   await load();
 }
 

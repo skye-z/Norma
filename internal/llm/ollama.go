@@ -1,180 +1,180 @@
 package llm
 
 import (
-    "bufio"
-    "bytes"
-    "context"
-    "encoding/json"
-    "fmt"
-    "io"
-    "net/http"
-    "strings"
-    "time"
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type OllamaStreamer struct {
-    endpoint string
-    model    string
-    client   *http.Client
+	endpoint string
+	model    string
+	client   *http.Client
 }
 
 type ollamaGenerateRequest struct {
-    Model  string `json:"model"`
-    Prompt string `json:"prompt"`
-    Stream bool   `json:"stream"`
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	Stream bool   `json:"stream"`
 }
 
 type ollamaGenerateChunk struct {
-    Response string `json:"response"`
-    Done     bool   `json:"done"`
-    Error    string `json:"error"`
+	Response string `json:"response"`
+	Done     bool   `json:"done"`
+	Error    string `json:"error"`
 }
 
 type ollamaTagsResponse struct {
-    Models []ollamaModel `json:"models"`
+	Models []ollamaModel `json:"models"`
 }
 
 type ollamaModel struct {
-    Name string `json:"name"`
+	Name string `json:"name"`
 }
 
 func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStreamer {
-    if strings.TrimSpace(endpoint) == "" {
-        endpoint = "http://127.0.0.1:11434"
-    }
-    if timeout <= 0 {
-        timeout = 45 * time.Second
-    }
-    return &OllamaStreamer{
-        endpoint: strings.TrimRight(endpoint, "/"),
-        model:    model,
-        client:   &http.Client{Timeout: timeout},
-    }
+	if strings.TrimSpace(endpoint) == "" {
+		endpoint = "http://127.0.0.1:11434"
+	}
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	return &OllamaStreamer{
+		endpoint: strings.TrimRight(endpoint, "/"),
+		model:    model,
+		client:   &http.Client{Timeout: timeout},
+	}
 }
 
 func PingOllama(endpoint string, timeout time.Duration) error {
-    _, err := listModels(endpoint, timeout)
-    return err
+	_, err := listModels(endpoint, timeout)
+	return err
 }
 
 func DiscoverFirstLLMModel(endpoint string, timeout time.Duration) (string, error) {
-    models, err := listModels(endpoint, timeout)
-    if err != nil {
-        return "", err
-    }
-    for _, m := range models {
-        if isLikelyLLM(m.Name) {
-            return m.Name, nil
-        }
-    }
-    if len(models) > 0 {
-        return models[0].Name, nil
-    }
-    return "", fmt.Errorf("no ollama models found")
+	models, err := listModels(endpoint, timeout)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range models {
+		if isLikelyLLM(m.Name) {
+			return m.Name, nil
+		}
+	}
+	if len(models) > 0 {
+		return models[0].Name, nil
+	}
+	return "", fmt.Errorf("no ollama models found")
 }
 
 func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
-    endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
-    if endpoint == "" {
-        endpoint = "http://127.0.0.1:11434"
-    }
-    if timeout <= 0 {
-        timeout = 3 * time.Second
-    }
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint == "" {
+		endpoint = "http://127.0.0.1:11434"
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
 
-    client := &http.Client{Timeout: timeout}
-    req, err := http.NewRequest(http.MethodGet, endpoint+"/api/tags", nil)
-    if err != nil {
-        return nil, err
-    }
+	client := &http.Client{Timeout: timeout}
+	req, err := http.NewRequest(http.MethodGet, endpoint+"/api/tags", nil)
+	if err != nil {
+		return nil, err
+	}
 
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode >= 300 {
-        return nil, fmt.Errorf("status=%d", resp.StatusCode)
-    }
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("status=%d", resp.StatusCode)
+	}
 
-    var out ollamaTagsResponse
-    if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-        return nil, fmt.Errorf("decode tags: %w", err)
-    }
-    return out.Models, nil
+	var out ollamaTagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode tags: %w", err)
+	}
+	return out.Models, nil
 }
 
 func isLikelyLLM(name string) bool {
-    n := strings.ToLower(strings.TrimSpace(name))
-    if n == "" {
-        return false
-    }
-    if strings.Contains(n, "embed") || strings.Contains(n, "rerank") {
-        return false
-    }
-    return true
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return false
+	}
+	if strings.Contains(n, "embed") || strings.Contains(n, "rerank") {
+		return false
+	}
+	return true
 }
 
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
-    prompt := buildPrompt(req)
-    body, err := json.Marshal(ollamaGenerateRequest{Model: o.model, Prompt: prompt, Stream: true})
-    if err != nil {
-        return fmt.Errorf("marshal ollama request: %w", err)
-    }
+	prompt := buildPrompt(req)
+	body, err := json.Marshal(ollamaGenerateRequest{Model: o.model, Prompt: prompt, Stream: true})
+	if err != nil {
+		return fmt.Errorf("marshal ollama request: %w", err)
+	}
 
-    httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.endpoint+"/api/generate", bytes.NewReader(body))
-    if err != nil {
-        return fmt.Errorf("new ollama request: %w", err)
-    }
-    httpReq.Header.Set("Content-Type", "application/json")
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.endpoint+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("new ollama request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
-    resp, err := o.client.Do(httpReq)
-    if err != nil {
-        return fmt.Errorf("call ollama: %w", err)
-    }
-    defer resp.Body.Close()
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("call ollama: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode >= 300 {
-        data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-        return fmt.Errorf("ollama status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(data)))
-    }
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("ollama status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
 
-    scanner := bufio.NewScanner(resp.Body)
-    for scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        if line == "" {
-            continue
-        }
-        var chunk ollamaGenerateChunk
-        if err := json.Unmarshal([]byte(line), &chunk); err != nil {
-            return fmt.Errorf("decode ollama stream: %w", err)
-        }
-        if chunk.Error != "" {
-            return fmt.Errorf("ollama stream error: %s", chunk.Error)
-        }
-        if chunk.Response != "" {
-            onToken(chunk.Response)
-        }
-        if chunk.Done {
-            return nil
-        }
-    }
-    if err := scanner.Err(); err != nil {
-        return fmt.Errorf("read ollama stream: %w", err)
-    }
-    return nil
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var chunk ollamaGenerateChunk
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			return fmt.Errorf("decode ollama stream: %w", err)
+		}
+		if chunk.Error != "" {
+			return fmt.Errorf("ollama stream error: %s", chunk.Error)
+		}
+		if chunk.Response != "" {
+			onToken(chunk.Response)
+		}
+		if chunk.Done {
+			return nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read ollama stream: %w", err)
+	}
+	return nil
 }
 
 func buildPrompt(req Request) string {
-    var sb strings.Builder
-    if len(req.Context) > 0 {
-        sb.WriteString("你可参考以下本地检索上下文回答。\n")
-        for i, c := range req.Context {
-            sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, c))
-        }
-        sb.WriteString("---\n")
-    }
-    sb.WriteString(req.Prompt)
-    return sb.String()
+	var sb strings.Builder
+	if len(req.Context) > 0 {
+		sb.WriteString("你可参考以下本地检索上下文回答。\n")
+		for i, c := range req.Context {
+			sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, c))
+		}
+		sb.WriteString("---\n")
+	}
+	sb.WriteString(req.Prompt)
+	return sb.String()
 }

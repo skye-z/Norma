@@ -3,47 +3,123 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 运行时诊断</title>
+  <title>Norma 运行时诊断页</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
-  <main class="wrap">
-    <section class="card hero">
-      <h1>Norma 运行时诊断面板</h1>
-      <p>开发模式下观察状态、事件流、会话与调试入口。</p>
-      <div class="row">
-        <button id="refresh">刷新诊断</button>
-        <button id="bargein">模拟插话打断</button>
-        <a href="./settings.html">运行时设置</a>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <div>
+          <div class="brand-title">NORMA / RUNTIME CONSOLE</div>
+          <span class="brand-sub">桌面伴侣调试总控台</span>
+        </div>
+      </div>
+      <nav class="nav-tabs">
+        <a class="active" href="./index.html">运行时诊断</a>
         <a href="./memory.html">记忆管理</a>
+        <a href="./metrics.html">指标看板</a>
+        <a href="./settings.html">运行时设置</a>
+      </nav>
+      <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </header>
+
+    <section class="hero">
+      <span class="hero-tag">Runtime Trace</span>
+      <h1>运行时诊断页</h1>
+      <p>用于观察状态机、事件流、会话数量与手动调试动作。左侧模拟视觉通道，中间保留事件总线现场，右侧集中展示核心指标与快捷入口。</p>
+      <div class="hero-actions">
+        <button id="refresh" class="primary">刷新诊断</button>
+        <button id="bargein">模拟插话打断</button>
+        <button id="speak">语音预览</button>
+        <span class="status-chip">开发模式已连接</span>
       </div>
     </section>
-    <section class="grid">
-      <article class="card stats">
-        <h2>运行时</h2>
-        <div class="metric"><span>状态</span><strong id="state">-</strong></div>
-        <div class="metric"><span>最近事件</span><strong id="lastEvent">-</strong></div>
-        <div class="metric"><span>队列深度</span><strong id="queueDepth">0</strong></div>
-        <div class="metric"><span>会话数</span><strong id="sessionCount">0</strong></div>
-      </article>
-      <article class="card">
-        <h2>快速事件</h2>
-        <div class="row"><input id="txt" value="你好，我是诺玛。" /><button id="speak">语音预览</button></div>
-        <div class="row"><button class="m" data-m="Idle">Idle</button><button class="m" data-m="Tap">Tap</button><button class="m" data-m="Flick">Flick</button></div>
-        <div class="row"><label>口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
-        <div class="row"><label>视线X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-        <div class="row"><label>视线Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-      </article>
+
+    <section class="layout layout-3">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>视觉调试</h2>
+          <span class="mini-note">Live2D Link</span>
+        </div>
+        <div class="panel-body stack">
+          <div class="metric-tile">
+            <div class="metric-label">预览文本</div>
+            <div class="input-row">
+              <input id="txt" value="你好，我是 Norma，当前正在监控运行时状态。" />
+            </div>
+          </div>
+          <div class="stack">
+            <div class="mini-note">动作控制</div>
+            <div class="quick-grid">
+              <button class="m primary" data-m="Idle">待机动作</button>
+              <button class="m" data-m="Tap">点击反馈</button>
+              <button class="m" data-m="Flick">快速转头</button>
+              <button class="m" data-m="Idle">恢复待机</button>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="mini-note">面部参数</div>
+            <div class="range-line">
+              <label for="mouth">口型</label>
+              <input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" />
+            </div>
+            <div class="range-line">
+              <label for="ex">视线 X</label>
+              <input id="ex" type="range" min="-1" max="1" step="0.01" value="0" />
+            </div>
+            <div class="range-line">
+              <label for="ey">视线 Y</label>
+              <input id="ey" type="range" min="-1" max="1" step="0.01" value="0" />
+            </div>
+          </div>
+          <p class="footer-note">以上操作会直接向运行时事件总线发送测试事件。</p>
+        </div>
+      </aside>
+
+      <main class="panel">
+        <div class="panel-head">
+          <h2>事件流现场</h2>
+          <span class="mini-note">最近 20 条事件</span>
+        </div>
+        <div class="panel-body">
+          <pre id="events" class="console"></pre>
+        </div>
+      </main>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>运行状态</h2>
+          <span class="mini-note">Session Watch</span>
+        </div>
+        <div class="panel-body stack">
+          <div class="metric-grid">
+            <div class="metric-tile">
+              <div class="metric-label">当前状态</div>
+              <div class="metric-value" id="state">-</div>
+            </div>
+            <div class="metric-tile">
+              <div class="metric-label">最近事件</div>
+              <div class="metric-value" id="lastEvent" style="font-size:18px;">-</div>
+            </div>
+            <div class="metric-tile">
+              <div class="metric-label">队列深度</div>
+              <div class="metric-value" id="queueDepth">0</div>
+            </div>
+            <div class="metric-tile">
+              <div class="metric-label">会话数量</div>
+              <div class="metric-value" id="sessionCount">0</div>
+            </div>
+          </div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">操作日志</div>
+            <pre id="log" class="console"></pre>
+          </div>
+        </div>
+      </aside>
     </section>
-    <section class="card">
-      <h2>事件流</h2>
-      <pre id="events"></pre>
-    </section>
-    <section class="card">
-      <h2>日志</h2>
-      <pre id="log"></pre>
-    </section>
-  </main>
+  </div>
   <script type="module" src="./panel.js"></script>
 </body>
 </html>

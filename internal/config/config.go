@@ -18,6 +18,7 @@ type Config struct {
 	RAG      RAGConfig      `mapstructure:"rag"`
 	Memory   MemoryConfig   `mapstructure:"memory"`
 	Perf     PerfConfig     `mapstructure:"perf"`
+	Security SecurityConfig `mapstructure:"security"`
 }
 
 type AppConfig struct {
@@ -80,93 +81,56 @@ type MemoryConfig struct {
 }
 
 type PerfConfig struct {
-	AutoDegrade              bool `mapstructure:"auto_degrade"`
-	LLMFirstTokenThresholdMs int  `mapstructure:"llm_first_token_threshold_ms"`
-	DegradedRAGTopK          int  `mapstructure:"degraded_rag_top_k"`
+	AutoDegrade              bool   `mapstructure:"auto_degrade"`
+	LLMFirstTokenThresholdMs int    `mapstructure:"llm_first_token_threshold_ms"`
+	DegradedRAGTopK          int    `mapstructure:"degraded_rag_top_k"`
+	DegradedAudioChunkSize   int    `mapstructure:"degraded_audio_chunk_size"`
+	AlertLLMFirstTokenMs     int    `mapstructure:"alert_llm_first_token_ms"`
+	AlertTTSFirstChunkMs     int    `mapstructure:"alert_tts_first_chunk_ms"`
+	BaselineFile             string `mapstructure:"baseline_file"`
+}
+
+type SecurityConfig struct {
+	AllowRemoteProviders bool     `mapstructure:"allow_remote_providers"`
+	AllowedRemoteHosts   []string `mapstructure:"allowed_remote_hosts"`
+	ToolWhitelist        []string `mapstructure:"tool_whitelist"`
+	HighRiskConfirm      bool     `mapstructure:"high_risk_confirm"`
+	PurgeProofDir        string   `mapstructure:"purge_proof_dir"`
 }
 
 func defaultConfig() Config {
 	return Config{
-		App: AppConfig{
-			Name:     "Norma",
-			Env:      "dev",
-			LogLevel: "info",
-			LogDir:   "logs",
-		},
+		App:      AppConfig{Name: "Norma", Env: "dev", LogLevel: "info", LogDir: "logs"},
 		Database: DatabaseConfig{Path: "data/norma.db"},
-		Audio: AudioConfig{
-			EnableWakeWord:        true,
-			WakeMode:              "wake_word_vad",
-			EndpointSilenceFrames: 4,
-			InterruptDuringSpeak:  true,
-			AECEnabled:            false,
-			NSEnabled:             false,
-			Scene:                 "speaker",
-		},
-		ASR: ASRConfig{
-			Provider:         "mock",
-			Endpoint:         "http://127.0.0.1:8081",
-			StreamEndpoint:   "",
-			RequestTimeoutMs: 10000,
-			BinaryPath:       "",
-			ModelPath:        "",
-			Language:         "zh",
-			Threads:          4,
-		},
-		LLM: LLMConfig{
-			Provider:         "ollama",
-			Model:            "",
-			Endpoint:         "http://127.0.0.1:11434",
-			RequestTimeoutMs: 45000,
-		},
-		TTS: TTSConfig{
-			Provider:             "mock",
-			Voice:                "norma",
-			Endpoint:             "http://127.0.0.1:8020",
-			RequestTimeoutMs:     30000,
-			SentenceFirstEnabled: true,
-		},
-		RAG: RAGConfig{
-			TopK:            6,
-			VectorIndexPath: "data/vector_index.json",
-		},
-		Memory: MemoryConfig{
-			STMTokenBudget:         2048,
-			STMReserveImportant:    true,
-			SummaryAutoWrite:       true,
-			GovernanceCompactHours: 24,
-		},
-		Perf: PerfConfig{
-			AutoDegrade:              true,
-			LLMFirstTokenThresholdMs: 1200,
-			DegradedRAGTopK:          4,
-		},
+		Audio:    AudioConfig{EnableWakeWord: true, WakeMode: "wake_word_vad", EndpointSilenceFrames: 4, InterruptDuringSpeak: true, AECEnabled: false, NSEnabled: false, Scene: "speaker"},
+		ASR:      ASRConfig{Provider: "mock", Endpoint: "http://127.0.0.1:8081", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
+		LLM:      LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
+		TTS:      TTSConfig{Provider: "mock", Voice: "norma", Endpoint: "http://127.0.0.1:8020", RequestTimeoutMs: 30000, SentenceFirstEnabled: true},
+		RAG:      RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json"},
+		Memory:   MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
+		Perf:     PerfConfig{AutoDegrade: true, LLMFirstTokenThresholdMs: 1200, DegradedRAGTopK: 4, DegradedAudioChunkSize: 4096, AlertLLMFirstTokenMs: 1500, AlertTTSFirstChunkMs: 1200, BaselineFile: "configs/perf-baseline.json"},
+		Security: SecurityConfig{AllowRemoteProviders: false, AllowedRemoteHosts: []string{"127.0.0.1", "localhost"}, ToolWhitelist: []string{"open_local_file", "open_debug_panel", "export_diagnostics"}, HighRiskConfirm: true, PurgeProofDir: "diagnostics/purge-proofs"},
 	}
 }
 
 // Load reads config by precedence: defaults -> file -> env.
 func Load(path string) (*Config, error) {
 	cfg := defaultConfig()
-
 	v := viper.New()
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 	v.SetEnvPrefix("NORMA")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-
 	setDefaults(v, cfg)
-
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("read config: %w", err)
 		}
 	}
-
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-
 	return &cfg, nil
 }
 
@@ -175,9 +139,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("app.env", cfg.App.Env)
 	v.SetDefault("app.log_level", cfg.App.LogLevel)
 	v.SetDefault("app.log_dir", cfg.App.LogDir)
-
 	v.SetDefault("database.path", cfg.Database.Path)
-
 	v.SetDefault("audio.enable_wake_word", cfg.Audio.EnableWakeWord)
 	v.SetDefault("audio.wake_mode", cfg.Audio.WakeMode)
 	v.SetDefault("audio.endpoint_silence_frames", cfg.Audio.EndpointSilenceFrames)
@@ -185,7 +147,6 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("audio.aec_enabled", cfg.Audio.AECEnabled)
 	v.SetDefault("audio.ns_enabled", cfg.Audio.NSEnabled)
 	v.SetDefault("audio.scene", cfg.Audio.Scene)
-
 	v.SetDefault("asr.provider", cfg.ASR.Provider)
 	v.SetDefault("asr.endpoint", cfg.ASR.Endpoint)
 	v.SetDefault("asr.stream_endpoint", cfg.ASR.StreamEndpoint)
@@ -194,27 +155,31 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("asr.model_path", cfg.ASR.ModelPath)
 	v.SetDefault("asr.language", cfg.ASR.Language)
 	v.SetDefault("asr.threads", cfg.ASR.Threads)
-
 	v.SetDefault("llm.provider", cfg.LLM.Provider)
 	v.SetDefault("llm.model", cfg.LLM.Model)
 	v.SetDefault("llm.endpoint", cfg.LLM.Endpoint)
 	v.SetDefault("llm.request_timeout_ms", cfg.LLM.RequestTimeoutMs)
-
 	v.SetDefault("tts.provider", cfg.TTS.Provider)
 	v.SetDefault("tts.voice", cfg.TTS.Voice)
 	v.SetDefault("tts.endpoint", cfg.TTS.Endpoint)
 	v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
 	v.SetDefault("tts.sentence_first_enabled", cfg.TTS.SentenceFirstEnabled)
-
 	v.SetDefault("rag.top_k", cfg.RAG.TopK)
 	v.SetDefault("rag.vector_index_path", cfg.RAG.VectorIndexPath)
-
 	v.SetDefault("memory.stm_token_budget", cfg.Memory.STMTokenBudget)
 	v.SetDefault("memory.stm_reserve_important", cfg.Memory.STMReserveImportant)
 	v.SetDefault("memory.summary_auto_write", cfg.Memory.SummaryAutoWrite)
 	v.SetDefault("memory.governance_compact_hours", cfg.Memory.GovernanceCompactHours)
-
 	v.SetDefault("perf.auto_degrade", cfg.Perf.AutoDegrade)
 	v.SetDefault("perf.llm_first_token_threshold_ms", cfg.Perf.LLMFirstTokenThresholdMs)
 	v.SetDefault("perf.degraded_rag_top_k", cfg.Perf.DegradedRAGTopK)
+	v.SetDefault("perf.degraded_audio_chunk_size", cfg.Perf.DegradedAudioChunkSize)
+	v.SetDefault("perf.alert_llm_first_token_ms", cfg.Perf.AlertLLMFirstTokenMs)
+	v.SetDefault("perf.alert_tts_first_chunk_ms", cfg.Perf.AlertTTSFirstChunkMs)
+	v.SetDefault("perf.baseline_file", cfg.Perf.BaselineFile)
+	v.SetDefault("security.allow_remote_providers", cfg.Security.AllowRemoteProviders)
+	v.SetDefault("security.allowed_remote_hosts", cfg.Security.AllowedRemoteHosts)
+	v.SetDefault("security.tool_whitelist", cfg.Security.ToolWhitelist)
+	v.SetDefault("security.high_risk_confirm", cfg.Security.HighRiskConfirm)
+	v.SetDefault("security.purge_proof_dir", cfg.Security.PurgeProofDir)
 }

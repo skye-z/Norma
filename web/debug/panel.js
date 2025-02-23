@@ -7,7 +7,9 @@ const queueDepthEl = document.getElementById('queueDepth');
 const sessionCountEl = document.getElementById('sessionCount');
 
 const log = (s) => {
-  if (logEl) logEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + logEl.textContent;
+  if (logEl) {
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + logEl.textContent;
+  }
 };
 
 const pub = (name, payload) => fetch(`${api}/runtime/publish`, {
@@ -18,18 +20,18 @@ const pub = (name, payload) => fetch(`${api}/runtime/publish`, {
 
 async function refreshDiagnostics() {
   const resp = await fetch(`${api}/runtime/diagnostics?limit=20`);
-  if (!resp.ok) throw new Error(`diagnostics failed: ${resp.status}`);
+  if (!resp.ok) throw new Error(`读取诊断失败: ${resp.status}`);
   const data = await resp.json();
   stateEl.textContent = data.state || '-';
   lastEventEl.textContent = data.last_event || '-';
   queueDepthEl.textContent = String(data.queue_depth ?? 0);
   sessionCountEl.textContent = String((data.sessions || []).length);
-  eventsEl.textContent = (data.events || []).map((evt) => JSON.stringify(evt, null, 2)).join('\n\n');
+  eventsEl.textContent = (data.events || []).map((evt) => JSON.stringify(evt, null, 2)).join('\n\n') || '暂无事件';
 }
 
 document.querySelectorAll('.m').forEach((b) => b.addEventListener('click', async () => {
   await pub('live2d.motion', { group: b.dataset.m, index: 0 });
-  log(`动作 -> ${b.dataset.m}`);
+  log(`已发送动作事件：${b.dataset.m}`);
 }));
 
 document.getElementById('mouth')?.addEventListener('input', async (e) => {
@@ -50,10 +52,14 @@ document.getElementById('speak')?.addEventListener('click', () => {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'zh-CN';
   const timer = setInterval(() => pub('live2d.mouth', { level: 0.2 + Math.random() * 0.8 }), 90);
-  u.onend = () => { clearInterval(timer); pub('live2d.mouth', { level: 0 }); };
+  u.onend = () => {
+    clearInterval(timer);
+    pub('live2d.mouth', { level: 0 });
+  };
   u.onerror = u.onend;
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
+  log(`开始语音预览：${text}`);
 });
 
 document.getElementById('bargein')?.addEventListener('click', async () => {
@@ -67,7 +73,7 @@ document.getElementById('refresh')?.addEventListener('click', () => {
 });
 
 const es = new EventSource(`${api}/runtime/events?name=runtime.config.updated`);
-es.onmessage = (e) => log(`配置已更新: ${e.data}`);
+es.onmessage = (e) => log(`运行时配置已更新：${e.data}`);
 
 setInterval(() => {
   refreshDiagnostics().catch((e) => log(String(e)));

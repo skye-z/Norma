@@ -11,6 +11,7 @@ import (
 	"norma/internal/api"
 	"norma/internal/db"
 	"norma/internal/memory"
+	"norma/internal/metrics"
 	"norma/internal/runtime"
 )
 
@@ -30,14 +31,23 @@ func main() {
 	svc := memory.NewService(engine)
 	mh := api.NewMemoryHandler(svc)
 	rt := runtime.New()
+	tracker := metrics.NewTracker()
+	quality := runtime.NewQualityController(true, 1200, 4)
+	runtime.AttachLatencyObserver(rt, tracker, quality)
 	rh := api.NewRuntimeHandler(rt.Bus, rt.Inspector)
 	sh := api.NewSettingsHandler(*configPath, rt.Bus)
+	me := api.NewMetricsHandler(tracker)
+	ph := api.NewPrivacyHandler(*configPath)
+	th := api.NewToolPolicyHandler(*configPath)
 
 	mux := http.NewServeMux()
 	api.RegisterHealth(mux, time.Now())
 	mh.Register(mux)
 	rh.Register(mux)
 	sh.Register(mux)
+	me.Register(mux)
+	ph.Register(mux)
+	th.Register(mux)
 	registerStaticModel(mux, *modelDir)
 	registerStaticDebug(mux, "web/debug")
 

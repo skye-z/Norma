@@ -23,6 +23,11 @@ import (
 	"norma/internal/runtime/bus"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
 func main() {
 	cfgPath := flag.String("config", "configs/config.yaml", "path to config file")
 	demo := flag.Bool("demo", false, "run event-chain demo and exit")
@@ -55,7 +60,9 @@ func main() {
 		cfg.Perf.LLMFirstTokenThresholdMs,
 		cfg.Perf.DegradedRAGTopK,
 	)
-	runtime.AttachLatencyObserver(rt, metrics.NewTracker(), quality)
+	quality.SetDegradedAudioChunkSize(cfg.Perf.DegradedAudioChunkSize)
+	tracker := metrics.NewTracker()
+	runtime.AttachLatencyObserver(rt, tracker, quality)
 
 	_ = live2d.NewBridge(rt.Bus)
 
@@ -103,7 +110,7 @@ func main() {
 		log.Printf("[live2d] mouth=%v", evt.Payload)
 	})
 
-	log.Printf("[%s] started env=%s db=%s state=%s", cfg.App.Name, cfg.App.Env, cfg.Database.Path, rt.State.Get())
+	log.Printf("[%s] started env=%s version=%s commit=%s db=%s state=%s", cfg.App.Name, cfg.App.Env, version, commit, cfg.Database.Path, rt.State.Get())
 
 	if *demo {
 		runDemoInputPipeline(cfg, rt)

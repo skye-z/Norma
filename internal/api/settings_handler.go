@@ -3,9 +3,12 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 
 	"norma/internal/config"
+	"norma/internal/errs"
 	"norma/internal/runtime/bus"
 )
 
@@ -29,14 +32,14 @@ func (h *SettingsHandler) handleRuntime(w http.ResponseWriter, r *http.Request) 
 	case http.MethodPut:
 		h.handleRuntimePut(w, r)
 	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		writeAPIError(w, errs.Invalid("method not allowed"))
 	}
 }
 
 func (h *SettingsHandler) handleRuntimeGet(w http.ResponseWriter) {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, cfg)
@@ -45,15 +48,15 @@ func (h *SettingsHandler) handleRuntimeGet(w http.ResponseWriter) {
 func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Request) {
 	var cfg config.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
+		writeAPIError(w, errs.Invalid("invalid json"))
 		return
 	}
 	if strings.TrimSpace(cfg.LLM.Provider) == "" {
-		writeErr(w, http.StatusBadRequest, "llm.provider required")
+		writeAPIError(w, errs.Invalid("llm.provider required"))
 		return
 	}
 	if strings.TrimSpace(cfg.LLM.Endpoint) == "" {
-		writeErr(w, http.StatusBadRequest, "llm.endpoint required")
+		writeAPIError(w, errs.Invalid("llm.endpoint required"))
 		return
 	}
 	if cfg.LLM.RequestTimeoutMs <= 0 {
@@ -77,15 +80,59 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.Perf.DegradedRAGTopK <= 0 {
 		cfg.Perf.DegradedRAGTopK = 4
 	}
-
-	if err := config.Save(h.configPath, &cfg); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
+	if cfg.Perf.DegradedAudioChunkSize <= 0 {
+		cfg.Perf.DegradedAudioChunkSize = 4096
+	}
+	if cfg.Perf.AlertLLMFirstTokenMs <= 0 {
+		cfg.Perf.AlertLLMFirstTokenMs = 1500
+	}
+	if cfg.Perf.AlertTTSFirstChunkMs <= 0 {
+		cfg.Perf.AlertTTSFirstChunkMs = 1200
+	}
+	if cfg.Security.PurgeProofDir == "" {
+		cfg.Security.PurgeProofDir = filepath.ToSlash("diagnostics/purge-proofs")
+	}
+	if len(cfg.Security.AllowedRemoteHosts) == 0 {
+		cfg.Security.AllowedRemoteHosts = []string{"127.0.0.1", "localhost"}
+	}
+	if len(cfg.Security.ToolWhitelist) == 0 {
+		cfg.Security.ToolWhitelist = []string{"open_local_file", "open_debug_panel", "export_diagnostics"}
 	}
 
+	for _, endpoint := range []string{cfg.LLM.Endpoint, cfg.ASR.Endpoint, cfg.ASR.StreamEndpoint, cfg.TTS.Endpoint} {
+		if err := validateEndpointPolicy(endpoint, cfg.Security); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+	}
+
+	if err := config.Save(h.configPath, &cfg); err != nil {
+		writeAPIError(w, errs.Internal("config_save_failed", err.Error()))
+		return
+	}
 	if h.bus != nil {
 		h.bus.Publish(bus.Event{Name: "runtime.config.updated", Payload: map[string]any{"path": h.configPath}})
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func validateEndpointPolicy(endpoint string, sec config.SecurityConfig) *errs.Error {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return nil
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return errs.Invalid("invalid endpoint: " + endpoint)
+	}
+	host := strings.ToLower(u.Hostname())
+	if sec.AllowRemoteProviders {
+		return nil
+	}
+	for _, allowed := range sec.AllowedRemoteHosts {
+		if strings.EqualFold(strings.TrimSpace(allowed), host) {
+			return nil
+		}
+	}
+	return errs.Forbidden("remote providers are disabled by security policy")
 }
