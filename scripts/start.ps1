@@ -192,19 +192,45 @@ try {
     $report.llm_endpoint = $llmEndpoint
     $report.tts_provider = $ttsProvider
     $report.tts_endpoint = $ttsEndpoint
+    $llmLaunchEndpoint = $llmEndpoint
     $ttsLaunchEndpoint = $ttsEndpoint
 
     Write-Step "Dependency health check"
 
     if ($llmProvider -eq "ollama") {
+        $ollamaStartCmd = $env:NORMA_OLLAMA_START_CMD
+        if ([string]::IsNullOrWhiteSpace($ollamaStartCmd) -and (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            $ollamaStartCmd = "ollama serve"
+        }
+
         if (-not (Test-TcpEndpoint -Endpoint $llmEndpoint)) {
-            Write-Warn "ollama endpoint unreachable, trying to start ollama serve"
-            if (Get-Command ollama -ErrorAction SilentlyContinue) {
-                Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+            Write-Warn "ollama endpoint unreachable, trying start command"
+            if (-not [string]::IsNullOrWhiteSpace($ollamaStartCmd)) {
+                Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", $ollamaStartCmd -WindowStyle Hidden | Out-Null
                 if (Wait-Endpoint -Endpoint $llmEndpoint -TimeoutSec 30) {
                     Write-Ok "ollama started: $llmEndpoint"
                 } else {
                     Write-Warn "ollama still unreachable: $llmEndpoint"
+                    $ep = Parse-Endpoint -Endpoint $llmEndpoint
+                    if ($null -ne $ep) {
+                        $alt = Find-FreePort -StartPort ($ep.Port + 1) -EndPort ($ep.Port + 20)
+                        if ($null -ne $alt) {
+                            $llmLaunchEndpoint = "http://$($ep.Host):$alt"
+                            if ($ollamaStartCmd.Contains("{port}")) {
+                                $altCmd = $ollamaStartCmd.Replace("{port}", [string]$alt)
+                            } else {
+                                $altCmd = "`$env:OLLAMA_HOST='http://$($ep.Host):$alt'; ollama serve"
+                            }
+                            Write-Warn "trying alternate ollama port: $llmLaunchEndpoint"
+                            Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", $altCmd -WindowStyle Hidden | Out-Null
+                            if (Wait-Endpoint -Endpoint $llmLaunchEndpoint -TimeoutSec 30) {
+                                Write-Ok "ollama started on alternate port: $llmLaunchEndpoint"
+                            } else {
+                                Write-Warn "alternate ollama port still unreachable: $llmLaunchEndpoint"
+                                $llmLaunchEndpoint = $llmEndpoint
+                            }
+                        }
+                    }
                 }
             } else {
                 Write-Warn "ollama command not found; please install/start manually"
@@ -212,7 +238,8 @@ try {
         } else {
             Write-Ok "ollama reachable: $llmEndpoint"
         }
-        $report.llm_reachable = (Test-TcpEndpoint -Endpoint $llmEndpoint)
+        $report.llm_reachable = (Test-TcpEndpoint -Endpoint $llmLaunchEndpoint)
+        $report.llm_endpoint = $llmLaunchEndpoint
     }
 
     if ($ttsProvider -eq "http" -or $ttsProvider -eq "xtts") {
@@ -258,7 +285,7 @@ try {
 
     Write-Step "Startup self-check summary"
     Write-Host "  llm.provider=$llmProvider"
-    Write-Host "  llm.endpoint=$llmEndpoint"
+    Write-Host "  llm.endpoint=$llmLaunchEndpoint"
     Write-Host "  tts.provider=$ttsProvider"
     Write-Host "  tts.endpoint=$ttsLaunchEndpoint"
 
@@ -266,6 +293,11 @@ try {
         Write-Step "Start dependency watchdog in background"
         Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/watchdog.ps1", "-Root", ".", "-ConfigPath", $ConfigPath -WindowStyle Hidden | Out-Null
         Write-Ok "watchdog started"
+    }
+
+    if ($llmLaunchEndpoint -ne $llmEndpoint) {
+        $env:NORMA_LLM_ENDPOINT = $llmLaunchEndpoint
+        Write-Warn "apply runtime llm endpoint override: NORMA_LLM_ENDPOINT=$llmLaunchEndpoint"
     }
 
     if ($ttsLaunchEndpoint -ne $ttsEndpoint) {
