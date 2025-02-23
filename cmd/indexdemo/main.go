@@ -37,6 +37,9 @@ func main() {
 	if err := w.AddRecursive(*dir); err != nil {
 		log.Fatalf("watch dir: %v", err)
 	}
+	if err := w.EnqueueInitial(ctx, *dir); err != nil {
+		log.Fatalf("initial enqueue: %v", err)
+	}
 
 	fts := index.NewSQLiteStore(engine)
 	vec, err := index.NewDiskVectorStore(*vecPath)

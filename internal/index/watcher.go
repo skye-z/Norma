@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,31 @@ func (w *Watcher) AddRecursive(root string) error {
 	})
 }
 
+// EnqueueInitial enqueues all indexable files under root for upsert.
+func (w *Watcher) EnqueueInitial(ctx context.Context, root string) error {
+	if w.queue == nil {
+		return errors.New("watcher queue is nil")
+	}
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if shouldSkipPath(path) {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d != nil && d.IsDir() {
+			return nil
+		}
+		if !isIndexable(path) {
+			return nil
+		}
+		return w.queue.Enqueue(ctx, Task{Path: path, Kind: "upsert"})
+	})
+}
+
 func (w *Watcher) Run(ctx context.Context) error {
 	if w.queue == nil {
 		return errors.New("watcher queue is nil")
@@ -62,23 +88,31 @@ func (w *Watcher) Run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			if shouldSkipPath(ev.Name) {
-				continue
-			}
-
-			if isCreateOrWrite(ev.Op) && isIndexable(ev.Name) {
-				_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "upsert"})
-			}
-			if ev.Op&fsnotify.Remove == fsnotify.Remove {
-				_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "delete"})
-			}
-			if ev.Op&fsnotify.Create == fsnotify.Create {
-				_ = w.watcher.Add(ev.Name)
-			}
+			w.handleEvent(ctx, ev)
 		case _, ok := <-w.watcher.Errors:
 			if !ok {
 				return nil
 			}
+		}
+	}
+}
+
+func (w *Watcher) handleEvent(ctx context.Context, ev fsnotify.Event) {
+	if w.queue == nil || shouldSkipPath(ev.Name) {
+		return
+	}
+
+	if isCreateOrWrite(ev.Op) && isIndexable(ev.Name) {
+		_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "upsert"})
+	}
+
+	if ev.Op&fsnotify.Remove == fsnotify.Remove || ev.Op&fsnotify.Rename == fsnotify.Rename {
+		_ = w.queue.Enqueue(ctx, Task{Path: ev.Name, Kind: "delete"})
+	}
+
+	if ev.Op&fsnotify.Create == fsnotify.Create && w.watcher != nil {
+		if st, err := os.Stat(ev.Name); err == nil && st.IsDir() {
+			_ = w.watcher.Add(ev.Name)
 		}
 	}
 }
@@ -93,7 +127,7 @@ func isIndexable(path string) bool {
 	}
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
-	case ".txt", ".md":
+	case ".txt", ".md", ".pdf", ".docx":
 		return true
 	default:
 		return false
