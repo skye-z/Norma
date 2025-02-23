@@ -113,6 +113,41 @@ function Wait-Endpoint {
     return $false
 }
 
+
+function Parse-Endpoint {
+    param([string]$Endpoint)
+    if ($Endpoint -notmatch '^https?://([^/:]+)(?::(\d+))?') { return $null }
+    return [pscustomobject]@{
+        Host = $matches[1]
+        Port = $(if ($matches[2]) { [int]$matches[2] } else { 80 })
+    }
+}
+
+function Find-FreePort {
+    param(
+        [int]$StartPort,
+        [int]$EndPort,
+        [string]$Host = "127.0.0.1"
+    )
+
+    for ($p = $StartPort; $p -le $EndPort; $p++) {
+        $listener = $null
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse($Host), $p)
+            $listener.Start()
+            return $p
+        }
+        catch {
+            # continue
+        }
+        finally {
+            if ($null -ne $listener) {
+                $listener.Stop()
+            }
+        }
+    }
+    return $null
+}
 function Write-StartupReport {
     $logDir = Join-Path (Get-Location) "logs"
     if (-not (Test-Path $logDir)) {
@@ -157,6 +192,7 @@ try {
     $report.llm_endpoint = $llmEndpoint
     $report.tts_provider = $ttsProvider
     $report.tts_endpoint = $ttsEndpoint
+    $ttsLaunchEndpoint = $ttsEndpoint
 
     Write-Step "Dependency health check"
 
@@ -189,6 +225,26 @@ try {
                     Write-Ok "tts started: $ttsEndpoint"
                 } else {
                     Write-Warn "tts still unreachable: $ttsEndpoint"
+
+                    # Optional fallback: command template with {port}, choose alternative free port.
+                    if ($xttsStartCmd.Contains("{port}")) {
+                        $ep = Parse-Endpoint -Endpoint $ttsEndpoint
+                        if ($null -ne $ep) {
+                            $alt = Find-FreePort -StartPort ($ep.Port + 1) -EndPort ($ep.Port + 20)
+                            if ($null -ne $alt) {
+                                $cmd = $xttsStartCmd.Replace("{port}", [string]$alt)
+                                $ttsLaunchEndpoint = "http://$($ep.Host):$alt"
+                                Write-Warn "trying alternate tts port: $ttsLaunchEndpoint"
+                                Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", $cmd -WindowStyle Hidden | Out-Null
+                                if (Wait-Endpoint -Endpoint $ttsLaunchEndpoint -TimeoutSec 30) {
+                                    Write-Ok "tts started on alternate port: $ttsLaunchEndpoint"
+                                } else {
+                                    Write-Warn "alternate tts port still unreachable: $ttsLaunchEndpoint"
+                                    $ttsLaunchEndpoint = $ttsEndpoint
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 Write-Warn "tts endpoint unreachable and NORMA_XTTS_START_CMD not set"
@@ -196,19 +252,25 @@ try {
         } else {
             Write-Ok "tts reachable: $ttsEndpoint"
         }
-        $report.tts_reachable = (Test-TcpEndpoint -Endpoint $ttsEndpoint)
+        $report.tts_reachable = (Test-TcpEndpoint -Endpoint $ttsLaunchEndpoint)
+        $report.tts_endpoint = $ttsLaunchEndpoint
     }
 
     Write-Step "Startup self-check summary"
     Write-Host "  llm.provider=$llmProvider"
     Write-Host "  llm.endpoint=$llmEndpoint"
     Write-Host "  tts.provider=$ttsProvider"
-    Write-Host "  tts.endpoint=$ttsEndpoint"
+    Write-Host "  tts.endpoint=$ttsLaunchEndpoint"
 
     if ($env:NORMA_ENABLE_WATCHDOG -eq "1") {
         Write-Step "Start dependency watchdog in background"
         Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/watchdog.ps1", "-Root", ".", "-ConfigPath", $ConfigPath -WindowStyle Hidden | Out-Null
         Write-Ok "watchdog started"
+    }
+
+    if ($ttsLaunchEndpoint -ne $ttsEndpoint) {
+        $env:NORMA_TTS_ENDPOINT = $ttsLaunchEndpoint
+        Write-Warn "apply runtime tts endpoint override: NORMA_TTS_ENDPOINT=$ttsLaunchEndpoint"
     }
 
     if ($NoLaunch) {
