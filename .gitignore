@@ -25,6 +25,7 @@ coverage.out
 # Runtime data
 /data/
 /logs/
+/diagnostics/
 *.db
 *.db-shm
 *.db-wal

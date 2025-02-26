@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"xorm.io/xorm"
@@ -20,6 +21,11 @@ type Sink interface {
 type SQLiteStore struct {
 	engine *xorm.Engine
 }
+
+var (
+	sqliteFTSPossessivePattern = regexp.MustCompile(`(?i)([\p{L}\p{N}_]+)['’]s\b`)
+	sqliteFTSTokenPattern      = regexp.MustCompile(`[\p{L}\p{N}_]+`)
+)
 
 func NewSQLiteStore(engine *xorm.Engine) *SQLiteStore {
 	return &SQLiteStore{engine: engine}
@@ -89,6 +95,10 @@ func (s *SQLiteStore) SearchText(ctx context.Context, query string, topK int) ([
 	if topK <= 0 {
 		topK = 5
 	}
+	query = normalizeFTSQuery(query)
+	if query == "" {
+		return nil, nil
+	}
 
 	rows, err := s.engine.Query(
 		`SELECT c.path, c.chunk_no, c.content, bm25(index_chunks_fts) AS rank
@@ -113,4 +123,13 @@ func (s *SQLiteStore) SearchText(ctx context.Context, query string, topK int) ([
 		})
 	}
 	return out, nil
+}
+
+func normalizeFTSQuery(query string) string {
+	query = sqliteFTSPossessivePattern.ReplaceAllString(strings.ToLower(query), `${1}`)
+	tokens := sqliteFTSTokenPattern.FindAllString(query, -1)
+	if len(tokens) == 0 {
+		return ""
+	}
+	return strings.Join(tokens, " ")
 }
