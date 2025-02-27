@@ -120,9 +120,13 @@ func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
 	traceID := "demo-trace"
 
 	pipe := audio.Pipeline{
-		VAD: audio.NewEnergyVAD(0.02),
-		ASR: chooseASR(cfg),
+		VAD:           audio.NewEnergyVAD(0.02),
+		WakeWord:      chooseWakeWord(cfg),
+		ASR:           chooseASR(cfg),
+		WakeMode:      cfg.Audio.WakeMode,
+		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
 	}
+	pipe.Preprocessors = choosePreprocessors(cfg)
 	source := audio.NewMockFrameSource(audio.DefaultDemoFrames(), 40*time.Millisecond)
 
 	go func() {
@@ -148,14 +152,34 @@ func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
 	}()
 }
 
+func chooseWakeWord(cfg *config.Config) audio.WakeWord {
+	if strings.ToLower(strings.TrimSpace(cfg.Audio.WakeMode)) != audio.WakeModeWakeWordVAD {
+		return nil
+	}
+	return &audio.MockWakeWord{}
+}
+
+func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
+	if !cfg.Audio.AECEnabled && !cfg.Audio.NSEnabled {
+		return nil
+	}
+	label := cfg.Audio.Scene
+	if label == "" {
+		label = "speaker"
+	}
+	return []audio.Preprocessor{audio.NewMockAECNS(label)}
+}
+
 func chooseASR(cfg *config.Config) audio.ASR {
-	fallback := audio.MockASR{FinalText: "帮我规划今天的开发任务"}
+	fallback := audio.MockASR{FinalText: "plan today's development tasks."}
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
 	case "http":
 		if cfg.ASR.Endpoint == "" {
 			return fallback
 		}
-		return audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
+		asr := audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
+		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
+		return asr
 	case "whisper", "whispercpp":
 		if cfg.ASR.BinaryPath == "" || cfg.ASR.ModelPath == "" {
 			log.Printf("[asr] whispercpp not configured, fallback to mock")
@@ -166,7 +190,6 @@ func chooseASR(cfg *config.Config) audio.ASR {
 		return fallback
 	}
 }
-
 func chooseTTS(cfg *config.Config) audio.TTS {
 	fallback := audio.NewMockTTS()
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {

@@ -4,17 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
 
 type RuntimeHandler struct {
-	bus *bus.Bus
+	bus       *bus.Bus
+	inspector *runtime.Inspector
 }
 
-func NewRuntimeHandler(b *bus.Bus) *RuntimeHandler {
-	return &RuntimeHandler{bus: b}
+func NewRuntimeHandler(b *bus.Bus, inspector *runtime.Inspector) *RuntimeHandler {
+	return &RuntimeHandler{bus: b, inspector: inspector}
 }
 
 type publishReq struct {
@@ -27,6 +30,7 @@ type publishReq struct {
 func (h *RuntimeHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/publish", h.handlePublish)
 	mux.HandleFunc("/runtime/events", h.handleEvents)
+	mux.HandleFunc("/runtime/diagnostics", h.handleDiagnostics)
 }
 
 func (h *RuntimeHandler) handlePublish(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +79,6 @@ func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Flush once so clients can establish SSE before first event.
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 
@@ -98,4 +101,21 @@ func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func (h *RuntimeHandler) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.inspector == nil {
+		writeErr(w, http.StatusNotImplemented, "diagnostics unavailable")
+		return
+	}
+	snapshot := h.inspector.Snapshot()
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit > 0 && len(snapshot.Events) > limit {
+		snapshot.Events = snapshot.Events[len(snapshot.Events)-limit:]
+	}
+	writeJSON(w, http.StatusOK, snapshot)
 }

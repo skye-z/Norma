@@ -103,7 +103,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	}
 
 	answer := sb.String()
-	if answer == "" {
+	if strings.TrimSpace(answer) == "" {
 		answer = "抱歉，我现在没有可用回答。"
 	}
 
@@ -115,7 +115,6 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		o.publishError(sessionID, traceID, "tts_stream_failed", err)
 	}
 	o.rt.Bus.Publish(bus.Event{Name: "audio.play.end", SessionID: sessionID, TraceID: traceID, Payload: "done"})
-
 	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
 }
 

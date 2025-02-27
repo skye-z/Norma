@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: UTF-8 gate
+        shell: pwsh
+        run: ./scripts/check-utf8.ps1 -Root .
+      - name: Go test
+        shell: pwsh
+        run: |
+          $env:GOCACHE = Join-Path (Get-Location) '.gocache'
+          $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
+          go test ./...

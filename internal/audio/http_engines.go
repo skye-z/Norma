@@ -14,8 +14,9 @@ import (
 
 // HTTPASR calls a local ASR HTTP service.
 type HTTPASR struct {
-	Endpoint string
-	Client   *http.Client
+	Endpoint       string
+	StreamEndpoint string
+	Client         *http.Client
 }
 
 type asrRequest struct {
@@ -23,7 +24,9 @@ type asrRequest struct {
 }
 
 type asrResponse struct {
-	Text string `json:"text"`
+	Text     string   `json:"text"`
+	Partials []string `json:"partials"`
+	Final    string   `json:"final"`
 }
 
 func NewHTTPASR(endpoint string, timeout time.Duration) *HTTPASR {
@@ -42,13 +45,7 @@ func (a *HTTPASR) Stream(ctx context.Context, onPartial func(string), onFinal fu
 	}
 
 	body, _ := json.Marshal(asrRequest{SessionID: "default"})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.Endpoint+"/transcribe", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := a.Client.Do(req)
+	resp, err := a.post(ctx, strings.TrimRight(firstNonEmpty(a.StreamEndpoint, a.Endpoint), "/")+"/transcribe", body)
 	if err != nil {
 		return err
 	}
@@ -64,9 +61,29 @@ func (a *HTTPASR) Stream(ctx context.Context, onPartial func(string), onFinal fu
 		return err
 	}
 
-	onPartial("正在识别...")
-	onFinal(strings.TrimSpace(out.Text))
+	partials := out.Partials
+	if len(partials) == 0 {
+		partials = []string{"processing"}
+	}
+	for _, partial := range partials {
+		if onPartial != nil {
+			onPartial(strings.TrimSpace(partial))
+		}
+	}
+	final := strings.TrimSpace(firstNonEmpty(out.Final, out.Text))
+	if final != "" && onFinal != nil {
+		onFinal(final)
+	}
 	return nil
+}
+
+func (a *HTTPASR) post(ctx context.Context, url string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return a.Client.Do(req)
 }
 
 // XTTSStreamer calls a local XTTS-like HTTP service and streams by sentence.
@@ -104,7 +121,7 @@ func (t *XTTSStreamer) Stream(ctx context.Context, text string, onChunk func(chu
 	t.stopped = false
 	t.mu.Unlock()
 
-	parts := splitSentences(text)
+	parts := prioritizeSentenceParts(splitSentences(text))
 	if len(parts) == 0 {
 		parts = []string{text}
 	}
@@ -191,7 +208,7 @@ func splitSentences(text string) []string {
 	}
 
 	seps := map[rune]struct{}{
-		'。': {}, '！': {}, '？': {}, ';': {}, '；': {}, '.': {}, '!': {}, '?': {}, '\n': {},
+		'\u3002': {}, '\uFF0C': {}, '\uFF1B': {}, ';': {}, '\uFF01': {}, '.': {}, '!': {}, '?': {}, '\uFF1F': {}, '\n': {},
 	}
 
 	parts := make([]string, 0, 8)
@@ -213,4 +230,29 @@ func splitSentences(text string) []string {
 	}
 
 	return parts
+}
+
+func prioritizeSentenceParts(parts []string) []string {
+	if len(parts) <= 1 {
+		return parts
+	}
+	short := make([]string, 0, len(parts))
+	long := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len([]rune(strings.TrimSpace(part))) <= 10 {
+			short = append(short, part)
+			continue
+		}
+		long = append(long, part)
+	}
+	return append(short, long...)
+}
+
+func firstNonEmpty(items ...string) string {
+	for _, item := range items {
+		if strings.TrimSpace(item) != "" {
+			return item
+		}
+	}
+	return ""
 }

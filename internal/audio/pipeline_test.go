@@ -13,8 +13,12 @@ type frameASRStub struct {
 
 func (s *frameASRStub) Stream(ctx context.Context, onPartial func(string), onFinal func(string)) error {
 	_ = ctx
-	onPartial("p")
-	onFinal("f")
+	if onPartial != nil {
+		onPartial("partial")
+	}
+	if onFinal != nil {
+		onFinal("final")
+	}
 	return nil
 }
 
@@ -22,15 +26,19 @@ func (s *frameASRStub) TranscribeFrames(ctx context.Context, frames [][]float32,
 	_ = ctx
 	s.calls++
 	s.frameCount += len(frames)
-	onPartial("p")
-	onFinal("f")
+	if onPartial != nil {
+		onPartial("partial")
+	}
+	if onFinal != nil {
+		onFinal("final")
+	}
 	return nil
 }
 
 func TestPipelineUsesFrameASR(t *testing.T) {
 	asr := &frameASRStub{}
 	pipe := Pipeline{VAD: NewEnergyVAD(0.02), ASR: asr}
-	src := NewMockFrameSource(DefaultDemoFrames(), 1*time.Millisecond)
+	src := NewMockFrameSource(DefaultDemoFrames(), time.Millisecond)
 
 	finalCount := 0
 	err := pipe.Run(context.Background(), src, nil, nil, func(string) {}, func(string) {
@@ -48,5 +56,26 @@ func TestPipelineUsesFrameASR(t *testing.T) {
 	}
 	if finalCount == 0 {
 		t.Fatalf("expected final callback")
+	}
+}
+
+func TestPipelineSupportsWakeWordMode(t *testing.T) {
+	asr := &frameASRStub{}
+	wake := &MockWakeWord{}
+	pipe := Pipeline{
+		VAD:      NewEnergyVAD(0.02),
+		WakeWord: wake,
+		ASR:      asr,
+		WakeMode: WakeModeWakeWordVAD,
+	}
+	src := NewMockFrameSource(DefaultDemoFrames(), time.Millisecond)
+	if err := pipe.Run(context.Background(), src, nil, nil, nil, nil); err != nil {
+		t.Fatalf("run pipeline: %v", err)
+	}
+	if wake.Hits == 0 {
+		t.Fatalf("expected wake word detector to be hit")
+	}
+	if asr.calls == 0 {
+		t.Fatalf("expected ASR after wake word")
 	}
 }

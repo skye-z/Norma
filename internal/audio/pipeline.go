@@ -18,8 +18,17 @@ func (p *Pipeline) Run(
 		return errors.New("pipeline requires VAD and ASR")
 	}
 
-	detector := NewEndpointDetector(4)
+	silenceFrames := p.SilenceFrames
+	if silenceFrames <= 0 {
+		silenceFrames = 4
+	}
+	detector := NewEndpointDetector(silenceFrames)
 	utterance := make([][]float32, 0, 16)
+	wakeMode := p.WakeMode
+	if wakeMode == "" {
+		wakeMode = WakeModeVADOnly
+	}
+	armed := wakeMode == WakeModeVADOnly || p.WakeWord == nil
 
 	for {
 		frame, err := source.Next(ctx)
@@ -30,14 +39,34 @@ func (p *Pipeline) Run(
 			return err
 		}
 
-		isSpeech, err := p.VAD.Detect(frame)
+		processed := frame
+		for _, pre := range p.Preprocessors {
+			if pre == nil {
+				continue
+			}
+			processed = pre.Process(processed)
+		}
+
+		if !armed && p.WakeWord != nil {
+			pcm := floatToPCM16(processed)
+			matched, err := p.WakeWord.Detect(pcm)
+			if err != nil {
+				return err
+			}
+			if matched {
+				armed = true
+			}
+			continue
+		}
+
+		isSpeech, err := p.VAD.Detect(processed)
 		if err != nil {
 			return err
 		}
 
 		if isSpeech {
-			copied := make([]float32, len(frame))
-			copy(copied, frame)
+			copied := make([]float32, len(processed))
+			copy(copied, processed)
 			utterance = append(utterance, copied)
 		}
 
@@ -60,6 +89,23 @@ func (p *Pipeline) Run(
 				}
 			}
 			utterance = utterance[:0]
+			if wakeMode == WakeModeWakeWordVAD && p.WakeWord != nil {
+				armed = false
+			}
 		}
 	}
+}
+
+func floatToPCM16(frame []float32) []int16 {
+	out := make([]int16, len(frame))
+	for i, sample := range frame {
+		if sample > 1 {
+			sample = 1
+		}
+		if sample < -1 {
+			sample = -1
+		}
+		out[i] = int16(sample * 32767)
+	}
+	return out
 }

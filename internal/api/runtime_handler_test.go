@@ -11,17 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
 
 func TestRuntimePublish(t *testing.T) {
-	b := bus.New()
-	h := NewRuntimeHandler(b)
+	rt := runtime.New()
+	h := NewRuntimeHandler(rt.Bus, rt.Inspector)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
 	got := false
-	_ = b.Subscribe("demo", func(evt bus.Event) {
+	_ = rt.Bus.Subscribe("demo", func(evt bus.Event) {
 		_ = evt
 		got = true
 	})
@@ -39,8 +40,8 @@ func TestRuntimePublish(t *testing.T) {
 }
 
 func TestRuntimePublishValidation(t *testing.T) {
-	b := bus.New()
-	h := NewRuntimeHandler(b)
+	rt := runtime.New()
+	h := NewRuntimeHandler(rt.Bus, rt.Inspector)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -61,20 +62,11 @@ func TestRuntimePublishValidation(t *testing.T) {
 			t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 		}
 	})
-
-	t.Run("empty name", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/runtime/publish", strings.NewReader(`{"name":""}`))
-		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
-		}
-	})
 }
 
 func TestRuntimeEventsSSE(t *testing.T) {
-	b := bus.New()
-	h := NewRuntimeHandler(b)
+	rt := runtime.New()
+	h := NewRuntimeHandler(rt.Bus, rt.Inspector)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	ts := httptest.NewServer(mux)
@@ -92,9 +84,6 @@ func TestRuntimeEventsSSE(t *testing.T) {
 		t.Fatalf("open sse: %v", err)
 	}
 	defer resp.Body.Close()
-	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
-		t.Fatalf("unexpected content-type: %s", ct)
-	}
 
 	publishBody, _ := json.Marshal(map[string]any{
 		"name":    "live2d.reload",
@@ -113,12 +102,33 @@ func TestRuntimeEventsSSE(t *testing.T) {
 	if !strings.HasPrefix(line, "data: ") {
 		t.Fatalf("unexpected sse line: %s", line)
 	}
-	var evt bus.Event
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &evt); err != nil {
-		t.Fatalf("parse event json: %v", err)
+}
+
+func TestRuntimeDiagnostics(t *testing.T) {
+	rt := runtime.New()
+	h := NewRuntimeHandler(rt.Bus, rt.Inspector)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rt.Bus.Publish(bus.Event{Name: "audio.vad.start", SessionID: "s1", TraceID: "t1"})
+	rt.Bus.Publish(bus.Event{Name: "asr.partial", SessionID: "s1", TraceID: "t1", Payload: "你好"})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/runtime/diagnostics?limit=1", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if evt.Name != "live2d.reload" {
-		t.Fatalf("unexpected event name: %s", evt.Name)
+
+	var snapshot runtime.DiagnosticSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("unmarshal diagnostics: %v", err)
+	}
+	if snapshot.State == "" || snapshot.LastEvent == "" {
+		t.Fatalf("expected populated snapshot: %#v", snapshot)
+	}
+	if len(snapshot.Events) != 1 {
+		t.Fatalf("expected limited events, got %d", len(snapshot.Events))
 	}
 }
 

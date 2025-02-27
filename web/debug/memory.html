@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Norma 记忆管理</title>
+  <link rel="stylesheet" href="./panel.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Norma 记忆管理</h1>
+      <div class="grid2">
+        <label>内容</label><input id="content" />
+        <label>类型</label><input id="kind" value="fact" />
+        <label>重要度</label><input id="importance" type="number" value="5" />
+        <label>Memory Type</label><input id="memory_type" value="fact" />
+        <label>Source</label><input id="source" value="manual" />
+        <label>Evidence</label><input id="evidence" />
+      </div>
+      <div class="row"><button id="create">新增记忆</button><button id="governance">运行治理</button><button id="refresh">刷新列表</button><a href="./index.html">返回诊断</a></div>
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>内容</th><th>类型</th><th>重要度</th><th>状态</th><th>操作</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script type="module" src="./memory.js"></script>
+</body>
+</html>

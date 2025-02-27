@@ -1,34 +1,70 @@
 package memory
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Turn is a conversation turn used by STM budget trimming.
 type Turn struct {
-	Role    string
-	Content string
+	Role       string
+	Content    string
+	Importance int
+	Pinned     bool
 }
 
-// TrimToTokenBudget keeps recent turns within budget.
+// TrimToTokenBudget keeps important recent turns within budget.
 func TrimToTokenBudget(turns []Turn, maxTokens int) []Turn {
 	if maxTokens <= 0 || len(turns) == 0 {
 		return nil
 	}
 
-	total := 0
-	start := len(turns)
-	for i := len(turns) - 1; i >= 0; i-- {
-		t := estimateTokens(turns[i].Content)
-		if total+t > maxTokens {
+	type scoredTurn struct {
+		idx    int
+		turn   Turn
+		tokens int
+		score  int
+	}
+
+	scored := make([]scoredTurn, 0, len(turns))
+	for i, turn := range turns {
+		tokens := estimateTokens(turn.Content)
+		if tokens == 0 {
+			continue
+		}
+		score := turn.Importance*100 + i
+		if turn.Pinned {
+			score += 10000
+		}
+		scored = append(scored, scoredTurn{idx: i, turn: turn, tokens: tokens, score: score})
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score == scored[j].score {
+			return scored[i].idx > scored[j].idx
+		}
+		return scored[i].score > scored[j].score
+	})
+
+	selected := make([]scoredTurn, 0, len(scored))
+	used := 0
+	for _, item := range scored {
+		if used+item.tokens > maxTokens && len(selected) > 0 {
+			continue
+		}
+		if item.tokens > maxTokens && len(selected) == 0 {
+			selected = append(selected, item)
 			break
 		}
-		total += t
-		start = i
+		selected = append(selected, item)
+		used += item.tokens
 	}
-	if start >= len(turns) {
-		return nil
+
+	sort.Slice(selected, func(i, j int) bool { return selected[i].idx < selected[j].idx })
+	out := make([]Turn, 0, len(selected))
+	for _, item := range selected {
+		out = append(out, item.turn)
 	}
-	out := make([]Turn, len(turns[start:]))
-	copy(out, turns[start:])
 	return out
 }
 
@@ -37,7 +73,6 @@ func estimateTokens(s string) int {
 	if s == "" {
 		return 0
 	}
-	// Rough estimate for mixed zh/en text.
 	runes := len([]rune(s))
 	if runes <= 4 {
 		return 1

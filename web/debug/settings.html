@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 设置</title>
+  <title>Norma 运行时设置</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
   <main class="wrap">
     <section class="card">
-      <h1>Norma 设置</h1>
+      <h1>Norma 运行时设置</h1>
       <div class="grid2">
         <label>LLM Provider</label><input id="llm_provider" />
         <label>LLM Endpoint</label><input id="llm_endpoint" />
@@ -18,18 +18,29 @@
 
         <label>ASR Provider</label><input id="asr_provider" />
         <label>ASR Endpoint</label><input id="asr_endpoint" />
+        <label>ASR Stream Endpoint</label><input id="asr_stream_endpoint" />
 
         <label>TTS Provider</label><input id="tts_provider" />
         <label>TTS Endpoint</label><input id="tts_endpoint" />
+        <label>TTS 首句优先</label><input id="tts_sentence_first" type="checkbox" />
+
+        <label>Wake Mode</label><input id="audio_wake_mode" />
+        <label>Silence Frames</label><input id="audio_silence" type="number" />
+        <label>Interrupt During Speaking</label><input id="audio_interrupt" type="checkbox" />
+        <label>AEC Enabled</label><input id="audio_aec" type="checkbox" />
+        <label>NS Enabled</label><input id="audio_ns" type="checkbox" />
+        <label>Audio Scene</label><input id="audio_scene" />
 
         <label>RAG TopK</label><input id="rag_topk" type="number" />
         <label>STM Budget</label><input id="stm_budget" type="number" />
+        <label>STM 保留重要对话</label><input id="stm_keep_important" type="checkbox" />
+        <label>自动摘要写入</label><input id="memory_summary_auto" type="checkbox" />
 
         <label>Auto Degrade</label><input id="perf_auto" type="checkbox" />
         <label>First Token Threshold(ms)</label><input id="perf_first" type="number" />
         <label>Degraded RAG TopK</label><input id="perf_topk" type="number" />
       </div>
-      <div class="row"><button id="load">重新读取</button><button id="save">保存配置</button><a href="./index.html">返回调试</a></div>
+      <div class="row"><button id="load">重新读取</button><button id="save">保存配置</button><a href="./index.html">返回诊断</a></div>
       <pre id="log"></pre>
     </section>
   </main>

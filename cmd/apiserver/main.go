@@ -30,7 +30,7 @@ func main() {
 	svc := memory.NewService(engine)
 	mh := api.NewMemoryHandler(svc)
 	rt := runtime.New()
-	rh := api.NewRuntimeHandler(rt.Bus)
+	rh := api.NewRuntimeHandler(rt.Bus, rt.Inspector)
 	sh := api.NewSettingsHandler(*configPath, rt.Bus)
 
 	mux := http.NewServeMux()
@@ -83,7 +83,7 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

@@ -32,12 +32,19 @@ type DatabaseConfig struct {
 }
 
 type AudioConfig struct {
-	EnableWakeWord bool `mapstructure:"enable_wake_word"`
+	EnableWakeWord        bool   `mapstructure:"enable_wake_word"`
+	WakeMode              string `mapstructure:"wake_mode"`
+	EndpointSilenceFrames int    `mapstructure:"endpoint_silence_frames"`
+	InterruptDuringSpeak  bool   `mapstructure:"interrupt_during_speaking"`
+	AECEnabled            bool   `mapstructure:"aec_enabled"`
+	NSEnabled             bool   `mapstructure:"ns_enabled"`
+	Scene                 string `mapstructure:"scene"`
 }
 
 type ASRConfig struct {
 	Provider         string `mapstructure:"provider"`
 	Endpoint         string `mapstructure:"endpoint"`
+	StreamEndpoint   string `mapstructure:"stream_endpoint"`
 	RequestTimeoutMs int    `mapstructure:"request_timeout_ms"`
 	BinaryPath       string `mapstructure:"binary_path"`
 	ModelPath        string `mapstructure:"model_path"`
@@ -53,10 +60,11 @@ type LLMConfig struct {
 }
 
 type TTSConfig struct {
-	Provider         string `mapstructure:"provider"`
-	Voice            string `mapstructure:"voice"`
-	Endpoint         string `mapstructure:"endpoint"`
-	RequestTimeoutMs int    `mapstructure:"request_timeout_ms"`
+	Provider             string `mapstructure:"provider"`
+	Voice                string `mapstructure:"voice"`
+	Endpoint             string `mapstructure:"endpoint"`
+	RequestTimeoutMs     int    `mapstructure:"request_timeout_ms"`
+	SentenceFirstEnabled bool   `mapstructure:"sentence_first_enabled"`
 }
 
 type RAGConfig struct {
@@ -65,7 +73,10 @@ type RAGConfig struct {
 }
 
 type MemoryConfig struct {
-	STMTokenBudget int `mapstructure:"stm_token_budget"`
+	STMTokenBudget         int  `mapstructure:"stm_token_budget"`
+	STMReserveImportant    bool `mapstructure:"stm_reserve_important"`
+	SummaryAutoWrite       bool `mapstructure:"summary_auto_write"`
+	GovernanceCompactHours int  `mapstructure:"governance_compact_hours"`
 }
 
 type PerfConfig struct {
@@ -83,10 +94,19 @@ func defaultConfig() Config {
 			LogDir:   "logs",
 		},
 		Database: DatabaseConfig{Path: "data/norma.db"},
-		Audio:    AudioConfig{EnableWakeWord: true},
+		Audio: AudioConfig{
+			EnableWakeWord:        true,
+			WakeMode:              "wake_word_vad",
+			EndpointSilenceFrames: 4,
+			InterruptDuringSpeak:  true,
+			AECEnabled:            false,
+			NSEnabled:             false,
+			Scene:                 "speaker",
+		},
 		ASR: ASRConfig{
 			Provider:         "mock",
 			Endpoint:         "http://127.0.0.1:8081",
+			StreamEndpoint:   "",
 			RequestTimeoutMs: 10000,
 			BinaryPath:       "",
 			ModelPath:        "",
@@ -100,16 +120,22 @@ func defaultConfig() Config {
 			RequestTimeoutMs: 45000,
 		},
 		TTS: TTSConfig{
-			Provider:         "mock",
-			Voice:            "norma",
-			Endpoint:         "http://127.0.0.1:8020",
-			RequestTimeoutMs: 30000,
+			Provider:             "mock",
+			Voice:                "norma",
+			Endpoint:             "http://127.0.0.1:8020",
+			RequestTimeoutMs:     30000,
+			SentenceFirstEnabled: true,
 		},
 		RAG: RAGConfig{
 			TopK:            6,
 			VectorIndexPath: "data/vector_index.json",
 		},
-		Memory: MemoryConfig{STMTokenBudget: 2048},
+		Memory: MemoryConfig{
+			STMTokenBudget:         2048,
+			STMReserveImportant:    true,
+			SummaryAutoWrite:       true,
+			GovernanceCompactHours: 24,
+		},
 		Perf: PerfConfig{
 			AutoDegrade:              true,
 			LLMFirstTokenThresholdMs: 1200,
@@ -132,7 +158,6 @@ func Load(path string) (*Config, error) {
 	setDefaults(v, cfg)
 
 	if err := v.ReadInConfig(); err != nil {
-		// Allow missing config file; defaults + env are still valid.
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("read config: %w", err)
 		}
@@ -154,9 +179,16 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("database.path", cfg.Database.Path)
 
 	v.SetDefault("audio.enable_wake_word", cfg.Audio.EnableWakeWord)
+	v.SetDefault("audio.wake_mode", cfg.Audio.WakeMode)
+	v.SetDefault("audio.endpoint_silence_frames", cfg.Audio.EndpointSilenceFrames)
+	v.SetDefault("audio.interrupt_during_speaking", cfg.Audio.InterruptDuringSpeak)
+	v.SetDefault("audio.aec_enabled", cfg.Audio.AECEnabled)
+	v.SetDefault("audio.ns_enabled", cfg.Audio.NSEnabled)
+	v.SetDefault("audio.scene", cfg.Audio.Scene)
 
 	v.SetDefault("asr.provider", cfg.ASR.Provider)
 	v.SetDefault("asr.endpoint", cfg.ASR.Endpoint)
+	v.SetDefault("asr.stream_endpoint", cfg.ASR.StreamEndpoint)
 	v.SetDefault("asr.request_timeout_ms", cfg.ASR.RequestTimeoutMs)
 	v.SetDefault("asr.binary_path", cfg.ASR.BinaryPath)
 	v.SetDefault("asr.model_path", cfg.ASR.ModelPath)
@@ -172,11 +204,15 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("tts.voice", cfg.TTS.Voice)
 	v.SetDefault("tts.endpoint", cfg.TTS.Endpoint)
 	v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
+	v.SetDefault("tts.sentence_first_enabled", cfg.TTS.SentenceFirstEnabled)
 
 	v.SetDefault("rag.top_k", cfg.RAG.TopK)
 	v.SetDefault("rag.vector_index_path", cfg.RAG.VectorIndexPath)
 
 	v.SetDefault("memory.stm_token_budget", cfg.Memory.STMTokenBudget)
+	v.SetDefault("memory.stm_reserve_important", cfg.Memory.STMReserveImportant)
+	v.SetDefault("memory.summary_auto_write", cfg.Memory.SummaryAutoWrite)
+	v.SetDefault("memory.governance_compact_hours", cfg.Memory.GovernanceCompactHours)
 
 	v.SetDefault("perf.auto_degrade", cfg.Perf.AutoDegrade)
 	v.SetDefault("perf.llm_first_token_threshold_ms", cfg.Perf.LLMFirstTokenThresholdMs)
