@@ -29,7 +29,7 @@
     <section class="hero">
       <span class="hero-tag">First Run Wizard</span>
       <h1>首启向导</h1>
-      <p>聚合 Provider 就绪、Live2D 模型、配置文件和系统权限提示。适合首次安装、迁移环境和升级后回归检查。</p>
+      <p>聚合 Provider 就绪、Live2D 模型、配置文件、设备矩阵与回退模式建议。适合首次安装、迁移环境和升级后回归检查。</p>
       <div class="hero-actions">
         <button id="refresh" class="primary">重新检测</button>
         <a class="button-link" href="./settings.html">前往设置页</a>
@@ -50,11 +50,15 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h2>建议动作</h2>
+          <h2>建议与回退</h2>
           <span class="mini-note">Fallback Guide</span>
         </div>
         <div class="panel-body stack">
           <div id="suggestions" class="control-stack"></div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">兼容回退模式</div>
+            <div id="fallback_modes" class="control-stack"></div>
+          </div>
           <pre id="log" class="console"></pre>
         </div>
       </section>

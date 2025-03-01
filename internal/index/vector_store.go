@@ -114,10 +114,14 @@ func (s *DiskVectorStore) Search(ctx context.Context, query string, topK int) ([
 	if err != nil {
 		q = embedF32(query)
 	}
-	return s.SearchVector(ctx, q, topK)
+	return s.SearchVectorTuned(ctx, q, topK, VectorSearchOptions{})
 }
 
 func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []float32, topK int) ([]Chunk, error) {
+	return s.SearchVectorTuned(ctx, queryEmbedding, topK, VectorSearchOptions{})
+}
+
+func (s *DiskVectorStore) SearchVectorTuned(ctx context.Context, queryEmbedding []float32, topK int, opts VectorSearchOptions) ([]Chunk, error) {
 	_ = ctx
 	if topK <= 0 {
 		topK = 5
@@ -131,7 +135,7 @@ func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []flo
 	}
 
 	if s.hnswIndex != nil && len(queryEmbedding) > 0 {
-		hits := s.searchHNSWLocked(queryEmbedding, topK)
+		hits := s.searchHNSWLocked(queryEmbedding, topK, opts)
 		if len(hits) > 0 {
 			return hits, nil
 		}
@@ -140,12 +144,15 @@ func (s *DiskVectorStore) SearchVector(ctx context.Context, queryEmbedding []flo
 	return s.searchLinearLocked(queryEmbedding, topK), nil
 }
 
-func (s *DiskVectorStore) searchHNSWLocked(queryEmbedding []float32, topK int) []Chunk {
+func (s *DiskVectorStore) searchHNSWLocked(queryEmbedding []float32, topK int, opts VectorSearchOptions) []Chunk {
 	if s.hnswIndex == nil {
 		return nil
 	}
 
 	ef := s.hnswEFSearch
+	if opts.EFSearch > 0 {
+		ef = opts.EFSearch
+	}
 	if ef < topK*2 {
 		ef = topK * 2
 	}

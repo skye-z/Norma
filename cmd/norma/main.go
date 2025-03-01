@@ -67,13 +67,17 @@ func main() {
 		cfg.Perf.DegradedRAGTopK,
 	)
 	quality.SetDegradedAudioChunkSize(cfg.Perf.DegradedAudioChunkSize)
+	quality.SetDegradedEFSearch(cfg.Perf.DegradedEFSearch)
+	quality.SetDegradedRetrieverFactors(cfg.Perf.DegradedRetrieverExtra, cfg.Perf.DegradedRetrieverFuse)
+	quality.SetDegradedLLMModel(cfg.Perf.DegradedLLMModel)
+	quality.SetDegradedTTSVoice(cfg.Perf.DegradedTTSVoice)
 	tracker := metrics.NewTracker()
 	runtime.AttachLatencyObserver(rt, tracker, quality)
 
 	_ = live2d.NewBridge(rt.Bus)
 
-	tts := chooseTTS(cfg, providerMgr)
-	streamer := chooseLLMStreamer(cfg)
+	tts := chooseTTS(cfg, providerMgr, quality)
+	streamer := chooseLLMStreamer(cfg, quality)
 	retriever := chooseRetriever(cfg, engine, providerMgr)
 	_ = runtime.NewOrchestrator(rt, retriever, streamer, tts, cfg.RAG.TopK, quality)
 
@@ -232,7 +236,7 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 	}
 }
 
-func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
+func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.QualityController) audio.TTS {
 	fallback := audio.NewMockTTS()
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
 	case "http", "xtts":
@@ -247,36 +251,60 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 			log.Printf("[tts] piper not configured, fallback to mock")
 			return fallback
 		}
+		primary := audio.NewPiperTTS(binary, model, cfg.TTS.Voice)
+		degraded := audio.TTS(nil)
+		if quality != nil {
+			if degradedVoice := strings.TrimSpace(cfg.Perf.DegradedTTSVoice); degradedVoice != "" && degradedVoice != cfg.TTS.Voice {
+				degradedModel := mgr.ResolveFile("tts", "", "", degradedVoice+".onnx")
+				if degradedModel != "" {
+					log.Printf("[tts] degrade voice available voice=%s model=%s", degradedVoice, degradedModel)
+					degraded = audio.NewPiperTTS(binary, degradedModel, degradedVoice)
+				}
+			}
+		}
 		log.Printf("[tts] use piper binary=%s model=%s", binary, model)
-		return audio.NewPiperTTS(binary, model, cfg.TTS.Voice)
+		if degraded != nil && quality != nil {
+			return &audio.RoutedTTS{Primary: primary, Degraded: degraded, Fallback: fallback, UseDegraded: quality.IsDegraded}
+		}
+		return primary
 	default:
 		return fallback
 	}
 }
 
-func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
+func chooseLLMStreamer(cfg *config.Config, quality *runtime.QualityController) llm.Streamer {
 	fallback := llm.MockStreamer{}
-	if cfg.LLM.Provider == "ollama" {
-		if err := llm.PingOllama(cfg.LLM.Endpoint, 2*time.Second); err == nil {
-			model := strings.TrimSpace(cfg.LLM.Model)
-			if model == "" {
-				discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, 2*time.Second)
-				if derr != nil {
-					log.Printf("[llm] discover model failed, fallback to mock: %v", derr)
-					return fallback
-				}
-				model = discovered
-			}
-
-			log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
-			return llm.FallbackStreamer{
-				Primary:  llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond),
-				Fallback: fallback,
-			}
-		}
-		log.Printf("[llm] ollama unavailable, fallback to mock")
+	if cfg.LLM.Provider != "ollama" {
+		return fallback
 	}
-	return fallback
+	if err := llm.PingOllama(cfg.LLM.Endpoint, 2*time.Second); err != nil {
+		log.Printf("[llm] ollama unavailable, fallback to mock")
+		return fallback
+	}
+
+	model := strings.TrimSpace(cfg.LLM.Model)
+	if model == "" {
+		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, 2*time.Second)
+		if derr != nil {
+			log.Printf("[llm] discover model failed, fallback to mock: %v", derr)
+			return fallback
+		}
+		model = discovered
+	}
+	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond)
+	degradedModel := strings.TrimSpace(cfg.Perf.DegradedLLMModel)
+	if degradedModel == "" || degradedModel == model || quality == nil {
+		log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
+		return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
+	}
+
+	log.Printf("[llm] use ollama provider endpoint=%s primary=%s degraded=%s", cfg.LLM.Endpoint, model, degradedModel)
+	return llm.RoutedStreamer{
+		Primary:     primary,
+		Degraded:    llm.NewOllamaStreamer(cfg.LLM.Endpoint, degradedModel, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond),
+		Fallback:    fallback,
+		UseDegraded: quality.IsDegraded,
+	}
 }
 
 func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) index.Retriever {

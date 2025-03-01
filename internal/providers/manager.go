@@ -20,14 +20,20 @@ type Manifest struct {
 }
 
 type ManifestRecord struct {
-	ID        string `json:"id,omitempty"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Kind      string `json:"kind"`
-	Binary    string `json:"binary"`
-	Model     string `json:"model"`
-	Endpoint  string `json:"endpoint"`
-	Installed bool   `json:"installed"`
+	ID               string `json:"id,omitempty"`
+	Name             string `json:"name"`
+	Version          string `json:"version"`
+	Kind             string `json:"kind"`
+	Binary           string `json:"binary"`
+	Model            string `json:"model"`
+	Endpoint         string `json:"endpoint"`
+	Installed        bool   `json:"installed"`
+	Integrity        string `json:"integrity,omitempty"`
+	IntegrityNote    string `json:"integrity_note,omitempty"`
+	Source           string `json:"source,omitempty"`
+	LocalSHA256      string `json:"local_sha256,omitempty"`
+	ExtraLocalSHA256 string `json:"extra_local_sha256,omitempty"`
+	InstalledAt      string `json:"installed_at,omitempty"`
 }
 
 func NewManager(root string) *Manager {

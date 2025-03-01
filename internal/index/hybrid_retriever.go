@@ -43,18 +43,12 @@ func (r *RetrieverHybrid) SetPostProcessOptions(opts RetrieverPostProcessOptions
 }
 
 func (r *RetrieverHybrid) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
-	if topK <= 0 {
-		topK = 5
-	}
+	return r.SearchTuned(ctx, query, topK, DefaultSearchTuning(topK))
+}
 
-	extra := topK * 2
-	if extra < 8 {
-		extra = 8
-	}
-	fuseTopK := topK * 3
-	if fuseTopK < 12 {
-		fuseTopK = 12
-	}
+func (r *RetrieverHybrid) SearchTuned(ctx context.Context, query string, topK int, tuning SearchTuning) ([]Chunk, error) {
+	tuning = normalizeSearchTuning(tuning, topK)
+	topK = tuning.TopK
 
 	var vHits []Chunk
 	var tHits []Chunk
@@ -62,24 +56,59 @@ func (r *RetrieverHybrid) Search(ctx context.Context, query string, topK int) ([
 
 	if r.vector != nil {
 		emb := embedF32(query)
-		vHits, err = r.vector.SearchVector(ctx, emb, extra)
+		if tuned, ok := r.vector.(TunedVectorSearcher); ok {
+			vHits, err = tuned.SearchVectorTuned(ctx, emb, candidateCount(topK, tuning.RetrieverExtraFactor, tuning.MinVectorCandidates), VectorSearchOptions{EFSearch: tuning.VectorEFSearch})
+		} else {
+			vHits, err = r.vector.SearchVector(ctx, emb, candidateCount(topK, tuning.RetrieverExtraFactor, tuning.MinVectorCandidates))
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
 	if r.text != nil {
-		tHits, err = r.text.SearchText(ctx, query, extra)
+		tHits, err = r.text.SearchText(ctx, query, candidateCount(topK, tuning.RetrieverExtraFactor, tuning.MinVectorCandidates))
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	fused := r.fuser.Fuse(vHits, tHits, fuseTopK)
+	fused := r.fuser.Fuse(vHits, tHits, candidateCount(topK, tuning.RetrieverFuseFactor, tuning.MinFusionCandidates))
 	out := optimizeRetrievedChunks(query, fused, r.opts)
 	if len(out) > topK {
 		out = out[:topK]
 	}
 	return out, nil
+}
+
+func normalizeSearchTuning(tuning SearchTuning, topK int) SearchTuning {
+	defaults := DefaultSearchTuning(topK)
+	if tuning.TopK <= 0 {
+		tuning.TopK = defaults.TopK
+	}
+	if tuning.RetrieverExtraFactor <= 0 {
+		tuning.RetrieverExtraFactor = defaults.RetrieverExtraFactor
+	}
+	if tuning.RetrieverFuseFactor <= 0 {
+		tuning.RetrieverFuseFactor = defaults.RetrieverFuseFactor
+	}
+	if tuning.MinVectorCandidates <= 0 {
+		tuning.MinVectorCandidates = defaults.MinVectorCandidates
+	}
+	if tuning.MinFusionCandidates <= 0 {
+		tuning.MinFusionCandidates = defaults.MinFusionCandidates
+	}
+	return tuning
+}
+
+func candidateCount(topK, factor, minimum int) int {
+	count := topK * factor
+	if count < minimum {
+		count = minimum
+	}
+	if count < topK {
+		count = topK
+	}
+	return count
 }
 
 func (r *RetrieverHybrid) Components() (VectorSearcher, FullTextSearcher, RankFuser) {

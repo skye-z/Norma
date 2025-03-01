@@ -26,7 +26,7 @@ function Load-Manifest([string]$Path) {
 }
 
 function Save-Manifest([string]$Path, $Manifest) {
-    $json = $Manifest | ConvertTo-Json -Depth 8
+    $json = $Manifest | ConvertTo-Json -Depth 10
     [IO.File]::WriteAllText($Path, $json, [Text.UTF8Encoding]::new($false))
 }
 
@@ -34,11 +34,15 @@ function Download-File([string]$Url, [string]$Target) {
     Invoke-WebRequest -Uri $Url -OutFile $Target -UseBasicParsing
 }
 
+function Get-Sha256([string]$Path) {
+    return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 function Test-Sha256([string]$Path, [string]$Expected) {
     if ([string]::IsNullOrWhiteSpace($Expected)) {
         return
     }
-    $actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256 -Path $Path
     $expectedNorm = $Expected.Trim().ToLowerInvariant()
     if ($actual -ne $expectedNorm) {
         throw "sha256 mismatch for $Path: expected=$expectedNorm actual=$actual"
@@ -78,6 +82,7 @@ function Write-ManagedFiles($Files, [string]$Target) {
 }
 
 function Install-ExtraFiles($ExtraFiles, [string]$Tmp, [string]$Target) {
+    $hashes = @()
     foreach ($extra in $ExtraFiles) {
         $extraArchive = Join-Path $Tmp ([IO.Path]::GetFileName(($extra.source -split '\?')[0]))
         Write-Host "[STEP] download extra $($extra.source)"
@@ -90,7 +95,9 @@ function Install-ExtraFiles($ExtraFiles, [string]$Tmp, [string]$Target) {
         Test-Sha256 -Path $extraArchive -Expected $extraExpected
         $extraTarget = if ($extra.target_name) { $extra.target_name } else { [IO.Path]::GetFileName(($extra.source -split '\?')[0]) }
         Copy-Item -Force $extraArchive (Join-Path $Target $extraTarget)
+        $hashes += (Get-Sha256 -Path $extraArchive)
     }
+    return ($hashes -join ',')
 }
 
 Push-Location .
@@ -148,6 +155,7 @@ try {
         $expected = Resolve-Checksum -FilePath $checksumCache -ChecksumSource $item.checksum_source -MatchName $item.checksum_match
     }
     Test-Sha256 -Path $archive -Expected $expected
+    $mainHash = Get-Sha256 -Path $archive
 
     Write-Host "[STEP] install to $target"
     switch ($item.archive_type) {
@@ -182,8 +190,9 @@ try {
         }
     }
 
+    $extraHashes = ''
     if ($item.extra_files) {
-        Install-ExtraFiles -ExtraFiles $item.extra_files -Tmp $tmp -Target $target
+        $extraHashes = Install-ExtraFiles -ExtraFiles $item.extra_files -Tmp $tmp -Target $target
     }
     if ($item.managed_files) {
         Write-ManagedFiles -Files $item.managed_files -Target $target
@@ -199,6 +208,12 @@ try {
         model = $(if ($item.target_name) { $item.target_name } else { '' })
         endpoint = ''
         installed = $true
+        integrity = [string]$item.integrity
+        integrity_note = [string]$item.integrity_note
+        source = [string]$item.source
+        local_sha256 = $mainHash
+        extra_local_sha256 = $extraHashes
+        installed_at = (Get-Date).ToString('s')
     }
     Save-Manifest $manifestPath $manifest
 

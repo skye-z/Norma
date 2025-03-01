@@ -80,7 +80,13 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		topK = o.quality.RAGTopK(topK)
 	}
 
-	chunks, err := o.retriever.Search(ctx, text, topK)
+	var chunks []index.Chunk
+	var err error
+	if tuned, ok := o.retriever.(index.TunedRetriever); ok && o.quality != nil {
+		chunks, err = tuned.SearchTuned(ctx, text, topK, o.quality.SearchTuning(topK))
+	} else {
+		chunks, err = o.retriever.Search(ctx, text, topK)
+	}
 	if err != nil {
 		log.Printf("[orchestrator] retriever error: %v", err)
 		o.publishError(sessionID, traceID, "retriever_failed", err)

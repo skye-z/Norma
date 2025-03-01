@@ -222,6 +222,19 @@ func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Requ
 	}
 	cfg.TTS.SentenceFirstEnabled = true
 	cfg.RAG.EmbedProvider = "ollama"
+	if cfg.Perf.DegradedEFSearch <= 0 {
+		cfg.Perf.DegradedEFSearch = 24
+	}
+	if cfg.Perf.DegradedRetrieverExtra <= 0 {
+		cfg.Perf.DegradedRetrieverExtra = 1
+	}
+	if cfg.Perf.DegradedRetrieverFuse <= 0 {
+		cfg.Perf.DegradedRetrieverFuse = 2
+	}
+	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" {
+		cfg.Perf.DegradedTTSVoice = "zh_CN-huayan-x_low"
+	}
+	cfg.RAG.EmbedProvider = "ollama"
 	if cfg.RAG.TopK <= 0 {
 		cfg.RAG.TopK = 6
 	}
@@ -283,10 +296,24 @@ func (h *ProviderHandler) handleExportReadiness(w http.ResponseWriter, r *http.R
 		return
 	}
 	mgr := providers.NewManager(cfg.Providers.Root)
+	manifest, err := mgr.LoadManifest()
+	if err != nil {
+		writeAPIError(w, errs.Internal("provider_manifest_load_failed", err.Error()))
+		return
+	}
+	stack := map[string]string{
+		"wake":      cfg.Audio.WakeProvider,
+		"asr":       cfg.ASR.Provider,
+		"tts":       cfg.TTS.Provider,
+		"embedding": cfg.RAG.EmbedProvider,
+		"llm":       cfg.LLM.Provider,
+	}
 	report := map[string]any{
 		"exported_at": time.Now().Format(time.RFC3339),
 		"root":        mgr.Root(),
+		"stack":       stack,
 		"health":      providers.BuildHealth(mgr),
+		"manifest":    manifest,
 	}
 	outDir := filepath.Join("diagnostics", "provider-readiness")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {

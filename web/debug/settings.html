@@ -13,7 +13,7 @@
         <span class="brand-mark"></span>
         <div>
           <div class="brand-title">NORMA / SETTINGS CONSOLE</div>
-          <span class="brand-sub">运行时、Provider 与安全策略</span>
+          <span class="brand-sub">运行时、Provider 与性能策略</span>
         </div>
       </div>
       <nav class="nav-tabs">
@@ -23,13 +23,13 @@
         <a class="active" href="./settings.html">运行时设置</a>
         <a href="./onboarding.html">首启向导</a>
       </nav>
-      <span class="status-chip">支持热更新</span>
+      <span class="status-chip">热更新配置</span>
     </header>
 
     <section class="hero">
       <span class="hero-tag">Runtime Settings</span>
       <h1>运行时与 Provider 设置</h1>
-      <p>集中维护语音链路、Wake、Embedding、性能策略与受管 Provider。优先由 Norma 统一管理二进制、模型和默认配置，避免手工改路径。</p>
+      <p>集中维护 Wake、ASR、TTS、Embedding、降级策略与受管 Provider。优先由 Norma 统一管理二进制、模型和默认配置，避免用户手动改路径。</p>
       <div class="hero-actions">
         <button id="load">重新读取</button>
         <button id="save" class="primary">保存配置</button>
@@ -48,18 +48,18 @@
         <div class="panel-body">
           <div class="form-grid">
             <div><label for="llm_provider">LLM Provider</label><input id="llm_provider" /></div>
-            <div><label for="llm_model">LLM Model</label><input id="llm_model" /></div>
+            <div><label for="llm_model">LLM 主模型</label><input id="llm_model" /></div>
             <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" /></div>
             <div><label for="llm_timeout">LLM 超时（毫秒）</label><input id="llm_timeout" type="number" /></div>
 
             <div><label for="asr_provider">ASR Provider</label><input id="asr_provider" /></div>
-            <div class="full"><label for="asr_binary_path">ASR 二进制路径（可留空，优先走受管目录）</label><input id="asr_binary_path" /></div>
-            <div class="full"><label for="asr_model_path">ASR 模型路径（可留空，优先走受管目录）</label><input id="asr_model_path" /></div>
+            <div class="full"><label for="asr_binary_path">ASR 二进制路径</label><input id="asr_binary_path" /></div>
+            <div class="full"><label for="asr_model_path">ASR 模型路径</label><input id="asr_model_path" /></div>
 
             <div><label for="tts_provider">TTS Provider</label><input id="tts_provider" /></div>
             <div><label for="tts_voice">TTS Voice / 模型名</label><input id="tts_voice" /></div>
-            <div class="full"><label for="tts_binary_path">TTS 二进制路径（可留空，优先走受管目录）</label><input id="tts_binary_path" /></div>
-            <div class="full"><label for="tts_model_path">TTS 模型路径（可留空，优先走受管目录）</label><input id="tts_model_path" /></div>
+            <div class="full"><label for="tts_binary_path">TTS 二进制路径</label><input id="tts_binary_path" /></div>
+            <div class="full"><label for="tts_model_path">TTS 模型路径</label><input id="tts_model_path" /></div>
             <div class="full"><label><input id="tts_sentence_first" type="checkbox" /> 启用短句优先首包策略</label></div>
           </div>
         </div>
@@ -80,8 +80,8 @@
             <div><label for="audio_wake_keyword">Wake 关键词</label><input id="audio_wake_keyword" /></div>
             <div><label for="audio_wake_window_ms">Wake 窗口（毫秒）</label><input id="audio_wake_window_ms" type="number" /></div>
             <div><label for="audio_wake_detect_interval_ms">Wake 检测间隔（毫秒）</label><input id="audio_wake_detect_interval_ms" type="number" /></div>
-            <div><label for="audio_silence">端点静音帧阈值</label><input id="audio_silence" type="number" /></div>
-            <div><label><input id="audio_interrupt" type="checkbox" /> 说话中允许打断</label></div>
+            <div><label for="audio_silence">端点静音帧数</label><input id="audio_silence" type="number" /></div>
+            <div><label><input id="audio_interrupt" type="checkbox" /> Speaking 阶段允许打断</label></div>
             <div><label><input id="audio_aec" type="checkbox" /> 启用 AEC</label></div>
             <div><label><input id="audio_ns" type="checkbox" /> 启用降噪</label></div>
             <div><label for="audio_scene">音频场景</label><input id="audio_scene" /></div>
@@ -126,7 +126,7 @@
     <section class="layout layout-2">
       <section class="panel">
         <div class="panel-head">
-          <h2>性能策略</h2>
+          <h2>性能与降级</h2>
           <span class="mini-note">Perf Policy</span>
         </div>
         <div class="panel-body">
@@ -134,7 +134,12 @@
             <div><label><input id="perf_auto" type="checkbox" /> 启用自动降级</label></div>
             <div><label for="perf_first">首 token 阈值（毫秒）</label><input id="perf_first" type="number" /></div>
             <div><label for="perf_topk">降级后 TopK</label><input id="perf_topk" type="number" /></div>
+            <div><label for="perf_ef_search">降级后 efSearch</label><input id="perf_ef_search" type="number" /></div>
+            <div><label for="perf_extra_factor">降级后检索扩展倍数</label><input id="perf_extra_factor" type="number" /></div>
+            <div><label for="perf_fuse_factor">降级后融合候选倍数</label><input id="perf_fuse_factor" type="number" /></div>
             <div><label for="perf_audio_chunk">降级后音频块大小</label><input id="perf_audio_chunk" type="number" /></div>
+            <div><label for="perf_degraded_llm_model">降级 LLM 模型</label><input id="perf_degraded_llm_model" /></div>
+            <div><label for="perf_degraded_tts_voice">降级 TTS Voice</label><input id="perf_degraded_tts_voice" /></div>
             <div><label for="perf_alert_llm">LLM 告警阈值</label><input id="perf_alert_llm" type="number" /></div>
             <div><label for="perf_alert_tts">TTS 告警阈值</label><input id="perf_alert_tts" type="number" /></div>
             <div class="full"><label for="perf_baseline_file">基线文件路径</label><input id="perf_baseline_file" /></div>
@@ -144,7 +149,7 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h2>安全策略</h2>
+          <h2>安全与目录</h2>
           <span class="mini-note">Security Policy</span>
         </div>
         <div class="panel-body stack">

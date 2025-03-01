@@ -9,10 +9,24 @@ database:
 
 audio:
   enable_wake_word: true
+  wake_mode: wake_word_vad
+  wake_provider: sherpa-onnx
+  wake_binary_path: ""
+  wake_model_path: ""
+  wake_keywords_file_path: ""
+  wake_keyword: 诺玛
+  wake_window_ms: 2000
+  wake_detect_interval_ms: 400
+  endpoint_silence_frames: 4
+  interrupt_during_speaking: true
+  aec_enabled: false
+  ns_enabled: false
+  scene: speaker
 
 asr:
-  provider: mock
-  endpoint: http://127.0.0.1:8081
+  provider: whispercpp
+  endpoint: ""
+  stream_endpoint: ""
   request_timeout_ms: 10000
   binary_path: ""
   model_path: ""
@@ -21,23 +35,57 @@ asr:
 
 llm:
   provider: ollama
+  model: ""
   endpoint: http://127.0.0.1:11434
   request_timeout_ms: 45000
 
 tts:
-  provider: mock
-  voice: norma
-  endpoint: http://127.0.0.1:8020
+  provider: piper
+  voice: zh_CN-huayan-medium
+  endpoint: ""
   request_timeout_ms: 30000
+  binary_path: ""
+  model_path: ""
+  sentence_first_enabled: true
 
 rag:
   top_k: 6
   vector_index_path: data/vector_index.json
+  embed_provider: ollama
+  embed_endpoint: http://127.0.0.1:11434
+  embed_model: bge-m3:latest
 
 memory:
   stm_token_budget: 2048
+  stm_reserve_important: true
+  summary_auto_write: true
+  governance_compact_hours: 24
 
 perf:
   auto_degrade: true
   llm_first_token_threshold_ms: 1200
   degraded_rag_top_k: 4
+  degraded_ef_search: 24
+  degraded_retriever_extra_factor: 1
+  degraded_retriever_fuse_factor: 2
+  degraded_audio_chunk_size: 4096
+  degraded_llm_model: qwen2.5:3b
+  degraded_tts_voice: zh_CN-huayan-x_low
+  alert_llm_first_token_ms: 1500
+  alert_tts_first_chunk_ms: 1200
+  baseline_file: configs/perf-baseline.json
+
+security:
+  allow_remote_providers: false
+  allowed_remote_hosts:
+    - 127.0.0.1
+    - localhost
+  tool_whitelist:
+    - open_local_file
+    - open_debug_panel
+    - export_diagnostics
+  high_risk_confirm: true
+  purge_proof_dir: diagnostics/purge-proofs
+
+providers:
+  root: runtime/providers

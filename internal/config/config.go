@@ -97,7 +97,12 @@ type PerfConfig struct {
 	AutoDegrade              bool   `mapstructure:"auto_degrade"`
 	LLMFirstTokenThresholdMs int    `mapstructure:"llm_first_token_threshold_ms"`
 	DegradedRAGTopK          int    `mapstructure:"degraded_rag_top_k"`
+	DegradedEFSearch         int    `mapstructure:"degraded_ef_search"`
+	DegradedRetrieverExtra   int    `mapstructure:"degraded_retriever_extra_factor"`
+	DegradedRetrieverFuse    int    `mapstructure:"degraded_retriever_fuse_factor"`
 	DegradedAudioChunkSize   int    `mapstructure:"degraded_audio_chunk_size"`
+	DegradedLLMModel         string `mapstructure:"degraded_llm_model"`
+	DegradedTTSVoice         string `mapstructure:"degraded_tts_voice"`
 	AlertLLMFirstTokenMs     int    `mapstructure:"alert_llm_first_token_ms"`
 	AlertTTSFirstChunkMs     int    `mapstructure:"alert_tts_first_chunk_ms"`
 	BaselineFile             string `mapstructure:"baseline_file"`
@@ -126,7 +131,7 @@ func defaultConfig() Config {
 			WakeBinaryPath:        "",
 			WakeModelPath:         "",
 			WakeKeywordsFilePath:  "",
-			WakeKeyword:           "诺玛",
+			WakeKeyword:           "璇虹帥",
 			WakeWindowMs:          2000,
 			WakeDetectIntervalMs:  400,
 			EndpointSilenceFrames: 4,
@@ -135,12 +140,24 @@ func defaultConfig() Config {
 			NSEnabled:             false,
 			Scene:                 "speaker",
 		},
-		ASR:       ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
-		LLM:       LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
-		TTS:       TTSConfig{Provider: "piper", Voice: "zh_CN-huayan-medium", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
-		RAG:       RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json", EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434", EmbedModel: "bge-m3:latest"},
-		Memory:    MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
-		Perf:      PerfConfig{AutoDegrade: true, LLMFirstTokenThresholdMs: 1200, DegradedRAGTopK: 4, DegradedAudioChunkSize: 4096, AlertLLMFirstTokenMs: 1500, AlertTTSFirstChunkMs: 1200, BaselineFile: "configs/perf-baseline.json"},
+		ASR:    ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
+		LLM:    LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
+		TTS:    TTSConfig{Provider: "piper", Voice: "zh_CN-huayan-medium", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
+		RAG:    RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json", EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434", EmbedModel: "bge-m3:latest"},
+		Memory: MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
+		Perf: PerfConfig{
+			AutoDegrade:              true,
+			LLMFirstTokenThresholdMs: 1200,
+			DegradedRAGTopK:          4,
+			DegradedEFSearch:         24,
+			DegradedRetrieverExtra:   1,
+			DegradedRetrieverFuse:    2,
+			DegradedAudioChunkSize:   4096,
+			DegradedLLMModel:         "",
+			DegradedTTSVoice:         "zh_CN-huayan-x_low",
+			AlertLLMFirstTokenMs:     1500,
+			AlertTTSFirstChunkMs:     1200,
+			BaselineFile:             "configs/perf-baseline.json"},
 		Security:  SecurityConfig{AllowRemoteProviders: false, AllowedRemoteHosts: []string{"127.0.0.1", "localhost"}, ToolWhitelist: []string{"open_local_file", "open_debug_panel", "export_diagnostics"}, HighRiskConfirm: true, PurgeProofDir: "diagnostics/purge-proofs"},
 		Providers: ProvidersConfig{Root: "runtime/providers"},
 	}
@@ -218,7 +235,12 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("perf.auto_degrade", cfg.Perf.AutoDegrade)
 	v.SetDefault("perf.llm_first_token_threshold_ms", cfg.Perf.LLMFirstTokenThresholdMs)
 	v.SetDefault("perf.degraded_rag_top_k", cfg.Perf.DegradedRAGTopK)
+	v.SetDefault("perf.degraded_ef_search", cfg.Perf.DegradedEFSearch)
+	v.SetDefault("perf.degraded_retriever_extra_factor", cfg.Perf.DegradedRetrieverExtra)
+	v.SetDefault("perf.degraded_retriever_fuse_factor", cfg.Perf.DegradedRetrieverFuse)
 	v.SetDefault("perf.degraded_audio_chunk_size", cfg.Perf.DegradedAudioChunkSize)
+	v.SetDefault("perf.degraded_llm_model", cfg.Perf.DegradedLLMModel)
+	v.SetDefault("perf.degraded_tts_voice", cfg.Perf.DegradedTTSVoice)
 	v.SetDefault("perf.alert_llm_first_token_ms", cfg.Perf.AlertLLMFirstTokenMs)
 	v.SetDefault("perf.alert_tts_first_chunk_ms", cfg.Perf.AlertTTSFirstChunkMs)
 	v.SetDefault("perf.baseline_file", cfg.Perf.BaselineFile)

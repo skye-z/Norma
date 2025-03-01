@@ -66,7 +66,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		cfg.Audio.WakeProvider = "sherpa-onnx"
 	}
 	if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
-		cfg.Audio.WakeKeyword = "诺玛"
+		cfg.Audio.WakeKeyword = "璇虹帥"
 	}
 	if cfg.Audio.WakeWindowMs <= 0 {
 		cfg.Audio.WakeWindowMs = 2000
@@ -101,8 +101,20 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.Perf.DegradedRAGTopK <= 0 {
 		cfg.Perf.DegradedRAGTopK = 4
 	}
+	if cfg.Perf.DegradedEFSearch <= 0 {
+		cfg.Perf.DegradedEFSearch = 24
+	}
+	if cfg.Perf.DegradedRetrieverExtra <= 0 {
+		cfg.Perf.DegradedRetrieverExtra = 1
+	}
+	if cfg.Perf.DegradedRetrieverFuse <= 0 {
+		cfg.Perf.DegradedRetrieverFuse = 2
+	}
 	if cfg.Perf.DegradedAudioChunkSize <= 0 {
 		cfg.Perf.DegradedAudioChunkSize = 4096
+	}
+	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" {
+		cfg.Perf.DegradedTTSVoice = "zh_CN-huayan-x_low"
 	}
 	if cfg.Perf.AlertLLMFirstTokenMs <= 0 {
 		cfg.Perf.AlertLLMFirstTokenMs = 1500

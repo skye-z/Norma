@@ -2,6 +2,7 @@ const api = 'http://127.0.0.1:8090';
 const summaryEl = document.getElementById('summary');
 const checksEl = document.getElementById('checks');
 const suggestionsEl = document.getElementById('suggestions');
+const fallbackModesEl = document.getElementById('fallback_modes');
 const logEl = document.getElementById('log');
 
 function pill(status) {
@@ -17,7 +18,7 @@ function log(message) {
 function render(report) {
   summaryEl.innerHTML = '';
   const lines = [
-    ['总体状态', report.ready ? '可进入桌面伴侣模式' : '仍需补齐依赖'],
+    ['总体状态', report.ready ? '可以进入桌面伴侣模式' : '仍需补齐依赖'],
     ['Wake', report.provider?.wake?.status || '-'],
     ['ASR', report.provider?.asr?.status || '-'],
     ['TTS', report.provider?.tts?.status || '-'],
@@ -49,6 +50,14 @@ function render(report) {
     card.className = 'metric-tile';
     card.innerHTML = `<div class="metric-foot">${item}</div>`;
     suggestionsEl.appendChild(card);
+  }
+
+  fallbackModesEl.innerHTML = '';
+  for (const item of report.fallback_modes || []) {
+    const card = document.createElement('div');
+    card.className = 'metric-tile';
+    card.innerHTML = `<div class="metric-foot">${item}</div>`;
+    fallbackModesEl.appendChild(card);
   }
 }
 
