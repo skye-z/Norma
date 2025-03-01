@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 运行时设置页</title>
+  <title>Norma 运行时设置</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
@@ -21,6 +21,7 @@
         <a href="./memory.html">记忆管理</a>
         <a href="./metrics.html">指标看板</a>
         <a class="active" href="./settings.html">运行时设置</a>
+        <a href="./onboarding.html">首启向导</a>
       </nav>
       <span class="status-chip">支持热更新</span>
     </header>
@@ -28,11 +29,13 @@
     <section class="hero">
       <span class="hero-tag">Runtime Settings</span>
       <h1>运行时与 Provider 设置</h1>
-      <p>集中维护语音链路、Wake、Embedding、性能策略和受管 Provider。这里保存的是 Norma 的统一运行时配置，而不是让用户手工改路径。</p>
+      <p>集中维护语音链路、Wake、Embedding、性能策略与受管 Provider。优先由 Norma 统一管理二进制、模型和默认配置，避免手工改路径。</p>
       <div class="hero-actions">
         <button id="load">重新读取</button>
         <button id="save" class="primary">保存配置</button>
         <button id="provider_init">初始化 Provider 目录</button>
+        <button id="provider_apply">应用受管 Provider</button>
+        <button id="provider_export">导出就绪报告</button>
       </div>
     </section>
 
@@ -73,12 +76,12 @@
             <div><label for="audio_wake_provider">Wake Provider</label><input id="audio_wake_provider" /></div>
             <div class="full"><label for="audio_wake_binary_path">Wake 二进制路径</label><input id="audio_wake_binary_path" /></div>
             <div class="full"><label for="audio_wake_model_path">Wake 模型目录</label><input id="audio_wake_model_path" /></div>
-            <div class="full"><label for="audio_wake_keywords_file_path">Wake keywords 文件</label><input id="audio_wake_keywords_file_path" /></div>
+            <div class="full"><label for="audio_wake_keywords_file_path">Wake 关键词文件</label><input id="audio_wake_keywords_file_path" /></div>
             <div><label for="audio_wake_keyword">Wake 关键词</label><input id="audio_wake_keyword" /></div>
             <div><label for="audio_wake_window_ms">Wake 窗口（毫秒）</label><input id="audio_wake_window_ms" type="number" /></div>
             <div><label for="audio_wake_detect_interval_ms">Wake 检测间隔（毫秒）</label><input id="audio_wake_detect_interval_ms" type="number" /></div>
-            <div><label for="audio_silence">静音帧阈值</label><input id="audio_silence" type="number" /></div>
-            <div><label><input id="audio_interrupt" type="checkbox" /> 讲话中允许打断</label></div>
+            <div><label for="audio_silence">端点静音帧阈值</label><input id="audio_silence" type="number" /></div>
+            <div><label><input id="audio_interrupt" type="checkbox" /> 说话中允许打断</label></div>
             <div><label><input id="audio_aec" type="checkbox" /> 启用 AEC</label></div>
             <div><label><input id="audio_ns" type="checkbox" /> 启用降噪</label></div>
             <div><label for="audio_scene">音频场景</label><input id="audio_scene" /></div>
@@ -100,6 +103,13 @@
           <span class="mini-note">Managed Providers</span>
         </div>
         <div class="panel-body stack">
+          <div id="provider_alerts" class="control-stack"></div>
+          <div class="hero-actions" style="margin-top:0;">
+            <button data-health-filter="all" class="primary">全部</button>
+            <button data-health-filter="ready">仅就绪</button>
+            <button data-health-filter="partial">仅部分就绪</button>
+            <button data-health-filter="missing">仅缺失</button>
+          </div>
           <div class="stat-list" id="provider_summary"></div>
           <div>
             <div class="mini-note" style="margin-bottom:10px;">可安装 Provider</div>

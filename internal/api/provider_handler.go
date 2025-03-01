@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"norma/internal/config"
 	"norma/internal/errs"
@@ -17,10 +19,11 @@ type ProviderHandler struct {
 }
 
 type providerStatusResponse struct {
-	Root      string              `json:"root"`
-	Providers map[string][]string `json:"providers"`
-	Manifest  providers.Manifest  `json:"manifest"`
-	Stack     map[string]string   `json:"stack"`
+	Root      string                      `json:"root"`
+	Providers map[string][]string         `json:"providers"`
+	Manifest  providers.Manifest          `json:"manifest"`
+	Stack     map[string]string           `json:"stack"`
+	Health    map[string]providers.Health `json:"health"`
 }
 
 type providerCatalog struct {
@@ -42,6 +45,8 @@ func (h *ProviderHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/providers/catalog", h.handleCatalog)
 	mux.HandleFunc("/providers/install", h.handleInstall)
 	mux.HandleFunc("/providers/uninstall", h.handleUninstall)
+	mux.HandleFunc("/providers/apply-managed", h.handleApplyManaged)
+	mux.HandleFunc("/providers/export-readiness", h.handleExportReadiness)
 }
 
 func (h *ProviderHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +85,7 @@ func (h *ProviderHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"embedding": cfg.RAG.EmbedProvider,
 			"llm":       cfg.LLM.Provider,
 		},
+		Health: providers.BuildHealth(mgr),
 	})
 }
 
@@ -175,4 +181,136 @@ func (h *ProviderHandler) handleUninstall(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "output": string(out)})
+}
+
+func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, errs.Invalid("method not allowed"))
+		return
+	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil {
+		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
+		return
+	}
+	mgr := providers.NewManager(cfg.Providers.Root)
+	if err := mgr.EnsureLayout(); err != nil {
+		writeAPIError(w, errs.Internal("provider_layout_init_failed", err.Error()))
+		return
+	}
+
+	cfg.Audio.WakeMode = "wake_word_vad"
+	cfg.Audio.WakeProvider = "sherpa-onnx"
+	cfg.Audio.WakeKeyword = firstNonEmpty(cfg.Audio.WakeKeyword, "诺玛")
+	if cfg.Audio.WakeWindowMs <= 0 {
+		cfg.Audio.WakeWindowMs = 2000
+	}
+	if cfg.Audio.WakeDetectIntervalMs <= 0 {
+		cfg.Audio.WakeDetectIntervalMs = 400
+	}
+	cfg.ASR.Provider = "whispercpp"
+	cfg.ASR.Language = firstNonEmpty(cfg.ASR.Language, "zh")
+	if cfg.ASR.Threads <= 0 {
+		cfg.ASR.Threads = 4
+	}
+	if cfg.ASR.RequestTimeoutMs <= 0 {
+		cfg.ASR.RequestTimeoutMs = 10000
+	}
+	cfg.TTS.Provider = "piper"
+	if cfg.TTS.RequestTimeoutMs <= 0 {
+		cfg.TTS.RequestTimeoutMs = 30000
+	}
+	cfg.TTS.SentenceFirstEnabled = true
+	cfg.RAG.EmbedProvider = "ollama"
+	if cfg.RAG.TopK <= 0 {
+		cfg.RAG.TopK = 6
+	}
+	if strings.TrimSpace(cfg.RAG.EmbedModel) == "" {
+		cfg.RAG.EmbedModel = "bge-m3:latest"
+	}
+
+	if p := mgr.FindFirst("asr", "whisper-cli.exe", "main.exe", "whisper-cli", "main"); p != "" {
+		cfg.ASR.BinaryPath = p
+	}
+	if p := mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"); p != "" {
+		cfg.ASR.ModelPath = p
+	}
+	if p := mgr.FindFirst("tts", "piper.exe", "piper"); p != "" {
+		cfg.TTS.BinaryPath = p
+	}
+	if p := mgr.FindFirst("tts", "zh_CN-huayan-medium.onnx", "zh_CN-huayan-x_low.onnx", "model.onnx"); p != "" {
+		cfg.TTS.ModelPath = p
+		base := filepath.Base(p)
+		cfg.TTS.Voice = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+	if p := mgr.FindFirst("wake", "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter"); p != "" {
+		cfg.Audio.WakeBinaryPath = p
+	}
+	if p := mgr.FindGlob("wake", "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx"); p != "" {
+		cfg.Audio.WakeModelPath = filepath.Dir(p)
+	}
+	if p := mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt"); p != "" {
+		cfg.Audio.WakeKeywordsFilePath = p
+	}
+	if p := mgr.FindFirst("llm", "ollama.exe", "ollama"); p != "" {
+		_ = p
+		if strings.TrimSpace(cfg.LLM.Provider) == "" {
+			cfg.LLM.Provider = "ollama"
+		}
+		if strings.TrimSpace(cfg.LLM.Endpoint) == "" {
+			cfg.LLM.Endpoint = "http://127.0.0.1:11434"
+		}
+		if strings.TrimSpace(cfg.RAG.EmbedEndpoint) == "" {
+			cfg.RAG.EmbedEndpoint = cfg.LLM.Endpoint
+		}
+	}
+
+	if err := config.Save(h.configPath, cfg); err != nil {
+		writeAPIError(w, errs.Internal("config_save_failed", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config_path": h.configPath})
+}
+
+func (h *ProviderHandler) handleExportReadiness(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, errs.Invalid("method not allowed"))
+		return
+	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil {
+		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
+		return
+	}
+	mgr := providers.NewManager(cfg.Providers.Root)
+	report := map[string]any{
+		"exported_at": time.Now().Format(time.RFC3339),
+		"root":        mgr.Root(),
+		"health":      providers.BuildHealth(mgr),
+	}
+	outDir := filepath.Join("diagnostics", "provider-readiness")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		writeAPIError(w, errs.Internal("provider_export_failed", err.Error()))
+		return
+	}
+	path := filepath.Join(outDir, "readiness-"+time.Now().Format("20060102-150405")+".json")
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		writeAPIError(w, errs.Internal("provider_export_failed", err.Error()))
+		return
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		writeAPIError(w, errs.Internal("provider_export_failed", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": path})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -3,19 +3,83 @@ const logEl = document.getElementById('log');
 const providerLogEl = document.getElementById('provider_log');
 const providerSummaryEl = document.getElementById('provider_summary');
 const providerCatalogEl = document.getElementById('provider_catalog');
+const providerAlertsEl = document.getElementById('provider_alerts');
 
 const byId = (id) => document.getElementById(id);
 const csv = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
-const log = (s) => {
+const healthOrder = ['ready', 'partial', 'missing'];
+const healthLabels = {
+  binary: '二进制',
+  model: '模型',
+  voice_model: '语音模型',
+  voice_config: '语音配置',
+  encoder: 'encoder',
+  decoder: 'decoder',
+  joiner: 'joiner',
+  tokens: 'tokens.txt',
+  keywords: 'keywords.txt',
+  ollama: 'Ollama'
+};
+
+const log = (message) => {
   if (logEl) {
-    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + logEl.textContent;
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${logEl.textContent}`;
   }
 };
-const providerLog = (s) => {
+
+const providerLog = (message) => {
   if (providerLogEl) {
-    providerLogEl.textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + providerLogEl.textContent;
+    providerLogEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${providerLogEl.textContent}`;
   }
 };
+
+let current = null;
+let providerStatus = null;
+let providerCatalog = null;
+let healthFilter = 'all';
+
+function stateLabel(status) {
+  switch (status) {
+    case 'ready':
+      return '就绪';
+    case 'partial':
+      return '部分就绪';
+    default:
+      return '缺失';
+  }
+}
+
+function stateClass(status) {
+  switch (status) {
+    case 'ready':
+      return 'state-pill';
+    case 'partial':
+      return 'state-pill warn';
+    default:
+      return 'state-pill danger';
+  }
+}
+
+function displayAsset(key) {
+  return healthLabels[key] || key;
+}
+
+function listAssets(items) {
+  return (items || []).map(displayAsset).join('、');
+}
+
+function healthText(health) {
+  if (!health) {
+    return '未检测';
+  }
+  if (!health.missing?.length) {
+    return `已满足：${listAssets(health.found) || '全部'}`;
+  }
+  if (!health.found?.length) {
+    return `缺少：${listAssets(health.missing)}`;
+  }
+  return `已找到：${listAssets(health.found)}；缺少：${listAssets(health.missing)}`;
+}
 
 function apply(cfg) {
   byId('llm_provider').value = cfg.llm?.provider || '';
@@ -127,9 +191,35 @@ function collect(base) {
   return cfg;
 }
 
+function renderProviderAlerts(status) {
+  providerAlertsEl.innerHTML = '';
+  const entries = Object.entries(status.health || {});
+  const partial = entries.filter(([, health]) => health.status === 'partial');
+  const missing = entries.filter(([, health]) => health.status === 'missing');
+
+  if (!partial.length && !missing.length) {
+    const ok = document.createElement('div');
+    ok.className = 'metric-tile';
+    ok.innerHTML = '<div class="metric-label">状态总览</div><div class="metric-foot">当前受管 Provider 已全部达到就绪状态。</div>';
+    providerAlertsEl.appendChild(ok);
+    return;
+  }
+
+  for (const [kind, health] of [...missing, ...partial]) {
+    const card = document.createElement('div');
+    card.className = 'metric-tile';
+    card.innerHTML = `
+      <div class="metric-label">${kind.toUpperCase()}</div>
+      <div class="metric-foot"><span class="${stateClass(health.status)}">${stateLabel(health.status)}</span></div>
+      <div class="metric-foot">${healthText(health)}</div>
+    `;
+    providerAlertsEl.appendChild(card);
+  }
+}
+
 function renderProviderSummary(status) {
   providerSummaryEl.innerHTML = '';
-  const lines = [
+  const basics = [
     ['根目录', status.root || '-'],
     ['当前 Wake', status.stack?.wake || '-'],
     ['当前 ASR', status.stack?.asr || '-'],
@@ -137,31 +227,64 @@ function renderProviderSummary(status) {
     ['当前 Embedding', status.stack?.embedding || '-'],
     ['Manifest 记录数', String(status.manifest?.providers?.length || 0)]
   ];
-  for (const [label, value] of lines) {
+
+  for (const [label, value] of basics) {
     const row = document.createElement('div');
     row.className = 'stat-line';
     row.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
     providerSummaryEl.appendChild(row);
   }
-  for (const [kind, files] of Object.entries(status.providers || {})) {
+
+  const healthEntries = Object.entries(status.health || {})
+    .filter(([, health]) => healthFilter === 'all' || health.status === healthFilter)
+    .sort((a, b) => healthOrder.indexOf(a[1]?.status || 'missing') - healthOrder.indexOf(b[1]?.status || 'missing'));
+
+  for (const [kind, health] of healthEntries) {
     const row = document.createElement('div');
     row.className = 'stat-line';
-    row.innerHTML = `<span>${kind}</span><span>${(files || []).join(', ') || 'empty'}</span>`;
+    row.innerHTML = `
+      <span>${kind}</span>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <span class="${stateClass(health.status)}">${stateLabel(health.status)}</span>
+        <span>${healthText(health)}</span>
+      </div>
+    `;
     providerSummaryEl.appendChild(row);
   }
 }
 
 function renderProviderCatalog(catalog) {
   providerCatalogEl.innerHTML = '';
+  const installed = new Set((providerStatus?.manifest?.providers || []).map((item) => item.id || item.name));
+  const health = providerStatus?.health || {};
+
   for (const item of catalog.items || []) {
+    const providerHealth = health[item.kind];
+    if (healthFilter !== 'all' && providerHealth?.status !== healthFilter) {
+      continue;
+    }
     const card = document.createElement('div');
     card.className = 'metric-tile';
-    const note = item.notes ? `<div class="metric-foot">${item.notes}</div>` : '';
+    const installedText = installed.has(item.id) ? '已安装' : '未安装';
+    const notes = item.notes ? `<div class="metric-foot">${item.notes}</div>` : '';
+    const readiness = providerHealth
+      ? `<div class="metric-foot">当前目录状态：<span class="${stateClass(providerHealth.status)}">${stateLabel(providerHealth.status)}</span></div>
+         <div class="metric-foot">${healthText(providerHealth)}</div>`
+      : '';
+    const verify = item.integrity === 'official-checksum'
+      ? '<div class="metric-foot">校验：已接入官方 SHA256 校验</div>'
+      : item.integrity_note
+        ? '<div class="metric-foot">校验：' + item.integrity_note + '</div>'
+        : '<div class="metric-foot">校验：未配置 SHA256 校验</div>';
+
     card.innerHTML = `
-      <div class="metric-label">${item.kind.toUpperCase()} / ${item.version}</div>
-      <div class="metric-value" style="font-size:18px;">${item.name}</div>
+      <div class="metric-label">${String(item.kind || '').toUpperCase()} / ${item.version || '-'}</div>
+      <div class="metric-value" style="font-size:18px;">${item.name || item.id}</div>
       <div class="metric-foot">${item.id}</div>
-      ${note}
+      <div class="metric-foot">安装状态：${installedText}</div>
+      ${verify}
+      ${readiness}
+      ${notes}
       <div class="hero-actions" style="margin-top:12px;">
         <button data-install="${item.id}" class="primary">安装</button>
         <button data-uninstall="${item.id}" class="danger">卸载</button>
@@ -169,50 +292,67 @@ function renderProviderCatalog(catalog) {
     `;
     providerCatalogEl.appendChild(card);
   }
-  providerCatalogEl.querySelectorAll('[data-install]').forEach((btn) => {
-    btn.addEventListener('click', async () => installProvider(btn.dataset.install));
+
+  providerCatalogEl.querySelectorAll('[data-install]').forEach((button) => {
+    button.addEventListener('click', async () => installProvider(button.dataset.install));
   });
-  providerCatalogEl.querySelectorAll('[data-uninstall]').forEach((btn) => {
-    btn.addEventListener('click', async () => uninstallProvider(btn.dataset.uninstall));
+  providerCatalogEl.querySelectorAll('[data-uninstall]').forEach((button) => {
+    button.addEventListener('click', async () => uninstallProvider(button.dataset.uninstall));
   });
 }
 
-let current = null;
+function rerenderProviders() {
+  if (providerStatus) {
+    renderProviderAlerts(providerStatus);
+    renderProviderSummary(providerStatus);
+  }
+  if (providerCatalog) {
+    renderProviderCatalog(providerCatalog);
+  }
+}
 
 async function load() {
-  const resp = await fetch(`${api}/settings/runtime`);
-  if (!resp.ok) throw new Error(`读取配置失败: ${resp.status}`);
-  current = await resp.json();
+  const response = await fetch(`${api}/settings/runtime`);
+  if (!response.ok) {
+    throw new Error(`读取配置失败：${response.status}`);
+  }
+  current = await response.json();
   apply(current);
   log('已读取当前运行时配置。');
 }
 
 async function loadProviderStatus() {
-  const resp = await fetch(`${api}/providers/status`);
-  if (!resp.ok) throw new Error(`读取 Provider 状态失败: ${resp.status}`);
-  const data = await resp.json();
-  renderProviderSummary(data);
+  const response = await fetch(`${api}/providers/status`);
+  if (!response.ok) {
+    throw new Error(`读取 Provider 状态失败：${response.status}`);
+  }
+  providerStatus = await response.json();
+  rerenderProviders();
   providerLog('已刷新 Provider 状态。');
 }
 
 async function loadProviderCatalog() {
-  const resp = await fetch(`${api}/providers/catalog`);
-  if (!resp.ok) throw new Error(`读取 Provider 清单失败: ${resp.status}`);
-  const data = await resp.json();
-  renderProviderCatalog(data);
+  const response = await fetch(`${api}/providers/catalog`);
+  if (!response.ok) {
+    throw new Error(`读取 Provider 清单失败：${response.status}`);
+  }
+  providerCatalog = await response.json();
+  rerenderProviders();
 }
 
 async function save() {
-  if (!current) return;
+  if (!current) {
+    return;
+  }
   const body = collect(current);
-  const resp = await fetch(`${api}/settings/runtime`, {
+  const response = await fetch(`${api}/settings/runtime`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`保存配置失败: ${resp.status} ${err}`);
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`保存配置失败：${response.status} ${err}`);
   }
   log('配置保存成功，已广播热更新事件。');
   await load();
@@ -220,43 +360,80 @@ async function save() {
 }
 
 async function initProviders() {
-  const resp = await fetch(`${api}/providers/init`, { method: 'POST' });
-  if (!resp.ok) throw new Error(`初始化 Provider 目录失败: ${resp.status}`);
+  const response = await fetch(`${api}/providers/init`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`初始化 Provider 目录失败：${response.status}`);
+  }
   providerLog('Provider 目录初始化完成。');
   await loadProviderStatus();
 }
 
+async function applyManagedProviders() {
+  const response = await fetch(`${api}/providers/apply-managed`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`应用受管 Provider 失败：${response.status}`);
+  }
+  providerLog('已根据受管目录自动回填配置。');
+  await load();
+  await loadProviderStatus();
+}
+
+async function exportReadiness() {
+  const response = await fetch(`${api}/providers/export-readiness`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `导出失败：${response.status}`);
+  }
+  providerLog(`就绪检查报告已导出到 ${data.path}`);
+}
+
 async function installProvider(id) {
   providerLog(`开始安装 ${id} ...`);
-  const resp = await fetch(`${api}/providers/install`, {
+  const response = await fetch(`${api}/providers/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id })
   });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error?.message || `安装失败: ${resp.status}`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `安装失败：${response.status}`);
+  }
   providerLog(String(data.output || `${id} 安装成功`));
   await loadProviderStatus();
+  await loadProviderCatalog();
 }
 
 async function uninstallProvider(id) {
   providerLog(`开始卸载 ${id} ...`);
-  const resp = await fetch(`${api}/providers/uninstall`, {
+  const response = await fetch(`${api}/providers/uninstall`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id })
   });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error?.message || `卸载失败: ${resp.status}`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `卸载失败：${response.status}`);
+  }
   providerLog(String(data.output || `${id} 卸载成功`));
   await loadProviderStatus();
+  await loadProviderCatalog();
 }
 
-byId('load').addEventListener('click', () => Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((e) => log(String(e))));
-byId('save').addEventListener('click', () => save().catch((e) => log(String(e))));
-byId('provider_init').addEventListener('click', () => initProviders().catch((e) => providerLog(String(e))));
+byId('load').addEventListener('click', () => Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => log(String(error))));
+byId('save').addEventListener('click', () => save().catch((error) => log(String(error))));
+byId('provider_init').addEventListener('click', () => initProviders().catch((error) => providerLog(String(error))));
+byId('provider_apply').addEventListener('click', () => applyManagedProviders().catch((error) => providerLog(String(error))));
+byId('provider_export').addEventListener('click', () => exportReadiness().catch((error) => providerLog(String(error))));
+document.querySelectorAll('[data-health-filter]').forEach((button) => {
+  button.addEventListener('click', () => {
+    healthFilter = button.dataset.healthFilter || 'all';
+    document.querySelectorAll('[data-health-filter]').forEach((item) => item.classList.remove('primary'));
+    button.classList.add('primary');
+    rerenderProviders();
+  });
+});
 
-Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((e) => {
-  log(String(e));
-  providerLog(String(e));
+Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => {
+  log(String(error));
+  providerLog(String(error));
 });

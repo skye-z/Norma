@@ -30,3 +30,15 @@ func cursorInModelInteractRect(hwnd uintptr) (bool, error) {
 	_ = hwnd
 	return false, errors.New("unsupported platform")
 }
+
+func setWindowTopmostByTitle(title string, enabled bool) error {
+	_ = title
+	_ = enabled
+	return nil
+}
+
+func setWindowTopmostByHandle(hwnd uintptr, enabled bool) error {
+	_ = hwnd
+	_ = enabled
+	return nil
+}

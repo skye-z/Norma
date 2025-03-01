@@ -1,86 +1,129 @@
 {
-  "version": 1,
-  "items": [
-    {
-      "id": "asr-whispercpp-windows-x64",
-      "kind": "asr",
-      "name": "whisper.cpp",
-      "version": "v1.8.2",
-      "source": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.2/whisper-bin-x64.zip",
-      "archive_type": "zip",
-      "binary_candidates": ["whisper-cli.exe", "main.exe"],
-      "notes": "官方 release 二进制。建议配合 ggml-base.bin 或更小模型使用。"
-    },
-    {
-      "id": "asr-whisper-model-base",
-      "kind": "asr",
-      "name": "whisper.cpp-base-model",
-      "version": "main",
-      "source": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
-      "archive_type": "file",
-      "target_name": "ggml-base.bin",
-      "notes": "官方 ggml base 模型，约 148MB。"
-    },
-    {
-      "id": "tts-piper-windows-x64",
-      "kind": "tts",
-      "name": "piper",
-      "version": "v1.2.0",
-      "source": "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_windows_amd64.zip",
-      "archive_type": "zip",
-      "binary_candidates": ["piper.exe"],
-      "notes": "Piper Windows 二进制。"
-    },
-    {
-      "id": "tts-piper-voice-zh-cn-huayan-medium",
-      "kind": "tts",
-      "name": "zh_CN-huayan-medium",
-      "version": "v1.0.0",
-      "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx?download=true",
-      "archive_type": "file",
-      "target_name": "zh_CN-huayan-medium.onnx",
-      "extra_files": [
-        {
-          "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json?download=true",
-          "target_name": "zh_CN-huayan-medium.onnx.json"
-        }
-      ],
-      "notes": "中文中等质量语音，安装后可直接配合 Piper 使用。"
-    },
-    {
-      "id": "tts-piper-voice-zh-cn-huayan-x-low",
-      "kind": "tts",
-      "name": "zh_CN-huayan-x_low",
-      "version": "v1.0.0",
-      "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx?download=true",
-      "archive_type": "file",
-      "target_name": "zh_CN-huayan-x_low.onnx",
-      "extra_files": [
-        {
-          "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx.json?download=true",
-          "target_name": "zh_CN-huayan-x_low.onnx.json"
-        }
-      ],
-      "notes": "中文低资源语音，体积更小，首装更轻。"
-    },
-    {
-      "id": "llm-ollama-windows-x64",
-      "kind": "llm",
-      "name": "ollama",
-      "version": "v0.13.5",
-      "source": "https://ollama.com/download/ollama-windows-amd64.zip",
-      "archive_type": "zip",
-      "binary_candidates": ["ollama.exe"],
-      "notes": "Ollama Windows 独立包。Embedding 与 LLM 共用。"
-    },
-    {
-      "id": "wake-sherpa-kws-zh-en-model",
-      "kind": "wake",
-      "name": "sherpa-onnx-kws-model",
-      "version": "2025-12-20",
-      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
-      "archive_type": "tar.bz2",
-      "notes": "关键词模型包，需配合 sherpa-onnx keyword spotter 二进制使用。"
-    }
-  ]
+    "version":  1,
+    "items":  [
+                  {
+                      "id":  "wake-sherpa-onnx-windows-x64-shared",
+                      "kind":  "wake",
+                      "name":  "sherpa-onnx-windows-x64-shared",
+                      "version":  "v1.12.20",
+                      "source":  "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.20/sherpa-onnx-v1.12.20-win-x64-shared.tar.bz2",
+                      "archive_type":  "tar.bz2",
+                      "binary_candidates":  [
+                                                "sherpa-onnx-keyword-spotter.exe"
+                                            ],
+                      "checksum_source":  "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.20/checksum.txt",
+                      "checksum_match":  "sherpa-onnx-v1.12.20-win-x64-shared.tar.bz2",
+                      "notes":  "官方 Windows x64 shared 包，包含 sherpa-onnx-keyword-spotter，可直接纳入 Wake 受管目录。",
+                      "integrity":  "official-checksum",
+                      "integrity_note":  "官方 release 提供 checksum.txt，可自动解析 SHA256。"
+                  },
+                  {
+                      "id":  "wake-sherpa-kws-zh-en-model",
+                      "kind":  "wake",
+                      "name":  "sherpa-onnx-kws-model",
+                      "version":  "2025-12-20",
+                      "source":  "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
+                      "archive_type":  "tar.bz2",
+                      "managed_files":  [
+                                            {
+                                                "target_name":  "keywords.txt",
+                                                "content":  "诺玛\n"
+                                            }
+                                        ],
+                      "notes":  "中英混合唤醒词模型包，安装后会自动写入默认 keywords.txt，可直接配合 keyword spotter 使用。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "模型包来自官方发布源，但未找到独立 checksum 清单。"
+                  },
+                  {
+                      "id":  "asr-whispercpp-windows-x64",
+                      "kind":  "asr",
+                      "name":  "whisper.cpp",
+                      "version":  "v1.8.2",
+                      "source":  "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.2/whisper-bin-x64.zip",
+                      "archive_type":  "zip",
+                      "binary_candidates":  [
+                                                "whisper-cli.exe",
+                                                "main.exe"
+                                            ],
+                      "notes":  "官方 release 二进制。建议配合 ggml-base.bin 或更小模型使用。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "二进制来自 whisper.cpp 官方 release，但上游未提供对应 checksum 清单。"
+                  },
+                  {
+                      "id":  "asr-whisper-model-base",
+                      "kind":  "asr",
+                      "name":  "whisper.cpp-base-model",
+                      "version":  "main",
+                      "source":  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
+                      "archive_type":  "file",
+                      "target_name":  "ggml-base.bin",
+                      "notes":  "官方 ggml base 模型，约 148MB。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "模型来自 whisper.cpp 官方 Hugging Face 仓库，但上游未提供对应 checksum 清单。"
+                  },
+                  {
+                      "id":  "tts-piper-windows-x64",
+                      "kind":  "tts",
+                      "name":  "piper",
+                      "version":  "v1.2.0",
+                      "source":  "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_windows_amd64.zip",
+                      "archive_type":  "zip",
+                      "binary_candidates":  [
+                                                "piper.exe"
+                                            ],
+                      "notes":  "Piper Windows 二进制。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "二进制来自 Piper 官方 release，但上游未提供对应 checksum 清单。"
+                  },
+                  {
+                      "id":  "tts-piper-voice-zh-cn-huayan-medium",
+                      "kind":  "tts",
+                      "name":  "zh_CN-huayan-medium",
+                      "version":  "v1.0.0",
+                      "source":  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx?download=true",
+                      "archive_type":  "file",
+                      "target_name":  "zh_CN-huayan-medium.onnx",
+                      "extra_files":  [
+                                          {
+                                              "source":  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json?download=true",
+                                              "target_name":  "zh_CN-huayan-medium.onnx.json"
+                                          }
+                                      ],
+                      "notes":  "中文中等质量语音，安装后可直接配合 Piper 使用。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "语音模型来自官方 piper-voices 仓库，但上游未提供对应 checksum 清单。"
+                  },
+                  {
+                      "id":  "tts-piper-voice-zh-cn-huayan-x-low",
+                      "kind":  "tts",
+                      "name":  "zh_CN-huayan-x_low",
+                      "version":  "v1.0.0",
+                      "source":  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx?download=true",
+                      "archive_type":  "file",
+                      "target_name":  "zh_CN-huayan-x_low.onnx",
+                      "extra_files":  [
+                                          {
+                                              "source":  "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx.json?download=true",
+                                              "target_name":  "zh_CN-huayan-x_low.onnx.json"
+                                          }
+                                      ],
+                      "notes":  "中文低资源语音，体积更小，首装更轻。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "语音模型来自官方 piper-voices 仓库，但上游未提供对应 checksum 清单。"
+                  },
+                  {
+                      "id":  "llm-ollama-windows-x64",
+                      "kind":  "llm",
+                      "name":  "ollama",
+                      "version":  "v0.13.5",
+                      "source":  "https://ollama.com/download/ollama-windows-amd64.zip",
+                      "archive_type":  "zip",
+                      "binary_candidates":  [
+                                                "ollama.exe"
+                                            ],
+                      "notes":  "Ollama Windows 独立包，Embedding 与 LLM 共用。",
+                      "integrity":  "official-source-only",
+                      "integrity_note":  "安装包来自 Ollama 官方下载源，当前未接入 checksum 清单。"
+                  }
+              ]
 }

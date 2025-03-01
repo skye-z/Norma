@@ -104,7 +104,7 @@ if (isDebug) {
   document.getElementById('ey')?.addEventListener('input', emitEye);
 
   document.getElementById('speak')?.addEventListener('click', () => {
-    const text = String(document.getElementById('txt')?.value || '').trim();
+    const text = String(document.getElementById('txt')?.value || ').trim();
     if (!text) return;
     publish('debug.notice', { text: `speak -> ${text.slice(0, 24)}` });
 
@@ -128,10 +128,13 @@ if (!isDebug && !isSettings) {
     model: null,
     mouthTarget: 0,
     mouthCurrent: 0,
+    mouthForm: 0,
     targetX: 0,
     targetY: 0,
     eyeX: 0,
     eyeY: 0,
+    emotion: 'neutral',
+    motionIntensity: 0.45,
     eventSources: [],
     logs: [],
     baseX: 0,
@@ -162,11 +165,11 @@ if (!isDebug && !isSettings) {
   function normalizeMotion(payload) {
     const aliases = { thinking: 'Tap', tapbody: 'Tap@Body', flickbody: 'Flick@Body', idle: 'Idle' };
     if (typeof payload === 'string') {
-      const key = payload.replace(/[^a-zA-Z]/g, '').toLowerCase();
+      const key = payload.replace(/[^a-zA-Z]/g, ').toLowerCase();
       return aliases[key] || payload;
     }
     const raw = String(payload?.group || payload?.motion || payload?.name || 'Idle');
-    const key = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
+    const key = raw.replace(/[^a-zA-Z]/g, ').toLowerCase();
     return aliases[key] || raw;
   }
 
@@ -211,6 +214,16 @@ if (!isDebug && !isSettings) {
           } catch (_) {}
         }
       }
+        });
+
+    const emotionES = createEventSource('live2d.emotion', (payload) => {
+      if (typeof payload?.emotion === 'string') {
+        state.emotion = payload.emotion;
+      }
+      if (Number.isFinite(Number(payload?.intensity))) {
+        state.motionIntensity = Number(payload.intensity);
+      }
+      appendLog('cmd emotion: ' + state.emotion + ' / ' + state.motionIntensity.toFixed(2));
     });
 
     const mouthES = createEventSource('live2d.mouth', (payload) => {
@@ -221,7 +234,15 @@ if (!isDebug && !isSettings) {
       } else {
         state.mouthTarget = String(payload || '').toLowerCase() === 'speaking' ? 0.7 : 0;
       }
-      appendLog(`cmd mouth: ${state.mouthTarget.toFixed(2)}`);
+      appendLog('cmd mouth: ' + state.mouthTarget.toFixed(2));
+    });
+
+    const visemeES = createEventSource('live2d.mouth.viseme', (payload) => {
+      if (Number.isFinite(Number(payload?.intensity))) {
+        state.mouthTarget = Number(payload.intensity);
+      }
+      const phoneme = String(payload?.phoneme || 'mid');
+      state.mouthForm = phoneme === 'a' ? 1 : phoneme === 'i' ? -0.5 : phoneme === 'u' ? -0.2 : phoneme === 'o' ? 0.4 : 0.1;
     });
 
     const eyeES = createEventSource('live2d.eye', (payload) => {
@@ -240,7 +261,7 @@ if (!isDebug && !isSettings) {
       appendLog(typeof payload?.text === 'string' ? payload.text : String(payload || 'debug.notice'));
     });
 
-    state.eventSources.push(motionES, mouthES, eyeES, reloadES, noticeES);
+    state.eventSources.push(motionES, emotionES, mouthES, visemeES, eyeES, reloadES, noticeES);
   }
 
   function destroyRenderer() {
@@ -254,9 +275,12 @@ if (!isDebug && !isSettings) {
     state.model = null;
     state.mouthTarget = 0;
     state.mouthCurrent = 0;
+    state.mouthForm = 0;
     state.eyeX = 0;
     state.eyeY = 0;
-    if (stage) stage.innerHTML = '';
+    state.emotion = 'neutral';
+    state.motionIntensity = 0.45;
+    if (stage) stage.innerHTML = ';
   }
 
   async function ensureCore() {
@@ -367,9 +391,10 @@ if (!isDebug && !isSettings) {
 
       state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
       writeParam(core, 'ParamMouthOpenY', state.mouthCurrent);
+      writeParam(core, 'ParamMouthForm', state.mouthForm);
       writeParam(core, 'ParamBreath', 0.5 + Math.sin(t * 1.8) * 0.5);
-      writeParam(core, 'ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2);
-      writeParam(core, 'ParamAngleZ', Math.sin(t * 1.1) * 2.0);
+      writeParam(core, 'ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2 * state.motionIntensity);
+      writeParam(core, 'ParamAngleZ', Math.sin(t * 1.1) * 2.0 * state.motionIntensity);
     });
   }
 

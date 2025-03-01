@@ -34,6 +34,65 @@ function Download-File([string]$Url, [string]$Target) {
     Invoke-WebRequest -Uri $Url -OutFile $Target -UseBasicParsing
 }
 
+function Test-Sha256([string]$Path, [string]$Expected) {
+    if ([string]::IsNullOrWhiteSpace($Expected)) {
+        return
+    }
+    $actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $expectedNorm = $Expected.Trim().ToLowerInvariant()
+    if ($actual -ne $expectedNorm) {
+        throw "sha256 mismatch for $Path: expected=$expectedNorm actual=$actual"
+    }
+}
+
+function Resolve-Checksum([string]$FilePath, [string]$ChecksumSource, [string]$MatchName) {
+    if ([string]::IsNullOrWhiteSpace($ChecksumSource) -or [string]::IsNullOrWhiteSpace($MatchName)) {
+        return $null
+    }
+    Download-File -Url $ChecksumSource -Target $FilePath
+    $lines = Get-Content $FilePath -Encoding utf8
+    foreach ($line in $lines) {
+        if ($line -match '^([a-fA-F0-9]{64})\s+[* ]?(.+)$') {
+            $hash = $Matches[1].ToLowerInvariant()
+            $name = ($Matches[2] | ForEach-Object { $_.Trim() })
+            if ($name -eq $MatchName) {
+                return $hash
+            }
+        }
+    }
+    throw "checksum entry not found for $MatchName in $ChecksumSource"
+}
+
+function Write-ManagedFiles($Files, [string]$Target) {
+    if ($null -eq $Files) {
+        return
+    }
+    foreach ($file in @($Files)) {
+        $targetName = [string]$file.target_name
+        if ([string]::IsNullOrWhiteSpace($targetName)) {
+            continue
+        }
+        $content = [string]$file.content
+        [IO.File]::WriteAllText((Join-Path $Target $targetName), $content, [Text.UTF8Encoding]::new($false))
+    }
+}
+
+function Install-ExtraFiles($ExtraFiles, [string]$Tmp, [string]$Target) {
+    foreach ($extra in $ExtraFiles) {
+        $extraArchive = Join-Path $Tmp ([IO.Path]::GetFileName(($extra.source -split '\?')[0]))
+        Write-Host "[STEP] download extra $($extra.source)"
+        Download-File -Url $extra.source -Target $extraArchive
+        $extraExpected = $extra.sha256
+        if ([string]::IsNullOrWhiteSpace($extraExpected) -and $extra.checksum_source -and $extra.checksum_match) {
+            $checksumCache = Join-Path $Tmp ("checksum-" + [IO.Path]::GetFileName(($extra.checksum_source -split '\?')[0]))
+            $extraExpected = Resolve-Checksum -FilePath $checksumCache -ChecksumSource $extra.checksum_source -MatchName $extra.checksum_match
+        }
+        Test-Sha256 -Path $extraArchive -Expected $extraExpected
+        $extraTarget = if ($extra.target_name) { $extra.target_name } else { [IO.Path]::GetFileName(($extra.source -split '\?')[0]) }
+        Copy-Item -Force $extraArchive (Join-Path $Target $extraTarget)
+    }
+}
+
 Push-Location .
 try {
     $ProvidersRoot = Join-Path (Get-Location) $ProvidersRoot
@@ -62,7 +121,13 @@ try {
                     if (Test-Path $extraTarget) { Remove-Item -Force $extraTarget }
                 }
             }
-            if (-not $item.target_name -and -not $item.extra_files) {
+            if ($item.managed_files) {
+                foreach ($managed in $item.managed_files) {
+                    $managedTarget = Join-Path $target $managed.target_name
+                    if (Test-Path $managedTarget) { Remove-Item -Force $managedTarget }
+                }
+            }
+            if (-not $item.target_name -and -not $item.extra_files -and -not $item.managed_files) {
                 Get-ChildItem $target -Force | Remove-Item -Recurse -Force
             }
         }
@@ -77,6 +142,12 @@ try {
 
     Write-Host "[STEP] download $($item.source)"
     Download-File -Url $item.source -Target $archive
+    $expected = $item.sha256
+    if ([string]::IsNullOrWhiteSpace($expected) -and $item.checksum_source -and $item.checksum_match) {
+        $checksumCache = Join-Path $tmp ("checksum-" + [IO.Path]::GetFileName(($item.checksum_source -split '\?')[0]))
+        $expected = Resolve-Checksum -FilePath $checksumCache -ChecksumSource $item.checksum_source -MatchName $item.checksum_match
+    }
+    Test-Sha256 -Path $archive -Expected $expected
 
     Write-Host "[STEP] install to $target"
     switch ($item.archive_type) {
@@ -112,13 +183,10 @@ try {
     }
 
     if ($item.extra_files) {
-        foreach ($extra in $item.extra_files) {
-            $extraArchive = Join-Path $tmp ([IO.Path]::GetFileName(($extra.source -split '\?')[0]))
-            Write-Host "[STEP] download extra $($extra.source)"
-            Download-File -Url $extra.source -Target $extraArchive
-            $extraTarget = if ($extra.target_name) { $extra.target_name } else { [IO.Path]::GetFileName(($extra.source -split '\?')[0]) }
-            Copy-Item -Force $extraArchive (Join-Path $target $extraTarget)
-        }
+        Install-ExtraFiles -ExtraFiles $item.extra_files -Tmp $tmp -Target $target
+    }
+    if ($item.managed_files) {
+        Write-ManagedFiles -Files $item.managed_files -Target $target
     }
 
     $manifest.providers = @($manifest.providers | Where-Object { $_.id -ne $item.id })

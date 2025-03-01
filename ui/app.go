@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,6 +16,8 @@ type App struct {
 	mu               sync.RWMutex
 	mousePassthrough bool
 	forcePassthrough bool
+	alwaysOnTop      bool
+	notificationsOn  bool
 	eyeLastX         float64
 	eyeLastY         float64
 	eyeLastAt        time.Time
@@ -22,7 +25,7 @@ type App struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{alwaysOnTop: true, notificationsOn: true}
 }
 
 // startup is called when the app starts.
@@ -56,6 +59,7 @@ func (a *App) ensureWindowStyleLoop() {
 			hwnd, err := findWindowByTitle(appTitle)
 			if err == nil && hwnd != 0 {
 				_ = hideWindowFromTaskbarByHandle(hwnd)
+				_ = setWindowTopmostByHandle(hwnd, a.AlwaysOnTop())
 				return
 			}
 			if time.Now().After(deadline) {
@@ -129,6 +133,12 @@ func (a *App) setForcePassthrough(enabled bool) {
 	a.forcePassthrough = enabled
 }
 
+func (a *App) setAlwaysOnTop(enabled bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.alwaysOnTop = enabled
+}
+
 func (a *App) isForcePassthrough() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -174,4 +184,47 @@ func (a *App) ForcePassthrough() bool {
 
 func (a *App) ToggleForcePassthrough() bool {
 	return a.applyForcePassthrough(!a.isForcePassthrough())
+}
+
+func (a *App) AlwaysOnTop() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.alwaysOnTop
+}
+
+func (a *App) SetAlwaysOnTop(enabled bool) string {
+	if err := setWindowTopmostByTitle(appTitle, enabled); err != nil {
+		return "error: " + err.Error()
+	}
+	a.setAlwaysOnTop(enabled)
+	return "ok"
+}
+
+func (a *App) NotificationsEnabled() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.notificationsOn
+}
+
+func (a *App) SetNotificationsEnabled(enabled bool) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.notificationsOn = enabled
+	return "ok"
+}
+
+func (a *App) Notify(title, body string) string {
+	if !a.NotificationsEnabled() {
+		return "disabled"
+	}
+	if strings.TrimSpace(title) == "" {
+		title = "Norma"
+	}
+	if strings.TrimSpace(body) == "" {
+		body = "收到新的桌面提醒。"
+	}
+	if err := publishRuntimeEvent("debug.notice", map[string]any{"text": title + "：" + body}); err != nil {
+		return "error: " + err.Error()
+	}
+	return "ok"
 }

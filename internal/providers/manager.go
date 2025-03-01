@@ -20,6 +20,7 @@ type Manifest struct {
 }
 
 type ManifestRecord struct {
+	ID        string `json:"id,omitempty"`
 	Name      string `json:"name"`
 	Version   string `json:"version"`
 	Kind      string `json:"kind"`
@@ -47,6 +48,9 @@ func (m *Manager) EnsureLayout() error {
 	}
 	for _, dir := range KnownKinds {
 		if err := os.MkdirAll(filepath.Join(m.root, dir), 0o755); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Join(m.root, dir, "current"), 0o755); err != nil {
 			return err
 		}
 	}
@@ -78,6 +82,31 @@ func (m *Manager) ResolveFile(kind, version, explicit string, candidates ...stri
 		}
 		if p := cleanIfExists(filepath.Join(m.currentDir(kind), candidate)); p != "" {
 			return p
+		}
+	}
+	return ""
+}
+
+func (m *Manager) FindFirst(kind string, candidates ...string) string {
+	for _, candidate := range candidates {
+		if p := cleanIfExists(filepath.Join(m.currentDir(kind), candidate)); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+func (m *Manager) FindGlob(kind string, patterns ...string) string {
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		matches, _ := filepath.Glob(filepath.Join(m.currentDir(kind), pattern))
+		for _, match := range matches {
+			if p := cleanIfExists(match); p != "" {
+				return p
+			}
 		}
 	}
 	return ""

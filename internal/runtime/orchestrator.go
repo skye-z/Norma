@@ -5,8 +5,10 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"norma/internal/audio"
+	"norma/internal/companion"
 	"norma/internal/index"
 	"norma/internal/llm"
 	"norma/internal/runtime/bus"
@@ -102,20 +104,68 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		return
 	}
 
-	answer := sb.String()
-	if strings.TrimSpace(answer) == "" {
+	answer := strings.TrimSpace(sb.String())
+	if answer == "" {
 		answer = "抱歉，我现在没有可用回答。"
 	}
 
-	o.rt.Bus.Publish(bus.Event{Name: "audio.play.start", SessionID: sessionID, TraceID: traceID, Payload: len(answer)})
-	if err := o.tts.Stream(ctx, answer, func(chunk []byte) {
-		o.rt.Bus.Publish(bus.Event{Name: "tts.chunk.ready", SessionID: sessionID, TraceID: traceID, Payload: len(chunk)})
-	}); err != nil {
-		log.Printf("[orchestrator] tts stream error: %v", err)
-		o.publishError(sessionID, traceID, "tts_stream_failed", err)
+	plan := companion.PlanReply(answer)
+	if len(plan.Segments) == 0 {
+		plan = companion.PlanReply("先给结论：当前没有可播报内容。")
+	}
+	emotion := companion.AnalyzeEmotion(answer)
+	o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.plan", SessionID: sessionID, TraceID: traceID, Payload: plan})
+	o.rt.Bus.Publish(bus.Event{Name: "live2d.emotion", SessionID: sessionID, TraceID: traceID, Payload: emotion})
+
+	totalChars := 0
+	for _, segment := range plan.Segments {
+		totalChars += len(segment)
+	}
+	o.rt.Bus.Publish(bus.Event{Name: "audio.play.start", SessionID: sessionID, TraceID: traceID, Payload: totalChars})
+
+	for index, segment := range plan.Segments {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		phase := "supplement"
+		if index == 0 {
+			phase = "conclusion"
+		}
+		o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.segment", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
+			"index": index,
+			"phase": phase,
+			"text":  segment,
+		}})
+		o.emitVisemes(ctx, sessionID, traceID, segment)
+		if err := o.tts.Stream(ctx, segment, func(chunk []byte) {
+			o.rt.Bus.Publish(bus.Event{Name: "tts.chunk.ready", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
+				"segment_index": index,
+				"bytes":         len(chunk),
+			}})
+		}); err != nil {
+			log.Printf("[orchestrator] tts stream error: %v", err)
+			o.publishError(sessionID, traceID, "tts_stream_failed", err)
+			break
+		}
 	}
 	o.rt.Bus.Publish(bus.Event{Name: "audio.play.end", SessionID: sessionID, TraceID: traceID, Payload: "done"})
 	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
+}
+
+func (o *Orchestrator) emitVisemes(ctx context.Context, sessionID, traceID, text string) {
+	frames := companion.EstimateVisemes(text)
+	go func() {
+		for _, frame := range frames {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				o.rt.Bus.Publish(bus.Event{Name: "live2d.mouth.viseme", SessionID: sessionID, TraceID: traceID, Payload: frame})
+				time.Sleep(time.Duration(frame.Duration) * time.Millisecond)
+			}
+		}
+		o.rt.Bus.Publish(bus.Event{Name: "live2d.mouth.viseme", SessionID: sessionID, TraceID: traceID, Payload: companion.VisemeFrame{Phoneme: "rest", Intensity: 0, Duration: 60}})
+	}()
 }
 
 func (o *Orchestrator) publishError(sessionID, traceID, code string, err error) {

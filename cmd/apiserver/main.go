@@ -40,6 +40,7 @@ func main() {
 	ph := api.NewPrivacyHandler(*configPath)
 	th := api.NewToolPolicyHandler(*configPath)
 	pr := api.NewProviderHandler(*configPath)
+	se := api.NewSetupHandler(*configPath, *modelDir)
 
 	mux := http.NewServeMux()
 	api.RegisterHealth(mux, time.Now())
@@ -50,6 +51,7 @@ func main() {
 	ph.Register(mux)
 	th.Register(mux)
 	pr.Register(mux)
+	se.Register(mux)
 	registerStaticModel(mux, *modelDir)
 	registerStaticDebug(mux, "web/debug")
 

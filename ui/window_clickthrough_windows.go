@@ -9,6 +9,8 @@ import (
 )
 
 const (
+	hwndTopmost     uintptr = ^uintptr(0)
+	hwndNoTopmost   uintptr = ^uintptr(1)
 	wsExLayered     uintptr = 0x00080000
 	wsExTransparent uintptr = 0x00000020
 	wsExAppWindow   uintptr = 0x00040000
@@ -87,6 +89,28 @@ func setMousePassthroughByHandle(hwnd uintptr, enabled bool) error {
 	return nil
 }
 
+func setWindowTopmostByTitle(title string, enabled bool) error {
+	hwnd, err := findWindowByTitle(title)
+	if err != nil {
+		return err
+	}
+	return setWindowTopmostByHandle(hwnd, enabled)
+}
+
+func setWindowTopmostByHandle(hwnd uintptr, enabled bool) error {
+	if hwnd == 0 {
+		return errors.New("window handle invalid")
+	}
+	insertAfter := hwndNoTopmost
+	if enabled {
+		insertAfter = hwndTopmost
+	}
+	_, _, callErr := procSetWindowPos.Call(hwnd, insertAfter, 0, 0, 0, 0, swpNoMove|swpNoSize|swpFrameChanged)
+	if callErr != syscall.Errno(0) {
+		return callErr
+	}
+	return nil
+}
 func hideWindowFromTaskbarByHandle(hwnd uintptr) error {
 	if hwnd == 0 {
 		return errors.New("window handle invalid")
