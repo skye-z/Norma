@@ -1,0 +1,6 @@
+{
+  "llm_first_token_ms": 1200,
+  "tts_first_chunk_ms": 1000,
+  "rag_ready_chunks": 6,
+  "audio_play_start": 1
+}
