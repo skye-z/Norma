@@ -9,16 +9,17 @@ import (
 
 // Config contains all runtime configuration.
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Audio    AudioConfig    `mapstructure:"audio"`
-	ASR      ASRConfig      `mapstructure:"asr"`
-	LLM      LLMConfig      `mapstructure:"llm"`
-	TTS      TTSConfig      `mapstructure:"tts"`
-	RAG      RAGConfig      `mapstructure:"rag"`
-	Memory   MemoryConfig   `mapstructure:"memory"`
-	Perf     PerfConfig     `mapstructure:"perf"`
-	Security SecurityConfig `mapstructure:"security"`
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Audio     AudioConfig     `mapstructure:"audio"`
+	ASR       ASRConfig       `mapstructure:"asr"`
+	LLM       LLMConfig       `mapstructure:"llm"`
+	TTS       TTSConfig       `mapstructure:"tts"`
+	RAG       RAGConfig       `mapstructure:"rag"`
+	Memory    MemoryConfig    `mapstructure:"memory"`
+	Perf      PerfConfig      `mapstructure:"perf"`
+	Security  SecurityConfig  `mapstructure:"security"`
+	Providers ProvidersConfig `mapstructure:"providers"`
 }
 
 type AppConfig struct {
@@ -35,6 +36,13 @@ type DatabaseConfig struct {
 type AudioConfig struct {
 	EnableWakeWord        bool   `mapstructure:"enable_wake_word"`
 	WakeMode              string `mapstructure:"wake_mode"`
+	WakeProvider          string `mapstructure:"wake_provider"`
+	WakeBinaryPath        string `mapstructure:"wake_binary_path"`
+	WakeModelPath         string `mapstructure:"wake_model_path"`
+	WakeKeywordsFilePath  string `mapstructure:"wake_keywords_file_path"`
+	WakeKeyword           string `mapstructure:"wake_keyword"`
+	WakeWindowMs          int    `mapstructure:"wake_window_ms"`
+	WakeDetectIntervalMs  int    `mapstructure:"wake_detect_interval_ms"`
 	EndpointSilenceFrames int    `mapstructure:"endpoint_silence_frames"`
 	InterruptDuringSpeak  bool   `mapstructure:"interrupt_during_speaking"`
 	AECEnabled            bool   `mapstructure:"aec_enabled"`
@@ -65,12 +73,17 @@ type TTSConfig struct {
 	Voice                string `mapstructure:"voice"`
 	Endpoint             string `mapstructure:"endpoint"`
 	RequestTimeoutMs     int    `mapstructure:"request_timeout_ms"`
+	BinaryPath           string `mapstructure:"binary_path"`
+	ModelPath            string `mapstructure:"model_path"`
 	SentenceFirstEnabled bool   `mapstructure:"sentence_first_enabled"`
 }
 
 type RAGConfig struct {
 	TopK            int    `mapstructure:"top_k"`
 	VectorIndexPath string `mapstructure:"vector_index_path"`
+	EmbedProvider   string `mapstructure:"embed_provider"`
+	EmbedEndpoint   string `mapstructure:"embed_endpoint"`
+	EmbedModel      string `mapstructure:"embed_model"`
 }
 
 type MemoryConfig struct {
@@ -98,18 +111,38 @@ type SecurityConfig struct {
 	PurgeProofDir        string   `mapstructure:"purge_proof_dir"`
 }
 
+type ProvidersConfig struct {
+	Root string `mapstructure:"root"`
+}
+
 func defaultConfig() Config {
 	return Config{
 		App:      AppConfig{Name: "Norma", Env: "dev", LogLevel: "info", LogDir: "logs"},
 		Database: DatabaseConfig{Path: "data/norma.db"},
-		Audio:    AudioConfig{EnableWakeWord: true, WakeMode: "wake_word_vad", EndpointSilenceFrames: 4, InterruptDuringSpeak: true, AECEnabled: false, NSEnabled: false, Scene: "speaker"},
-		ASR:      ASRConfig{Provider: "mock", Endpoint: "http://127.0.0.1:8081", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
-		LLM:      LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
-		TTS:      TTSConfig{Provider: "mock", Voice: "norma", Endpoint: "http://127.0.0.1:8020", RequestTimeoutMs: 30000, SentenceFirstEnabled: true},
-		RAG:      RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json"},
-		Memory:   MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
-		Perf:     PerfConfig{AutoDegrade: true, LLMFirstTokenThresholdMs: 1200, DegradedRAGTopK: 4, DegradedAudioChunkSize: 4096, AlertLLMFirstTokenMs: 1500, AlertTTSFirstChunkMs: 1200, BaselineFile: "configs/perf-baseline.json"},
-		Security: SecurityConfig{AllowRemoteProviders: false, AllowedRemoteHosts: []string{"127.0.0.1", "localhost"}, ToolWhitelist: []string{"open_local_file", "open_debug_panel", "export_diagnostics"}, HighRiskConfirm: true, PurgeProofDir: "diagnostics/purge-proofs"},
+		Audio: AudioConfig{
+			EnableWakeWord:        true,
+			WakeMode:              "wake_word_vad",
+			WakeProvider:          "sherpa-onnx",
+			WakeBinaryPath:        "",
+			WakeModelPath:         "",
+			WakeKeywordsFilePath:  "",
+			WakeKeyword:           "诺玛",
+			WakeWindowMs:          2000,
+			WakeDetectIntervalMs:  400,
+			EndpointSilenceFrames: 4,
+			InterruptDuringSpeak:  true,
+			AECEnabled:            false,
+			NSEnabled:             false,
+			Scene:                 "speaker",
+		},
+		ASR:       ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
+		LLM:       LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
+		TTS:       TTSConfig{Provider: "piper", Voice: "zh_CN-huayan-medium", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
+		RAG:       RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json", EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434", EmbedModel: "bge-m3:latest"},
+		Memory:    MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
+		Perf:      PerfConfig{AutoDegrade: true, LLMFirstTokenThresholdMs: 1200, DegradedRAGTopK: 4, DegradedAudioChunkSize: 4096, AlertLLMFirstTokenMs: 1500, AlertTTSFirstChunkMs: 1200, BaselineFile: "configs/perf-baseline.json"},
+		Security:  SecurityConfig{AllowRemoteProviders: false, AllowedRemoteHosts: []string{"127.0.0.1", "localhost"}, ToolWhitelist: []string{"open_local_file", "open_debug_panel", "export_diagnostics"}, HighRiskConfirm: true, PurgeProofDir: "diagnostics/purge-proofs"},
+		Providers: ProvidersConfig{Root: "runtime/providers"},
 	}
 }
 
@@ -142,6 +175,13 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("database.path", cfg.Database.Path)
 	v.SetDefault("audio.enable_wake_word", cfg.Audio.EnableWakeWord)
 	v.SetDefault("audio.wake_mode", cfg.Audio.WakeMode)
+	v.SetDefault("audio.wake_provider", cfg.Audio.WakeProvider)
+	v.SetDefault("audio.wake_binary_path", cfg.Audio.WakeBinaryPath)
+	v.SetDefault("audio.wake_model_path", cfg.Audio.WakeModelPath)
+	v.SetDefault("audio.wake_keywords_file_path", cfg.Audio.WakeKeywordsFilePath)
+	v.SetDefault("audio.wake_keyword", cfg.Audio.WakeKeyword)
+	v.SetDefault("audio.wake_window_ms", cfg.Audio.WakeWindowMs)
+	v.SetDefault("audio.wake_detect_interval_ms", cfg.Audio.WakeDetectIntervalMs)
 	v.SetDefault("audio.endpoint_silence_frames", cfg.Audio.EndpointSilenceFrames)
 	v.SetDefault("audio.interrupt_during_speaking", cfg.Audio.InterruptDuringSpeak)
 	v.SetDefault("audio.aec_enabled", cfg.Audio.AECEnabled)
@@ -163,9 +203,14 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("tts.voice", cfg.TTS.Voice)
 	v.SetDefault("tts.endpoint", cfg.TTS.Endpoint)
 	v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
+	v.SetDefault("tts.binary_path", cfg.TTS.BinaryPath)
+	v.SetDefault("tts.model_path", cfg.TTS.ModelPath)
 	v.SetDefault("tts.sentence_first_enabled", cfg.TTS.SentenceFirstEnabled)
 	v.SetDefault("rag.top_k", cfg.RAG.TopK)
 	v.SetDefault("rag.vector_index_path", cfg.RAG.VectorIndexPath)
+	v.SetDefault("rag.embed_provider", cfg.RAG.EmbedProvider)
+	v.SetDefault("rag.embed_endpoint", cfg.RAG.EmbedEndpoint)
+	v.SetDefault("rag.embed_model", cfg.RAG.EmbedModel)
 	v.SetDefault("memory.stm_token_budget", cfg.Memory.STMTokenBudget)
 	v.SetDefault("memory.stm_reserve_important", cfg.Memory.STMReserveImportant)
 	v.SetDefault("memory.summary_auto_write", cfg.Memory.SummaryAutoWrite)
@@ -182,4 +227,5 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("security.tool_whitelist", cfg.Security.ToolWhitelist)
 	v.SetDefault("security.high_risk_confirm", cfg.Security.HighRiskConfirm)
 	v.SetDefault("security.purge_proof_dir", cfg.Security.PurgeProofDir)
+	v.SetDefault("providers.root", cfg.Providers.Root)
 }

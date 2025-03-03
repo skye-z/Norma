@@ -19,6 +19,7 @@ import (
 	"norma/internal/llm"
 	"norma/internal/metrics"
 	"norma/internal/ops"
+	"norma/internal/providers"
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
@@ -36,6 +37,11 @@ func main() {
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	providerMgr := providers.NewManager(cfg.Providers.Root)
+	if err := providerMgr.EnsureLayout(); err != nil {
+		log.Printf("[providers] ensure layout failed: %v", err)
 	}
 
 	logCloser, err := ops.SetupLogRouting(cfg.App.LogDir)
@@ -66,9 +72,9 @@ func main() {
 
 	_ = live2d.NewBridge(rt.Bus)
 
-	tts := chooseTTS(cfg)
+	tts := chooseTTS(cfg, providerMgr)
 	streamer := chooseLLMStreamer(cfg)
-	retriever := chooseRetriever(cfg, engine)
+	retriever := chooseRetriever(cfg, engine, providerMgr)
 	_ = runtime.NewOrchestrator(rt, retriever, streamer, tts, cfg.RAG.TopK, quality)
 
 	rt.Bus.Subscribe("audio.vad.start", func(evt bus.Event) {
@@ -113,7 +119,7 @@ func main() {
 	log.Printf("[%s] started env=%s version=%s commit=%s db=%s state=%s", cfg.App.Name, cfg.App.Env, version, commit, cfg.Database.Path, rt.State.Get())
 
 	if *demo {
-		runDemoInputPipeline(cfg, rt)
+		runDemoInputPipeline(cfg, rt, providerMgr)
 		time.Sleep(6 * time.Second)
 		log.Printf("[demo] final state=%s degraded=%v", rt.State.Get(), quality.IsDegraded())
 		return
@@ -122,14 +128,14 @@ func main() {
 	select {}
 }
 
-func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
+func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime, mgr *providers.Manager) {
 	sessionID := "demo-session"
 	traceID := "demo-trace"
 
 	pipe := audio.Pipeline{
 		VAD:           audio.NewEnergyVAD(0.02),
-		WakeWord:      chooseWakeWord(cfg),
-		ASR:           chooseASR(cfg),
+		WakeWord:      chooseWakeWord(cfg, mgr),
+		ASR:           chooseASR(cfg, mgr),
 		WakeMode:      cfg.Audio.WakeMode,
 		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
 	}
@@ -158,11 +164,36 @@ func runDemoInputPipeline(cfg *config.Config, rt *runtime.Runtime) {
 		}
 	}()
 }
-
-func chooseWakeWord(cfg *config.Config) audio.WakeWord {
+func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 	if strings.ToLower(strings.TrimSpace(cfg.Audio.WakeMode)) != audio.WakeModeWakeWordVAD {
 		return nil
 	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.Audio.WakeProvider))
+	if provider == "" || provider == "mock" {
+		return &audio.MockWakeWord{}
+	}
+	if provider == "sherpa-onnx" {
+		binary := mgr.ResolveBinary("wake", "", cfg.Audio.WakeBinaryPath, "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter")
+		modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
+		if modelDir == "" {
+			modelDir = filepath.Join(mgr.Root(), "wake", "current")
+		}
+		encoder := firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
+		decoder := firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
+		joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
+		tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
+		keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+		if binary == "" || encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
+			log.Printf("[wake] sherpa-onnx assets incomplete, fallback to mock wake word")
+			return &audio.MockWakeWord{}
+		}
+		wake := audio.NewSherpaWakeWord(binary, encoder, decoder, joiner, tokens, keywords, cfg.Audio.WakeKeyword)
+		wake.WindowFrames = framesFromMs(cfg.Audio.WakeWindowMs)
+		wake.DetectInterval = framesFromMs(cfg.Audio.WakeDetectIntervalMs)
+		log.Printf("[wake] use sherpa-onnx binary=%s keyword=%s keywords=%s", binary, cfg.Audio.WakeKeyword, keywords)
+		return wake
+	}
+	log.Printf("[wake] unsupported provider=%s, fallback to mock wake word", provider)
 	return &audio.MockWakeWord{}
 }
 
@@ -177,8 +208,8 @@ func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
 	return []audio.Preprocessor{audio.NewMockAECNS(label)}
 }
 
-func chooseASR(cfg *config.Config) audio.ASR {
-	fallback := audio.MockASR{FinalText: "plan today's development tasks."}
+func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
+	fallback := audio.MockASR{FinalText: "plan today development tasks."}
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
 	case "http":
 		if cfg.ASR.Endpoint == "" {
@@ -188,16 +219,20 @@ func chooseASR(cfg *config.Config) audio.ASR {
 		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
 		return asr
 	case "whisper", "whispercpp":
-		if cfg.ASR.BinaryPath == "" || cfg.ASR.ModelPath == "" {
+		binary := mgr.ResolveBinary("asr", "", cfg.ASR.BinaryPath, "whisper-cli.exe", "main.exe", "whisper-cli", "main")
+		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
+		if binary == "" || model == "" {
 			log.Printf("[asr] whispercpp not configured, fallback to mock")
 			return fallback
 		}
-		return audio.NewWhisperCPPASR(cfg.ASR.BinaryPath, cfg.ASR.ModelPath, cfg.ASR.Language, cfg.ASR.Threads)
+		log.Printf("[asr] use whisper.cpp binary=%s model=%s", binary, model)
+		return audio.NewWhisperCPPASR(binary, model, cfg.ASR.Language, cfg.ASR.Threads)
 	default:
 		return fallback
 	}
 }
-func chooseTTS(cfg *config.Config) audio.TTS {
+
+func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 	fallback := audio.NewMockTTS()
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
 	case "http", "xtts":
@@ -205,10 +240,20 @@ func chooseTTS(cfg *config.Config) audio.TTS {
 			return fallback
 		}
 		return audio.NewXTTSStreamer(cfg.TTS.Endpoint, cfg.TTS.Voice, time.Duration(cfg.TTS.RequestTimeoutMs)*time.Millisecond)
+	case "piper":
+		binary := mgr.ResolveBinary("tts", "", cfg.TTS.BinaryPath, "piper.exe", "piper")
+		model := mgr.ResolveFile("tts", "", cfg.TTS.ModelPath, cfg.TTS.Voice+".onnx", "model.onnx")
+		if binary == "" || model == "" {
+			log.Printf("[tts] piper not configured, fallback to mock")
+			return fallback
+		}
+		log.Printf("[tts] use piper binary=%s model=%s", binary, model)
+		return audio.NewPiperTTS(binary, model, cfg.TTS.Voice)
 	default:
 		return fallback
 	}
 }
+
 func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	fallback := llm.MockStreamer{}
 	if cfg.LLM.Provider == "ollama" {
@@ -234,7 +279,7 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	return fallback
 }
 
-func chooseRetriever(cfg *config.Config, engine *xorm.Engine) index.Retriever {
+func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) index.Retriever {
 	fts := index.NewSQLiteStore(engine)
 
 	vecPath := strings.TrimSpace(cfg.RAG.VectorIndexPath)
@@ -248,12 +293,60 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine) index.Retriever {
 		}
 	}
 
-	vec, err := index.NewDiskVectorStore(vecPath)
+	embedder := chooseEmbedder(cfg, mgr)
+	vec, err := index.NewDiskVectorStoreWithEmbedder(vecPath, embedder)
 	if err != nil {
 		log.Printf("[rag] init vector store failed, fallback to text-only retriever: %v", err)
 		return index.NewHybridRetriever(nil, fts, nil)
 	}
 
-	log.Printf("[rag] use hybrid retriever vector=%s", vecPath)
+	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s", vecPath, cfg.RAG.EmbedProvider)
 	return index.NewHybridRetriever(vec, fts, nil)
+}
+
+func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) index.Embedder {
+	_ = mgr
+	switch strings.ToLower(strings.TrimSpace(cfg.RAG.EmbedProvider)) {
+	case "ollama":
+		if strings.TrimSpace(cfg.RAG.EmbedModel) == "" {
+			log.Printf("[rag] ollama embed model empty, fallback to hash embedder")
+			return index.HashEmbedder{}
+		}
+		return index.NewOllamaEmbedder(cfg.RAG.EmbedEndpoint, cfg.RAG.EmbedModel, 15*time.Second)
+	default:
+		return index.HashEmbedder{}
+	}
+}
+
+func firstExistingPath(paths ...string) string {
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if strings.Contains(path, "*") {
+			matches, _ := filepath.Glob(path)
+			for _, match := range matches {
+				if _, err := os.Stat(match); err == nil {
+					return match
+				}
+			}
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+func framesFromMs(ms int) int {
+	if ms <= 0 {
+		return 0
+	}
+	frames := ms / 40
+	if frames < 1 {
+		return 1
+	}
+	return frames
 }

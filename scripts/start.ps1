@@ -183,6 +183,9 @@ try {
     }
 
     $cfg = Get-Content -Encoding utf8 $ConfigPath
+    $providersRoot = Get-ConfigValue -Lines $cfg -Section "providers" -Key "root"
+    if ([string]::IsNullOrWhiteSpace($providersRoot)) { $providersRoot = "runtime/providers" }
+    $providersRoot = Join-Path (Get-Location) $providersRoot
     $llmProvider = (Get-ConfigValue -Lines $cfg -Section "llm" -Key "provider").ToLowerInvariant()
     $llmEndpoint = Get-ConfigValue -Lines $cfg -Section "llm" -Key "endpoint"
     $ttsProvider = (Get-ConfigValue -Lines $cfg -Section "tts" -Key "provider").ToLowerInvariant()
@@ -199,8 +202,16 @@ try {
 
     if ($llmProvider -eq "ollama") {
         $ollamaStartCmd = $env:NORMA_OLLAMA_START_CMD
-        if ([string]::IsNullOrWhiteSpace($ollamaStartCmd) -and (Get-Command ollama -ErrorAction SilentlyContinue)) {
-            $ollamaStartCmd = "ollama serve"
+        if ([string]::IsNullOrWhiteSpace($ollamaStartCmd)) {
+            $managedOllama = Join-Path $providersRoot "llm/current/ollama.exe"
+            if (-not (Test-Path $managedOllama)) {
+                $managedOllama = Join-Path $providersRoot "llm/current/ollama"
+            }
+            if (Test-Path $managedOllama) {
+                $ollamaStartCmd = "& '$managedOllama' serve"
+            } elseif (Get-Command ollama -ErrorAction SilentlyContinue) {
+                $ollamaStartCmd = "ollama serve"
+            }
         }
 
         if (-not (Test-TcpEndpoint -Endpoint $llmEndpoint)) {

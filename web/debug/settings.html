@@ -13,7 +13,7 @@
         <span class="brand-mark"></span>
         <div>
           <div class="brand-title">NORMA / SETTINGS CONSOLE</div>
-          <span class="brand-sub">运行时、安全与性能配置</span>
+          <span class="brand-sub">运行时、Provider 与安全策略</span>
         </div>
       </div>
       <nav class="nav-tabs">
@@ -22,16 +22,17 @@
         <a href="./metrics.html">指标看板</a>
         <a class="active" href="./settings.html">运行时设置</a>
       </nav>
-      <span class="status-chip">热更新已启用</span>
+      <span class="status-chip">支持热更新</span>
     </header>
 
     <section class="hero">
-      <span class="hero-tag">Runtime Config</span>
-      <h1>运行时设置页</h1>
-      <p>集中维护 LLM、ASR、TTS、音频、记忆、性能与安全策略。这里的每次保存都会写回运行时配置，并广播热更新事件。</p>
+      <span class="hero-tag">Runtime Settings</span>
+      <h1>运行时与 Provider 设置</h1>
+      <p>集中维护语音链路、Wake、Embedding、性能策略和受管 Provider。这里保存的是 Norma 的统一运行时配置，而不是让用户手工改路径。</p>
       <div class="hero-actions">
         <button id="load">重新读取</button>
         <button id="save" class="primary">保存配置</button>
+        <button id="provider_init">初始化 Provider 目录</button>
       </div>
     </section>
 
@@ -47,11 +48,15 @@
             <div><label for="llm_model">LLM Model</label><input id="llm_model" /></div>
             <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" /></div>
             <div><label for="llm_timeout">LLM 超时（毫秒）</label><input id="llm_timeout" type="number" /></div>
+
             <div><label for="asr_provider">ASR Provider</label><input id="asr_provider" /></div>
-            <div class="full"><label for="asr_endpoint">ASR Endpoint</label><input id="asr_endpoint" /></div>
-            <div class="full"><label for="asr_stream_endpoint">ASR 流式 Endpoint</label><input id="asr_stream_endpoint" /></div>
+            <div class="full"><label for="asr_binary_path">ASR 二进制路径（可留空，优先走受管目录）</label><input id="asr_binary_path" /></div>
+            <div class="full"><label for="asr_model_path">ASR 模型路径（可留空，优先走受管目录）</label><input id="asr_model_path" /></div>
+
             <div><label for="tts_provider">TTS Provider</label><input id="tts_provider" /></div>
-            <div><label for="tts_endpoint">TTS Endpoint</label><input id="tts_endpoint" /></div>
+            <div><label for="tts_voice">TTS Voice / 模型名</label><input id="tts_voice" /></div>
+            <div class="full"><label for="tts_binary_path">TTS 二进制路径（可留空，优先走受管目录）</label><input id="tts_binary_path" /></div>
+            <div class="full"><label for="tts_model_path">TTS 模型路径（可留空，优先走受管目录）</label><input id="tts_model_path" /></div>
             <div class="full"><label><input id="tts_sentence_first" type="checkbox" /> 启用短句优先首包策略</label></div>
           </div>
         </div>
@@ -59,21 +64,63 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h2>交互与性能</h2>
-          <span class="mini-note">Audio / Memory / Perf</span>
+          <h2>Wake 与检索</h2>
+          <span class="mini-note">Wake / RAG / Memory</span>
         </div>
         <div class="panel-body">
           <div class="form-grid">
             <div><label for="audio_wake_mode">唤醒模式</label><input id="audio_wake_mode" /></div>
+            <div><label for="audio_wake_provider">Wake Provider</label><input id="audio_wake_provider" /></div>
+            <div class="full"><label for="audio_wake_binary_path">Wake 二进制路径</label><input id="audio_wake_binary_path" /></div>
+            <div class="full"><label for="audio_wake_model_path">Wake 模型目录</label><input id="audio_wake_model_path" /></div>
+            <div class="full"><label for="audio_wake_keywords_file_path">Wake keywords 文件</label><input id="audio_wake_keywords_file_path" /></div>
+            <div><label for="audio_wake_keyword">Wake 关键词</label><input id="audio_wake_keyword" /></div>
+            <div><label for="audio_wake_window_ms">Wake 窗口（毫秒）</label><input id="audio_wake_window_ms" type="number" /></div>
+            <div><label for="audio_wake_detect_interval_ms">Wake 检测间隔（毫秒）</label><input id="audio_wake_detect_interval_ms" type="number" /></div>
             <div><label for="audio_silence">静音帧阈值</label><input id="audio_silence" type="number" /></div>
-            <div><label><input id="audio_interrupt" type="checkbox" /> 讲话中可被打断</label></div>
+            <div><label><input id="audio_interrupt" type="checkbox" /> 讲话中允许打断</label></div>
             <div><label><input id="audio_aec" type="checkbox" /> 启用 AEC</label></div>
             <div><label><input id="audio_ns" type="checkbox" /> 启用降噪</label></div>
             <div><label for="audio_scene">音频场景</label><input id="audio_scene" /></div>
+
             <div><label for="rag_topk">RAG TopK</label><input id="rag_topk" type="number" /></div>
+            <div><label for="rag_embed_provider">Embedding Provider</label><input id="rag_embed_provider" /></div>
+            <div class="full"><label for="rag_embed_endpoint">Embedding Endpoint</label><input id="rag_embed_endpoint" /></div>
+            <div class="full"><label for="rag_embed_model">Embedding Model</label><input id="rag_embed_model" /></div>
             <div><label for="stm_budget">STM Token 预算</label><input id="stm_budget" type="number" /></div>
             <div><label><input id="stm_keep_important" type="checkbox" /> 保留重要对话</label></div>
             <div><label><input id="memory_summary_auto" type="checkbox" /> 自动写入摘要</label></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Provider 面板</h2>
+          <span class="mini-note">Managed Providers</span>
+        </div>
+        <div class="panel-body stack">
+          <div class="stat-list" id="provider_summary"></div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">可安装 Provider</div>
+            <div id="provider_catalog" class="control-stack"></div>
+          </div>
+          <div>
+            <div class="mini-note" style="margin-bottom:10px;">Provider 日志</div>
+            <pre id="provider_log" class="console"></pre>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="layout layout-2">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>性能策略</h2>
+          <span class="mini-note">Perf Policy</span>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
             <div><label><input id="perf_auto" type="checkbox" /> 启用自动降级</label></div>
             <div><label for="perf_first">首 token 阈值（毫秒）</label><input id="perf_first" type="number" /></div>
             <div><label for="perf_topk">降级后 TopK</label><input id="perf_topk" type="number" /></div>
@@ -92,6 +139,7 @@
         </div>
         <div class="panel-body stack">
           <div class="form-grid">
+            <div class="full"><label for="providers_root">Provider 根目录</label><input id="providers_root" /></div>
             <div class="full"><label><input id="security_allow_remote" type="checkbox" /> 允许远程 Provider</label></div>
             <div class="full"><label for="security_hosts">允许的远程主机（逗号分隔）</label><input id="security_hosts" placeholder="127.0.0.1,localhost" /></div>
             <div class="full"><label for="security_tools">工具白名单（逗号分隔）</label><input id="security_tools" placeholder="open_local_file,export_diagnostics" /></div>

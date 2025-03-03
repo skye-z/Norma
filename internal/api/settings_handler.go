@@ -62,14 +62,35 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.LLM.RequestTimeoutMs <= 0 {
 		cfg.LLM.RequestTimeoutMs = 45000
 	}
+	if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
+		cfg.Audio.WakeProvider = "sherpa-onnx"
+	}
+	if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
+		cfg.Audio.WakeKeyword = "诺玛"
+	}
+	if cfg.Audio.WakeWindowMs <= 0 {
+		cfg.Audio.WakeWindowMs = 2000
+	}
+	if cfg.Audio.WakeDetectIntervalMs <= 0 {
+		cfg.Audio.WakeDetectIntervalMs = 400
+	}
 	if cfg.ASR.RequestTimeoutMs <= 0 {
 		cfg.ASR.RequestTimeoutMs = 10000
 	}
 	if cfg.TTS.RequestTimeoutMs <= 0 {
 		cfg.TTS.RequestTimeoutMs = 30000
 	}
+	if strings.TrimSpace(cfg.TTS.Provider) == "" {
+		cfg.TTS.Provider = "piper"
+	}
 	if cfg.RAG.TopK <= 0 {
 		cfg.RAG.TopK = 6
+	}
+	if strings.TrimSpace(cfg.RAG.EmbedProvider) == "" {
+		cfg.RAG.EmbedProvider = "ollama"
+	}
+	if strings.TrimSpace(cfg.RAG.EmbedEndpoint) == "" {
+		cfg.RAG.EmbedEndpoint = cfg.LLM.Endpoint
 	}
 	if cfg.Memory.STMTokenBudget <= 0 {
 		cfg.Memory.STMTokenBudget = 2048
@@ -89,6 +110,9 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.Perf.AlertTTSFirstChunkMs <= 0 {
 		cfg.Perf.AlertTTSFirstChunkMs = 1200
 	}
+	if strings.TrimSpace(cfg.Providers.Root) == "" {
+		cfg.Providers.Root = filepath.ToSlash("runtime/providers")
+	}
 	if cfg.Security.PurgeProofDir == "" {
 		cfg.Security.PurgeProofDir = filepath.ToSlash("diagnostics/purge-proofs")
 	}
@@ -99,7 +123,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		cfg.Security.ToolWhitelist = []string{"open_local_file", "open_debug_panel", "export_diagnostics"}
 	}
 
-	for _, endpoint := range []string{cfg.LLM.Endpoint, cfg.ASR.Endpoint, cfg.ASR.StreamEndpoint, cfg.TTS.Endpoint} {
+	for _, endpoint := range []string{cfg.LLM.Endpoint, cfg.ASR.Endpoint, cfg.ASR.StreamEndpoint, cfg.TTS.Endpoint, cfg.RAG.EmbedEndpoint} {
 		if err := validateEndpointPolicy(endpoint, cfg.Security); err != nil {
 			writeAPIError(w, err)
 			return

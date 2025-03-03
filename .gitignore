@@ -1,4 +1,4 @@
-﻿# OS / Editor
+# OS / Editor
 .DS_Store
 Thumbs.db
 *.swp
@@ -26,6 +26,7 @@ coverage.out
 /data/
 /logs/
 /diagnostics/
+/runtime/
 *.db
 *.db-shm
 *.db-wal

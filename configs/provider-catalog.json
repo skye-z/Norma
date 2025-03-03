@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "asr-whispercpp-windows-x64",
+      "kind": "asr",
+      "name": "whisper.cpp",
+      "version": "v1.8.2",
+      "source": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.2/whisper-bin-x64.zip",
+      "archive_type": "zip",
+      "binary_candidates": ["whisper-cli.exe", "main.exe"],
+      "notes": "官方 release 二进制。建议配合 ggml-base.bin 或更小模型使用。"
+    },
+    {
+      "id": "asr-whisper-model-base",
+      "kind": "asr",
+      "name": "whisper.cpp-base-model",
+      "version": "main",
+      "source": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true",
+      "archive_type": "file",
+      "target_name": "ggml-base.bin",
+      "notes": "官方 ggml base 模型，约 148MB。"
+    },
+    {
+      "id": "tts-piper-windows-x64",
+      "kind": "tts",
+      "name": "piper",
+      "version": "v1.2.0",
+      "source": "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_windows_amd64.zip",
+      "archive_type": "zip",
+      "binary_candidates": ["piper.exe"],
+      "notes": "Piper Windows 二进制。"
+    },
+    {
+      "id": "tts-piper-voice-zh-cn-huayan-medium",
+      "kind": "tts",
+      "name": "zh_CN-huayan-medium",
+      "version": "v1.0.0",
+      "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx?download=true",
+      "archive_type": "file",
+      "target_name": "zh_CN-huayan-medium.onnx",
+      "extra_files": [
+        {
+          "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json?download=true",
+          "target_name": "zh_CN-huayan-medium.onnx.json"
+        }
+      ],
+      "notes": "中文中等质量语音，安装后可直接配合 Piper 使用。"
+    },
+    {
+      "id": "tts-piper-voice-zh-cn-huayan-x-low",
+      "kind": "tts",
+      "name": "zh_CN-huayan-x_low",
+      "version": "v1.0.0",
+      "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx?download=true",
+      "archive_type": "file",
+      "target_name": "zh_CN-huayan-x_low.onnx",
+      "extra_files": [
+        {
+          "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx.json?download=true",
+          "target_name": "zh_CN-huayan-x_low.onnx.json"
+        }
+      ],
+      "notes": "中文低资源语音，体积更小，首装更轻。"
+    },
+    {
+      "id": "llm-ollama-windows-x64",
+      "kind": "llm",
+      "name": "ollama",
+      "version": "v0.13.5",
+      "source": "https://ollama.com/download/ollama-windows-amd64.zip",
+      "archive_type": "zip",
+      "binary_candidates": ["ollama.exe"],
+      "notes": "Ollama Windows 独立包。Embedding 与 LLM 共用。"
+    },
+    {
+      "id": "wake-sherpa-kws-zh-en-model",
+      "kind": "wake",
+      "name": "sherpa-onnx-kws-model",
+      "version": "2025-12-20",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
+      "archive_type": "tar.bz2",
+      "notes": "关键词模型包，需配合 sherpa-onnx keyword spotter 二进制使用。"
+    }
+  ]
+}
