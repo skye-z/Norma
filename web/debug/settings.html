@@ -13,7 +13,7 @@
         <span class="brand-mark"></span>
         <div>
           <div class="brand-title">NORMA / SETTINGS CONSOLE</div>
-          <span class="brand-sub">运行时、Provider 与性能策略</span>
+          <span class="brand-sub">运行配置、Provider 与降级策略</span>
         </div>
       </div>
       <nav class="nav-tabs">
@@ -23,13 +23,13 @@
         <a class="active" href="./settings.html">运行时设置</a>
         <a href="./onboarding.html">首启向导</a>
       </nav>
-      <span class="status-chip">热更新配置</span>
+      <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </header>
 
     <section class="hero">
       <span class="hero-tag">Runtime Settings</span>
       <h1>运行时与 Provider 设置</h1>
-      <p>集中维护 Wake、ASR、TTS、Embedding、降级策略与受管 Provider。优先由 Norma 统一管理二进制、模型和默认配置，避免用户手动改路径。</p>
+      <p>这里严格采用设计稿的控制台式布局。左侧维护模型与语音，中间维护 Wake 与 Provider，底部两栏维护性能和安全，所有控制入口都保持同一视觉节奏。</p>
       <div class="hero-actions">
         <button id="load">重新读取</button>
         <button id="save" class="primary">保存配置</button>
@@ -41,23 +41,21 @@
       </div>
     </section>
 
-    <section class="layout layout-3">
+    <section class="layout-3 layout-grid three">
       <section class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>模型与语音</h2>
           <span class="mini-note">LLM / ASR / TTS</span>
         </div>
-        <div class="panel-body">
+        <div class="panel-content">
           <div class="form-grid">
             <div><label for="llm_provider">LLM Provider</label><input id="llm_provider" /></div>
             <div><label for="llm_model">LLM 主模型</label><input id="llm_model" /></div>
             <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" /></div>
             <div><label for="llm_timeout">LLM 超时（毫秒）</label><input id="llm_timeout" type="number" /></div>
-
             <div><label for="asr_provider">ASR Provider</label><input id="asr_provider" /></div>
             <div class="full"><label for="asr_binary_path">ASR 二进制路径</label><input id="asr_binary_path" /></div>
             <div class="full"><label for="asr_model_path">ASR 模型路径</label><input id="asr_model_path" /></div>
-
             <div><label for="tts_provider">TTS Provider</label><input id="tts_provider" /></div>
             <div><label for="tts_voice">TTS Voice / 模型名</label><input id="tts_voice" /></div>
             <div class="full"><label for="tts_binary_path">TTS 二进制路径</label><input id="tts_binary_path" /></div>
@@ -68,11 +66,11 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>Wake 与检索</h2>
-          <span class="mini-note">Wake / RAG / Memory</span>
+          <span class="mini-note">WAKE / RAG / MEMORY</span>
         </div>
-        <div class="panel-body">
+        <div class="panel-content">
           <div class="form-grid">
             <div><label for="audio_wake_mode">唤醒模式</label><input id="audio_wake_mode" /></div>
             <div><label for="audio_wake_provider">Wake Provider</label><input id="audio_wake_provider" /></div>
@@ -87,7 +85,6 @@
             <div><label><input id="audio_aec" type="checkbox" /> 启用 AEC</label></div>
             <div><label><input id="audio_ns" type="checkbox" /> 启用降噪</label></div>
             <div><label for="audio_scene">音频场景</label><input id="audio_scene" /></div>
-
             <div><label for="rag_topk">RAG TopK</label><input id="rag_topk" type="number" /></div>
             <div><label for="rag_embed_provider">Embedding Provider</label><input id="rag_embed_provider" /></div>
             <div class="full"><label for="rag_embed_endpoint">Embedding Endpoint</label><input id="rag_embed_endpoint" /></div>
@@ -100,11 +97,11 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>Provider 面板</h2>
-          <span class="mini-note">Managed Providers</span>
+          <span class="mini-note">MANAGED PROVIDERS</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content control-stack">
           <div id="provider_alerts" class="control-stack"></div>
           <div class="hero-actions" style="margin-top:0;">
             <button data-health-filter="all" class="primary">全部</button>
@@ -125,13 +122,13 @@
       </section>
     </section>
 
-    <section class="layout layout-2">
+    <section class="layout-2 layout-grid two">
       <section class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>性能与降级</h2>
-          <span class="mini-note">Perf Policy</span>
+          <span class="mini-note">PERF POLICY</span>
         </div>
-        <div class="panel-body">
+        <div class="panel-content">
           <div class="form-grid">
             <div><label><input id="perf_auto" type="checkbox" /> 启用自动降级</label></div>
             <div><label for="perf_first">首 token 阈值（毫秒）</label><input id="perf_first" type="number" /></div>
@@ -150,11 +147,11 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>安全与目录</h2>
-          <span class="mini-note">Security Policy</span>
+          <span class="mini-note">SECURITY POLICY</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content control-stack">
           <div class="form-grid">
             <div class="full"><label for="providers_root">Provider 根目录</label><input id="providers_root" /></div>
             <div class="full"><label><input id="security_allow_remote" type="checkbox" /> 允许远程 Provider</label></div>

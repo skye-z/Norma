@@ -1,6 +1,8 @@
 import './style.css';
 import * as PIXI from 'pixi.js';
 
+window.PIXI = PIXI;
+
 const apiBase = 'http://127.0.0.1:8090';
 const modelURL = `${apiBase}/static/model/runtime/hiyori_pro_t11.model3.json`;
 const coreURL = `${apiBase}/static/model/runtime/live2dcubismcore.min.js`;
@@ -10,7 +12,13 @@ const isDebug = params.get('debug') === '1';
 const isSettings = params.get('settings') === '1';
 
 if (isSettings) {
-  document.querySelector('#app').innerHTML = `<main class="settings-page"><section class="settings-panel"><h1>Norma Settings</h1></section></main>`;
+  document.querySelector('#app').innerHTML = `
+    <main class="settings-page">
+      <section class="settings-panel">
+        <h1>Norma Settings</h1>
+      </section>
+    </main>
+  `;
 } else if (isDebug) {
   document.querySelector('#app').innerHTML = `
     <main class="debug-page">
@@ -35,9 +43,7 @@ if (isSettings) {
 } else {
   document.querySelector('#app').innerHTML = `
     <main class="companion-shell">
-      <section id="debug-log-panel" class="debug-log-panel">
-        <ul id="debug-log-list" class="debug-log-list"></ul>
-      </section>
+      <div id="stage-status" class="stage-status">正在加载 Live2D 模型...</div>
       <div id="stage" class="stage companion-stage wails-drag"></div>
     </main>
   `;
@@ -47,7 +53,7 @@ const logEl = document.getElementById('log');
 const log = (msg) => {
   if (!logEl) return;
   const ts = new Date().toLocaleTimeString();
-  logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
+  logEl.textContent = `[${ts}] ${msg}\n${logEl.textContent}`;
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,9 +63,7 @@ async function waitForApiReady(timeoutMs = 10000) {
   while (Date.now() - start < timeoutMs) {
     try {
       const resp = await fetch(`${apiBase}/healthz`, { cache: 'no-store' });
-      if (resp.ok) {
-        return true;
-      }
+      if (resp.ok) return true;
     } catch (_) {}
     await sleep(350);
   }
@@ -104,7 +108,7 @@ if (isDebug) {
   document.getElementById('ey')?.addEventListener('input', emitEye);
 
   document.getElementById('speak')?.addEventListener('click', () => {
-    const text = String(document.getElementById('txt')?.value || ').trim();
+    const text = String(document.getElementById('txt')?.value || '').trim();
     if (!text) return;
     publish('debug.notice', { text: `speak -> ${text.slice(0, 24)}` });
 
@@ -119,9 +123,9 @@ if (isDebug) {
     speechSynthesis.cancel();
     speechSynthesis.speak(utter);
   });
-}
-if (!isDebug && !isSettings) {
+}if (!isDebug && !isSettings) {
   const stage = document.getElementById('stage');
+  const statusEl = document.getElementById('stage-status');
   const logList = document.getElementById('debug-log-list');
   const state = {
     app: null,
@@ -131,8 +135,6 @@ if (!isDebug && !isSettings) {
     mouthForm: 0,
     targetX: 0,
     targetY: 0,
-    eyeX: 0,
-    eyeY: 0,
     emotion: 'neutral',
     motionIntensity: 0.45,
     eventSources: [],
@@ -141,43 +143,37 @@ if (!isDebug && !isSettings) {
     baseY: 0
   };
 
+  function setStageStatus(text, kind = 'info', persist = true) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.dataset.kind = kind;
+    statusEl.style.display = text ? 'flex' : 'none';
+    if (!persist && text) {
+      window.setTimeout(() => {
+        if (statusEl?.textContent === text) statusEl.style.display = 'none';
+      }, 1800);
+    }
+  }
+
   function appendLog(text) {
-    if (!logList || !text) return;
-    const line = String(text);
-    const nearBottom = logList.scrollTop + logList.clientHeight >= logList.scrollHeight - 8;
-    state.logs.push(line);
-    if (state.logs.length > 30) {
-      state.logs.splice(0, state.logs.length - 30);
-    }
-    while (logList.firstChild) {
-      logList.removeChild(logList.firstChild);
-    }
-    state.logs.forEach((item) => {
-      const li = document.createElement('li');
-      li.textContent = item;
-      logList.appendChild(li);
-    });
-    if (nearBottom) {
-      logList.scrollTop = logList.scrollHeight;
-    }
+    if (!text) return;
+    console.debug('[norma-ui]', text);
   }
 
   function normalizeMotion(payload) {
     const aliases = { thinking: 'Tap', tapbody: 'Tap@Body', flickbody: 'Flick@Body', idle: 'Idle' };
     if (typeof payload === 'string') {
-      const key = payload.replace(/[^a-zA-Z]/g, ').toLowerCase();
+      const key = payload.replace(/[^a-zA-Z]/g, '').toLowerCase();
       return aliases[key] || payload;
     }
     const raw = String(payload?.group || payload?.motion || payload?.name || 'Idle');
-    const key = raw.replace(/[^a-zA-Z]/g, ').toLowerCase();
+    const key = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
     return aliases[key] || raw;
   }
 
   function closeEvents() {
     state.eventSources.forEach((es) => {
-      try {
-        es.close();
-      } catch (_) {}
+      try { es.close(); } catch (_) {}
     });
     state.eventSources = [];
   }
@@ -190,9 +186,7 @@ if (!isDebug && !isSettings) {
         onPayload(data.payload);
       } catch (_) {}
     };
-    es.onerror = () => {
-      console.warn(`[live2d] event source reconnecting: ${name}`);
-    };
+    es.onerror = () => console.warn(`[live2d] event source reconnecting: ${name}`);
     return es;
   }
 
@@ -214,16 +208,12 @@ if (!isDebug && !isSettings) {
           } catch (_) {}
         }
       }
-        });
+    });
 
     const emotionES = createEventSource('live2d.emotion', (payload) => {
-      if (typeof payload?.emotion === 'string') {
-        state.emotion = payload.emotion;
-      }
-      if (Number.isFinite(Number(payload?.intensity))) {
-        state.motionIntensity = Number(payload.intensity);
-      }
-      appendLog('cmd emotion: ' + state.emotion + ' / ' + state.motionIntensity.toFixed(2));
+      if (typeof payload?.emotion === 'string') state.emotion = payload.emotion;
+      if (Number.isFinite(Number(payload?.intensity))) state.motionIntensity = Number(payload.intensity);
+      appendLog(`cmd emotion: ${state.emotion} / ${state.motionIntensity.toFixed(2)}`);
     });
 
     const mouthES = createEventSource('live2d.mouth', (payload) => {
@@ -234,13 +224,11 @@ if (!isDebug && !isSettings) {
       } else {
         state.mouthTarget = String(payload || '').toLowerCase() === 'speaking' ? 0.7 : 0;
       }
-      appendLog('cmd mouth: ' + state.mouthTarget.toFixed(2));
+      appendLog(`cmd mouth: ${state.mouthTarget.toFixed(2)}`);
     });
 
     const visemeES = createEventSource('live2d.mouth.viseme', (payload) => {
-      if (Number.isFinite(Number(payload?.intensity))) {
-        state.mouthTarget = Number(payload.intensity);
-      }
+      if (Number.isFinite(Number(payload?.intensity))) state.mouthTarget = Number(payload.intensity);
       const phoneme = String(payload?.phoneme || 'mid');
       state.mouthForm = phoneme === 'a' ? 1 : phoneme === 'i' ? -0.5 : phoneme === 'u' ? -0.2 : phoneme === 'o' ? 0.4 : 0.1;
     });
@@ -276,22 +264,20 @@ if (!isDebug && !isSettings) {
     state.mouthTarget = 0;
     state.mouthCurrent = 0;
     state.mouthForm = 0;
-    state.eyeX = 0;
-    state.eyeY = 0;
     state.emotion = 'neutral';
     state.motionIntensity = 0.45;
-    if (stage) stage.innerHTML = ';
+    if (stage) stage.innerHTML = '';
   }
 
   async function ensureCore() {
     if (window.Live2DCubismCore) return;
     await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = coreURL;
-      s.async = true;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('live2d core load failed'));
-      document.head.appendChild(s);
+      const script = document.createElement('script');
+      script.src = coreURL;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('live2d core load failed'));
+      document.head.appendChild(script);
     });
   }
 
@@ -305,29 +291,27 @@ if (!isDebug && !isSettings) {
       core.addParameterValueById(id, value - current);
     }
   }
+
   function focusByNormalized(x, y, instant = false) {
     if (!state.model) return;
     const nx = Math.max(-1, Math.min(1, x));
     const ny = Math.max(-1, Math.min(1, y));
     const controller = state.model?.internalModel?.focusController;
-    if (controller && typeof controller.focus === 'function') {
-      controller.focus(nx, ny, instant);
-    }
+    if (controller && typeof controller.focus === 'function') controller.focus(nx, ny, instant);
   }
 
+  function applyFocusNormalized(x, y, instant = false) {
+    focusByNormalized(x, y, instant);
+  }
   function installGazeBridge() {
     const internal = state.model?.internalModel;
     if (!internal || internal.__normaGazePatched) return;
 
     const originalUpdateFocus = typeof internal.updateFocus === 'function' ? internal.updateFocus.bind(internal) : null;
-
     internal.updateFocus = function normaUpdateFocus() {
-      if (originalUpdateFocus) {
-        originalUpdateFocus();
-      }
+      if (originalUpdateFocus) originalUpdateFocus();
       const core = internal.coreModel;
       if (!core || typeof core.addParameterValueById !== 'function') return;
-
       const gx = Math.max(-1, Math.min(1, state.targetX));
       const gy = Math.max(-1, Math.min(1, state.targetY));
       core.addParameterValueById('ParamEyeBallX', gx * 1.1);
@@ -340,20 +324,26 @@ if (!isDebug && !isSettings) {
     internal.__normaGazePatched = true;
     appendLog('gaze bridge installed');
   }
+
   async function initCompanion() {
+    setStageStatus('正在检查 API 服务...', 'info');
     appendLog('init: waiting api server');
     const apiReady = await waitForApiReady(8000);
     if (!apiReady) {
-      appendLog('init failed: api server not ready');
+      setStageStatus('API 服务未就绪', 'error');
       throw new Error('api server is not ready');
     }
-    appendLog('init: api ready');
 
     destroyRenderer();
     connectEvents();
-
+    setStageStatus('API 已就绪，开始加载模型...', 'info');
+    appendLog('init: api ready');
     await ensureCore();
-    const mod = await import('pixi-live2d-display/cubism4');
+
+    const { Live2DModel } = await import('pixi-live2d-display/cubism4');
+    if (typeof Live2DModel.registerTicker === 'function' && PIXI.Ticker) {
+      Live2DModel.registerTicker(PIXI.Ticker);
+    }
 
     state.app = new PIXI.Application({
       resizeTo: stage,
@@ -364,17 +354,21 @@ if (!isDebug && !isSettings) {
     });
     stage.appendChild(state.app.view);
 
-    state.model = await mod.Live2DModel.from(modelURL, { autoInteract: false });
+    state.model = await Live2DModel.from(modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
     installGazeBridge();
 
     state.model.anchor.set(0.5, 1);
     state.model.x = stage.clientWidth / 2;
-    state.model.y = stage.clientHeight * 0.985;
+    state.model.y = stage.clientHeight * 0.96;
     state.baseX = state.model.x;
     state.baseY = state.model.y;
-    state.model.scale.set(Math.min(stage.clientWidth * 1.08 / state.model.width, stage.clientHeight * 1.22 / state.model.height));
+    const width = Math.max(1, state.model.width);
+    const height = Math.max(1, state.model.height);
+    const scale = Math.min((stage.clientWidth * 0.82) / width, (stage.clientHeight * 0.9) / height);
+    state.model.scale.set(scale > 0 ? scale : 0.32);
     await state.model.motion('Idle', 0, 1).catch(() => undefined);
+    setStageStatus('Live2D 模型已加载', 'ready', false);
     appendLog('state -> idle');
 
     state.app.ticker.add(() => {
@@ -386,9 +380,7 @@ if (!isDebug && !isSettings) {
       }
       if (!state.model?.internalModel?.coreModel) return;
       const core = state.model.internalModel.coreModel;
-
       focusByNormalized(state.targetX, state.targetY, true);
-
       state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
       writeParam(core, 'ParamMouthOpenY', state.mouthCurrent);
       writeParam(core, 'ParamMouthForm', state.mouthForm);
@@ -404,47 +396,33 @@ if (!isDebug && !isSettings) {
         await initCompanion();
         return;
       } catch (err) {
+        setStageStatus(`模型加载失败，正在重试 ${i}/6`, 'error');
         appendLog(`init retry ${i}/6`);
         console.error(`[live2d] init failed (attempt ${i}/6)`, err);
         await sleep(Math.min(1200 * i, 5000));
       }
     }
+    setStageStatus('Live2D 模型加载失败，请检查日志和模型文件', 'error');
     appendLog('init aborted after retries');
   }
 
   function setEyeTargetByClientPoint(clientX, clientY) {
-    const r = stage.getBoundingClientRect();
-    const x = Math.max(-1, Math.min(1, ((clientX - r.left) / Math.max(1, r.width) - 0.5) * 2));
-    const y = Math.max(-1, Math.min(1, ((clientY - r.top) / Math.max(1, r.height) - 0.5) * 2));
+    const rect = stage.getBoundingClientRect();
+    const x = Math.max(-1, Math.min(1, ((clientX - rect.left) / Math.max(1, rect.width) - 0.5) * 2));
+    const y = Math.max(-1, Math.min(1, ((clientY - rect.top) / Math.max(1, rect.height) - 0.5) * 2));
     state.targetX = x;
     state.targetY = y;
     applyFocusNormalized(x, y);
   }
 
-  function applyFocusNormalized(x, y, instant = false) {
-    focusByNormalized(x, y, instant);
-  }
-
-
-  stage.addEventListener('mousemove', (evt) => {
-    setEyeTargetByClientPoint(evt.clientX, evt.clientY);
-  });
-
-  window.addEventListener('mousemove', (evt) => {
-    setEyeTargetByClientPoint(evt.clientX, evt.clientY);
-  });
-
+  stage.addEventListener('mousemove', (evt) => setEyeTargetByClientPoint(evt.clientX, evt.clientY));
+  window.addEventListener('mousemove', (evt) => setEyeTargetByClientPoint(evt.clientX, evt.clientY));
   stage.addEventListener('mouseleave', () => {
     state.targetX = 0;
     state.targetY = 0;
     applyFocusNormalized(0, 0);
   });
 
-  window.addEventListener('beforeunload', () => {
-    destroyRenderer();
-  });
-
-  reloadCompanion().catch((err) => {
-    console.error(err);
-  });
+  window.addEventListener('beforeunload', () => destroyRenderer());
+  reloadCompanion().catch((err) => console.error(err));
 }

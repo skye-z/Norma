@@ -7,7 +7,12 @@ body,
   height: 100%;
   overflow: hidden;
   background: transparent;
-  font-family: "Nunito", "Segoe UI", sans-serif;
+  color: #ffffff;
+  font-family: 'Nunito', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 .companion-shell {
@@ -27,18 +32,34 @@ body,
   --wails-draggable: drag;
 }
 
-.status-dot {
+.stage-status {
   position: absolute;
-  left: 10px;
-  top: 8px;
-  padding: 2px 8px;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  min-width: 180px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 10px;
   border-radius: 10px;
   font-size: 12px;
   color: #f6f8fa;
   background: rgba(18, 24, 30, 0.55);
+  border: 1px solid rgba(255,255,255,0.14);
   backdrop-filter: blur(2px);
   pointer-events: none;
-  --wails-draggable: no-drag;
+  z-index: 20;
+}
+
+.stage-status[data-kind="ready"] {
+  color: #d9ffe0;
+  border-color: rgba(57,255,20,0.4);
+  background: rgba(16, 38, 18, 0.42);
+}
+
+.stage-status[data-kind="error"] {
+  color: #ffd8d2;
+  border-color: rgba(255,107,87,0.45);
+  background: rgba(54, 16, 12, 0.46);
 }
 
 .debug-page {
@@ -135,37 +156,4 @@ body,
   box-sizing: border-box;
   padding: 12px;
   background: radial-gradient(circle at 20% 20%, #f7efe1 0%, #efe0cb 45%, #e3cfb7 100%);
-}
-.debug-log-panel {
-  position: absolute;
-  left: 12px;
-  top: 10px;
-  width: 320px;
-  max-width: calc(100vw - 24px);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #f4f7fb;
-  background: rgba(10, 14, 18, 0.68);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(3px);
-  z-index: 20;
-  --wails-draggable: no-drag;
-}
-
-.debug-log-list {
-  list-style: none;
-  margin: 0;
-  padding: 6px 10px;
-  max-height: calc(3 * 1.35em + 12px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  white-space: nowrap;
-}
-
-.debug-log-list li {
-  margin: 0;
-  padding: 0;
-  text-overflow: ellipsis;
-  overflow: hidden;
 }

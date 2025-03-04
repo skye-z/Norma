@@ -13,7 +13,7 @@
         <span class="brand-mark"></span>
         <div>
           <div class="brand-title">NORMA / RUNTIME CONSOLE</div>
-          <span class="brand-sub">桌面伴侣调试总控台</span>
+          <span class="brand-sub">运行时诊断总控台</span>
         </div>
       </div>
       <nav class="nav-tabs">
@@ -28,94 +28,73 @@
     <section class="hero">
       <span class="hero-tag">Runtime Trace</span>
       <h1>运行时诊断页</h1>
-      <p>用于观察状态机、事件流、会话数量与手动调试动作。左侧模拟视觉通道，中间保留事件总线现场，右侧集中展示核心指标与快捷入口。</p>
+      <p>直接参照设计稿的控制台风格布局，左侧是动作与面部参数注入，中间是事件流终端，右侧是状态和会话摘要。这个页面只做诊断，不承担最终用户交互。</p>
       <div class="hero-actions">
         <button id="refresh" class="primary">刷新诊断</button>
         <button id="bargein">模拟插话打断</button>
         <button id="speak">语音预览</button>
-        <span class="status-chip">开发模式已连接</span>
+        <span class="status-chip">开发模式在线</span>
       </div>
     </section>
 
-    <section class="layout layout-3">
+    <section class="layout-3 layout-grid three">
       <aside class="panel">
-        <div class="panel-head">
-          <h2>视觉调试</h2>
-          <span class="mini-note">Live2D Link</span>
+        <div class="panel-header">
+          <h2>视觉通道</h2>
+          <span class="mini-note">LIVE2D BUS</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content">
+          <div class="model-viewport">
+            <span class="bracket bracket-tl"></span>
+            <span class="bracket bracket-tr"></span>
+            <span class="bracket bracket-bl"></span>
+            <span class="bracket bracket-br"></span>
+            <div class="model-placeholder">调试视口<br />动作与口型事件从这里注入</div>
+          </div>
           <div class="metric-tile">
             <div class="metric-label">预览文本</div>
-            <div class="input-row">
-              <input id="txt" value="你好，我是 Norma，当前正在监控运行时状态。" />
-            </div>
+            <div class="input-row"><input id="txt" value="你好，我是 Norma，当前正在监控运行时状态。" /></div>
           </div>
-          <div class="stack">
-            <div class="mini-note">动作控制</div>
-            <div class="quick-grid">
-              <button class="m primary" data-m="Idle">待机动作</button>
-              <button class="m" data-m="Tap">点击反馈</button>
-              <button class="m" data-m="Flick">快速转头</button>
-              <button class="m" data-m="Idle">恢复待机</button>
-            </div>
+          <div class="mini-note" style="margin: 14px 0 8px;">动作控制</div>
+          <div class="quick-grid">
+            <button class="m primary" data-m="Idle">待机</button>
+            <button class="m" data-m="Tap">点击反馈</button>
+            <button class="m" data-m="Flick">快速转头</button>
+            <button class="m" data-m="Idle">恢复待机</button>
           </div>
-          <div class="stack">
-            <div class="mini-note">面部参数</div>
-            <div class="range-line">
-              <label for="mouth">口型</label>
-              <input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" />
-            </div>
-            <div class="range-line">
-              <label for="ex">视线 X</label>
-              <input id="ex" type="range" min="-1" max="1" step="0.01" value="0" />
-            </div>
-            <div class="range-line">
-              <label for="ey">视线 Y</label>
-              <input id="ey" type="range" min="-1" max="1" step="0.01" value="0" />
-            </div>
+          <div class="mini-note" style="margin: 14px 0 8px;">面部参数</div>
+          <div class="control-stack">
+            <div class="range-line"><label for="mouth">口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
+            <div class="range-line"><label for="ex">视线 X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+            <div class="range-line"><label for="ey">视线 Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
           </div>
-          <p class="footer-note">以上操作会直接向运行时事件总线发送测试事件。</p>
         </div>
       </aside>
 
       <main class="panel">
-        <div class="panel-head">
-          <h2>事件流现场</h2>
-          <span class="mini-note">最近 20 条事件</span>
+        <div class="panel-header">
+          <h2>事件终端</h2>
+          <span class="mini-note">LAST 20 EVENTS</span>
         </div>
-        <div class="panel-body">
+        <div class="panel-content">
           <pre id="events" class="console"></pre>
         </div>
       </main>
 
       <aside class="panel">
-        <div class="panel-head">
-          <h2>运行状态</h2>
-          <span class="mini-note">Session Watch</span>
+        <div class="panel-header">
+          <h2>会话摘要</h2>
+          <span class="mini-note">SESSION WATCH</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content control-stack">
           <div class="metric-grid">
-            <div class="metric-tile">
-              <div class="metric-label">当前状态</div>
-              <div class="metric-value" id="state">-</div>
-            </div>
-            <div class="metric-tile">
-              <div class="metric-label">最近事件</div>
-              <div class="metric-value" id="lastEvent" style="font-size:18px;">-</div>
-            </div>
-            <div class="metric-tile">
-              <div class="metric-label">队列深度</div>
-              <div class="metric-value" id="queueDepth">0</div>
-            </div>
-            <div class="metric-tile">
-              <div class="metric-label">会话数量</div>
-              <div class="metric-value" id="sessionCount">0</div>
-            </div>
+            <div class="metric-tile"><div class="metric-label">当前状态</div><div class="metric-value" id="state">-</div></div>
+            <div class="metric-tile"><div class="metric-label">最近事件</div><div class="metric-value" id="lastEvent" style="font-size:18px;">-</div></div>
+            <div class="metric-tile"><div class="metric-label">队列深度</div><div class="metric-value" id="queueDepth">0</div></div>
+            <div class="metric-tile"><div class="metric-label">会话数量</div><div class="metric-value" id="sessionCount">0</div></div>
           </div>
-          <div>
-            <div class="mini-note" style="margin-bottom:10px;">操作日志</div>
-            <pre id="log" class="console"></pre>
-          </div>
+          <div class="mini-note">操作日志</div>
+          <pre id="log" class="console"></pre>
         </div>
       </aside>
     </section>

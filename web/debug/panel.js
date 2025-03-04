@@ -26,7 +26,11 @@ async function refreshDiagnostics() {
   lastEventEl.textContent = data.last_event || '-';
   queueDepthEl.textContent = String(data.queue_depth ?? 0);
   sessionCountEl.textContent = String((data.sessions || []).length);
-  eventsEl.textContent = (data.events || []).map((evt) => JSON.stringify(evt, null, 2)).join('\n\n') || '暂无事件';
+  const lines = (data.events || []).map((evt) => JSON.stringify(evt, null, 2));
+  eventsEl.textContent = lines.join('\n\n') || '暂无事件';
+  if (lines.length) {
+    log(事件流已刷新  条);
+  }
 }
 
 document.querySelectorAll('.m').forEach((b) => b.addEventListener('click', async () => {

@@ -13,7 +13,7 @@
         <span class="brand-mark"></span>
         <div>
           <div class="brand-title">NORMA / METRICS CONSOLE</div>
-          <span class="brand-sub">埋点、样本与告警导出</span>
+          <span class="brand-sub">埋点、样本与告警总线</span>
         </div>
       </div>
       <nav class="nav-tabs">
@@ -22,53 +22,53 @@
         <a class="active" href="./metrics.html">指标看板</a>
         <a href="./settings.html">运行时设置</a>
       </nav>
-      <span class="status-chip">指标流已订阅</span>
+      <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </header>
 
     <section class="hero">
       <span class="hero-tag">Telemetry</span>
       <h1>指标看板页</h1>
-      <p>集中查看 ASR、LLM、TTS、RAG、播放链路的计数器、最近延迟样本和告警信息。导出按钮会下载当前快照，适合做问题回放或构建基线。</p>
+      <p>采用与设计稿一致的控制台布局：左侧总览，中间计数器终端，右侧最近样本和告警。这里的视觉密度、按钮和排版全部统一到同一设计语言。</p>
       <div class="hero-actions">
         <button id="refresh" class="primary">刷新指标</button>
         <button id="export">导出 JSON</button>
       </div>
     </section>
 
-    <section class="layout layout-3">
+    <section class="layout-3 layout-grid three">
       <aside class="panel">
-        <div class="panel-head">
+        <div class="panel-header">
           <h2>总览</h2>
-          <span class="mini-note">Quick Stats</span>
+          <span class="mini-note">QUICK STATS</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content control-stack">
           <div class="metric-grid">
             <div class="metric-tile"><div class="metric-label">计数器数量</div><div class="metric-value" id="counterCount">0</div></div>
             <div class="metric-tile"><div class="metric-label">最近样本数</div><div class="metric-value" id="recentCount">0</div></div>
             <div class="metric-tile"><div class="metric-label">告警数量</div><div class="metric-value" id="alertCount">0</div></div>
           </div>
-          <p class="footer-note">看板每 3 秒自动刷新一次；如果导出为空，通常代表链路还没有产生新样本。</p>
+          <p class="footer-note">默认每 3 秒自动刷新一次；如果导出为空，通常代表当前链路尚未产生新样本。</p>
         </div>
       </aside>
 
       <main class="panel">
-        <div class="panel-head">
-          <h2>计数器快照</h2>
-          <span class="mini-note">Counter Snapshot</span>
+        <div class="panel-header">
+          <h2>计数器终端</h2>
+          <span class="mini-note">COUNTER SNAPSHOT</span>
         </div>
-        <div class="panel-body">
+        <div class="panel-content">
           <pre id="counters" class="console"></pre>
         </div>
       </main>
 
       <aside class="panel">
-        <div class="panel-head">
-          <h2>告警与样本</h2>
-          <span class="mini-note">Alerts / Recent</span>
+        <div class="panel-header">
+          <h2>样本与告警</h2>
+          <span class="mini-note">RECENT / ALERTS</span>
         </div>
-        <div class="panel-body stack">
+        <div class="panel-content control-stack">
           <div>
-            <div class="mini-note" style="margin-bottom:10px;">最近延迟</div>
+            <div class="mini-note" style="margin-bottom:10px;">最近延迟样本</div>
             <pre id="recent" class="console"></pre>
           </div>
           <div>
