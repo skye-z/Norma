@@ -27,9 +27,7 @@ function sleep(ms) {
 
 async function fetchJSON(path, options) {
   const resp = await fetch(`${apiBase}${path}`, options);
-  if (!resp.ok) {
-    throw new Error(`${path} -> ${resp.status}`);
-  }
+  if (!resp.ok) throw new Error(`${path} -> ${resp.status}`);
   return resp.json();
 }
 
@@ -39,9 +37,7 @@ async function postJSON(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
   });
-  if (!resp.ok) {
-    throw new Error(`${path} -> ${resp.status}`);
-  }
+  if (!resp.ok) throw new Error(`${path} -> ${resp.status}`);
   return resp.json();
 }
 
@@ -212,7 +208,6 @@ function renderDebugPage() {
     const y = Number(document.getElementById('ey')?.value || 0);
     await publish('live2d.eye', { x, y });
   };
-
   document.getElementById('ex')?.addEventListener('input', emitEye);
   document.getElementById('ey')?.addEventListener('input', emitEye);
 
@@ -375,6 +370,9 @@ function renderOnboardingPage() {
 
 function renderCompanionPage() {
   document.body.classList.remove('console-mode');
+  document.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  }, { capture: true });
   mount(`
     <main class="companion-shell">
       <div id="stage-status" class="stage-status" data-kind="info">正在加载 Live2D 模型...</div>

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"norma/apiserver"
 )
 
 // App struct
@@ -24,6 +26,7 @@ type App struct {
 	notificationsOn  bool
 	notificationMode string
 	visible          bool
+	apiServer        *apiserver.Server
 	eyeLastX         float64
 	eyeLastY         float64
 	eyeLastAt        time.Time
@@ -37,6 +40,9 @@ func NewApp() *App {
 // startup is called when the app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if err := a.startLocalAPI(); err != nil {
+		log.Printf("start embedded api server: %v", err)
+	}
 	go a.autoPassthroughLoop()
 	go a.ensureWindowStyleLoop()
 	go a.runTray()
@@ -46,6 +52,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	_ = ctx
 	a.stopTray()
+	a.stopLocalAPI()
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {
@@ -273,7 +280,6 @@ func (a *App) CycleNotificationMode() string {
 	}
 	return a.NotificationMode()
 }
-
 func (a *App) Notify(title, body string) string {
 	if a.NotificationMode() == "silent" {
 		return "disabled"
@@ -282,14 +288,13 @@ func (a *App) Notify(title, body string) string {
 		title = "Norma"
 	}
 	if strings.TrimSpace(body) == "" {
-		body = "收到新的桌面提醒。"
+		body = "Norma notification"
 	}
-	if err := publishRuntimeEvent("debug.notice", map[string]any{"text": title + "：" + body}); err != nil {
+	if err := publishRuntimeEvent("debug.notice", map[string]any{"text": title + ": " + body}); err != nil {
 		return "error: " + err.Error()
 	}
 	return a.NotificationMode()
 }
-
 func (a *App) DesktopState() map[string]any {
 	return map[string]any{
 		"always_on_top":     a.AlwaysOnTop(),
