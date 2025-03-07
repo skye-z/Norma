@@ -19,11 +19,13 @@ Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
 - 首次安装建议联网，用于下载 Provider 和模型
 
 ### 2.2 关键目录
-- `configs/`：运行配置
+- `config.yaml`：当前运行配置
+- `config.example.yaml`：配置模板
 - `resource/runtime/providers/`：受管 Provider 与模型目录
 - `resource/data/`：数据库、向量索引、记忆数据
 - `resource/logs/`：运行日志
 - `resource/diagnostics/`：诊断包、设备矩阵、删除证明、验收结果
+- `resource/model/`：Live2D 模型与运行资源
 
 ## 3. 安装方式
 
@@ -59,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
 ## 4. 安装 Provider 与模型
 
 ### 4.1 通过设置页安装
-1. 启动 API 服务。
+1. 启动桌面应用，应用会自动拉起本地 API 服务。
 2. 打开 [web/debug/settings.html](D:/Project/AI/Norma/web/debug/settings.html)。
 3. 在“Provider 面板”中依次安装：
    - `wake-sherpa-onnx-windows-x64-shared`
@@ -160,12 +162,7 @@ bash ./scripts/start.sh
 powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -NoLaunch
 ```
 
-### 6.3 单独启动 API 服务
-```powershell
-go run ./cmd/apiserver
-```
-
-### 6.4 启动主链路演示
+### 6.3 启动主链路演示
 ```powershell
 go run ./cmd/norma -config config.yaml -demo
 ```

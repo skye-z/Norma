@@ -37,13 +37,13 @@ powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Root .
 powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Root . -NoLaunch
 ```
 
-### 启动 API 与开发调试面板
+### API 与开发调试面板
 
-```powershell
-go run ./cmd/apiserver -addr :8090
-```
+桌面程序启动时会自动拉起本地 API 服务，无需再单独启动 `cmd/apiserver`。
 
-打开 [web/debug/index.html](D:/Project/AI/Norma/web/debug/index.html) 对应的静态调试面板入口：`http://127.0.0.1:8090/static/debug/index.html`
+开发调试面板入口：
+- 静态调试页：[web/debug/index.html](D:/Project/AI/Norma/web/debug/index.html)
+- 运行时地址：`http://127.0.0.1:8090/static/debug/index.html`
 
 ## 关键文档
 
