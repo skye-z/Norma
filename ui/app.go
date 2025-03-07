@@ -5,9 +5,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -18,6 +21,8 @@ type App struct {
 	forcePassthrough bool
 	alwaysOnTop      bool
 	notificationsOn  bool
+	notificationMode string
+	visible          bool
 	eyeLastX         float64
 	eyeLastY         float64
 	eyeLastAt        time.Time
@@ -25,7 +30,7 @@ type App struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{alwaysOnTop: true, notificationsOn: true}
+	return &App{alwaysOnTop: true, notificationsOn: true, notificationMode: "important", visible: true}
 }
 
 // startup is called when the app starts.
@@ -34,6 +39,7 @@ func (a *App) startup(ctx context.Context) {
 	go a.autoPassthroughLoop()
 	go a.ensureWindowStyleLoop()
 	go a.runTray()
+	go a.runGlobalHotkeys(ctx)
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -139,6 +145,19 @@ func (a *App) setAlwaysOnTop(enabled bool) {
 	a.alwaysOnTop = enabled
 }
 
+func (a *App) setNotificationMode(mode string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.notificationMode = normalizeNotificationMode(mode)
+	a.notificationsOn = a.notificationMode != "silent"
+}
+
+func (a *App) setVisible(visible bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.visible = visible
+}
+
 func (a *App) isForcePassthrough() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -200,6 +219,12 @@ func (a *App) SetAlwaysOnTop(enabled bool) string {
 	return "ok"
 }
 
+func (a *App) ToggleAlwaysOnTop() bool {
+	enabled := !a.AlwaysOnTop()
+	_ = a.SetAlwaysOnTop(enabled)
+	return a.AlwaysOnTop()
+}
+
 func (a *App) NotificationsEnabled() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -207,14 +232,39 @@ func (a *App) NotificationsEnabled() bool {
 }
 
 func (a *App) SetNotificationsEnabled(enabled bool) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.notificationsOn = enabled
+	if enabled {
+		a.setNotificationMode("all")
+	} else {
+		a.setNotificationMode("silent")
+	}
 	return "ok"
 }
 
+func (a *App) NotificationMode() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return normalizeNotificationMode(a.notificationMode)
+}
+
+func (a *App) SetNotificationMode(mode string) string {
+	a.setNotificationMode(mode)
+	return a.NotificationMode()
+}
+
+func (a *App) CycleNotificationMode() string {
+	switch a.NotificationMode() {
+	case "all":
+		a.setNotificationMode("important")
+	case "important":
+		a.setNotificationMode("silent")
+	default:
+		a.setNotificationMode("all")
+	}
+	return a.NotificationMode()
+}
+
 func (a *App) Notify(title, body string) string {
-	if !a.NotificationsEnabled() {
+	if a.NotificationMode() == "silent" {
 		return "disabled"
 	}
 	if strings.TrimSpace(title) == "" {
@@ -226,5 +276,87 @@ func (a *App) Notify(title, body string) string {
 	if err := publishRuntimeEvent("debug.notice", map[string]any{"text": title + "：" + body}); err != nil {
 		return "error: " + err.Error()
 	}
+	return a.NotificationMode()
+}
+
+func (a *App) DesktopState() map[string]any {
+	return map[string]any{
+		"always_on_top":     a.AlwaysOnTop(),
+		"mouse_passthrough": a.MousePassthrough(),
+		"force_passthrough": a.ForcePassthrough(),
+		"notification_mode": a.NotificationMode(),
+		"notifications_on":  a.NotificationsEnabled(),
+		"visible":           a.Visible(),
+	}
+}
+
+func (a *App) Visible() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.visible
+}
+
+func (a *App) ShowCompanion() string {
+	if a.ctx != nil {
+		wruntime.WindowShow(a.ctx)
+	}
+	a.setVisible(true)
 	return "ok"
+}
+
+func (a *App) HideCompanion() string {
+	if a.ctx != nil {
+		wruntime.WindowHide(a.ctx)
+	}
+	a.setVisible(false)
+	return "ok"
+}
+
+func (a *App) ToggleCompanionVisibility() bool {
+	if a.Visible() {
+		_ = a.HideCompanion()
+	} else {
+		_ = a.ShowCompanion()
+	}
+	return a.Visible()
+}
+
+func (a *App) OpenDebugPanel() string {
+	go a.openExternalURL(debugURL())
+	return "ok"
+}
+
+func (a *App) OpenSettingsPanel() string {
+	go a.openExternalURL(settingsURL())
+	return "ok"
+}
+
+func (a *App) OpenOnboardingPanel() string {
+	go a.openExternalURL(onboardingPanelURL())
+	return "ok"
+}
+
+func (a *App) ReloadCompanion() string {
+	go a.reloadCompanion()
+	return "ok"
+}
+
+func onboardingPanelURL() string {
+	if os.Getenv("devserver") != "" {
+		return "http://localhost:34115/?onboarding=1"
+	}
+	return "http://127.0.0.1:8090/static/debug/onboarding.html"
+}
+
+func normalizeNotificationMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "all":
+		return "all"
+	case "important":
+		return "important"
+	case "silent", "off":
+		return "silent"
+	default:
+		return "important"
+	}
 }
