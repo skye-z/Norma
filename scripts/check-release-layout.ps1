@@ -1,5 +1,6 @@
 param(
-    [string]$OutDir = "dist"
+    [string]$OutDir = "dist",
+    [string[]]$Packages = @('Norma-windows-amd64','Norma-linux-amd64','Norma-darwin-amd64')
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,7 +8,7 @@ $fails = New-Object System.Collections.Generic.List[string]
 function Fail([string]$msg) { $fails.Add($msg); Write-Host "[FAIL] $msg" -ForegroundColor Red }
 function Ok([string]$msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 if (-not (Test-Path $OutDir)) { Fail "output dir missing: $OutDir" } else { Ok "output dir exists: $OutDir" }
-foreach ($pkg in @('Norma-windows-amd64','Norma-linux-amd64','Norma-darwin-amd64')) {
+foreach ($pkg in $Packages) {
     $root = Join-Path $OutDir $pkg
     if (-not (Test-Path $root)) { Fail "package missing: $pkg"; continue }
     Ok "package exists: $pkg"

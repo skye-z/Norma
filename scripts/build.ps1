@@ -1,14 +1,30 @@
 param(
   [string]$Version = "dev",
-  [string]$OutDir = "dist"
+  [string]$OutDir = "dist",
+  [string[]]$Targets = @("windows/amd64")
 )
 
 $ErrorActionPreference = "Stop"
-$targets = @(
-  @{ GOOS = "windows"; GOARCH = "amd64"; EXE = ".exe" },
-  @{ GOOS = "linux"; GOARCH = "amd64"; EXE = "" },
-  @{ GOOS = "darwin"; GOARCH = "amd64"; EXE = "" }
-)
+$isWindowsHost = $env:OS -eq 'Windows_NT'
+$supportedTargets = @{
+  "windows/amd64" = @{ GOOS = "windows"; GOARCH = "amd64"; EXE = ".exe"; Builder = "wails" }
+  "linux/amd64"   = @{ GOOS = "linux"; GOARCH = "amd64"; EXE = ""; Builder = "go" }
+  "darwin/amd64"  = @{ GOOS = "darwin"; GOARCH = "amd64"; EXE = ""; Builder = "go" }
+}
+
+$resolvedTargets = New-Object System.Collections.Generic.List[object]
+foreach ($target in $Targets) {
+  $key = $target.Trim().ToLowerInvariant()
+  if (-not $supportedTargets.ContainsKey($key)) {
+    throw "unsupported target '$target'. supported targets: $($supportedTargets.Keys -join ', ')"
+  }
+  $resolvedTargets.Add($supportedTargets[$key])
+}
+
+if ($resolvedTargets.Count -eq 0) {
+  throw "no build targets specified"
+}
+
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 $env:GOCACHE = Join-Path (Get-Location) '.gocache'
 $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
@@ -18,8 +34,10 @@ $commit = ""
 try { $commit = (git rev-parse --short HEAD) } catch { $commit = "unknown" }
 $ldflags = "-X main.version=$Version -X main.commit=$commit"
 $debugDist = Join-Path 'frontend' 'dist/debug'
-foreach ($t in $targets) {
+$packageNames = @()
+foreach ($t in $resolvedTargets) {
   $packageDir = Join-Path $OutDir "Norma-$($t.GOOS)-$($t.GOARCH)"
+  $packageNames += "Norma-$($t.GOOS)-$($t.GOARCH)"
   if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
   New-Item -ItemType Directory -Path $packageDir | Out-Null
   $binaryName = if ($t.GOOS -eq 'windows') { "Norma.exe" } else { "Norma" }
@@ -33,6 +51,9 @@ foreach ($t in $targets) {
 		Copy-Item -Force $wailsBinary $out
 		if (-not (Test-Path $debugDist)) { throw "debug dist missing: $debugDist" }
 	} else {
+		if ($isWindowsHost) {
+			throw "target $($t.GOOS)/$($t.GOARCH) requires non-Windows build environment or dedicated cross-compile toolchain; use scripts/build.sh on the target platform or pass -Targets windows/amd64"
+		}
 		if (-not (Test-Path $debugDist)) {
 			Push-Location frontend
 			try {
@@ -67,5 +88,5 @@ Write-Host "Build complete. Output => $OutDir"
 powershell -ExecutionPolicy Bypass -File scripts/write-release-manifest.ps1 -OutDir $OutDir -Version $Version
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running release layout check ..."
-powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDir $OutDir
+powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDir $OutDir -Packages $packageNames
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
