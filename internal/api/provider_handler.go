@@ -47,6 +47,7 @@ func (h *ProviderHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/providers/uninstall", h.handleUninstall)
 	mux.HandleFunc("/providers/apply-managed", h.handleApplyManaged)
 	mux.HandleFunc("/providers/export-readiness", h.handleExportReadiness)
+	mux.HandleFunc("/providers/open-readiness-dir", h.handleOpenReadinessDir)
 }
 
 func (h *ProviderHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -331,6 +332,23 @@ func (h *ProviderHandler) handleExportReadiness(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": path})
+}
+
+func (h *ProviderHandler) handleOpenReadinessDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, errs.Invalid("method not allowed"))
+		return
+	}
+	outDir := filepath.Join("diagnostics", "provider-readiness")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		writeAPIError(w, errs.Internal("provider_open_dir_failed", err.Error()))
+		return
+	}
+	if err := exec.Command("explorer", filepath.Clean(outDir)).Start(); err != nil {
+		writeAPIError(w, errs.Internal("provider_open_dir_failed", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": outDir})
 }
 
 func firstNonEmpty(values ...string) string {

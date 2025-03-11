@@ -263,6 +263,61 @@ function renderProviderCatalog(catalog) {
   });
 }
 
+
+function buildAuditSummary() {
+  if (!providerStatus) return 'Provider 状态尚未加载。';
+  const lines = [];
+  lines.push(`导出时间：${new Date().toISOString()}`);
+  lines.push(`Provider 根目录：${providerStatus.root || '-'}`);
+  lines.push(`当前栈：Wake=${providerStatus.stack?.wake || '-'} | ASR=${providerStatus.stack?.asr || '-'} | TTS=${providerStatus.stack?.tts || '-'} | Embedding=${providerStatus.stack?.embedding || '-'} | LLM=${providerStatus.stack?.llm || '-'}`);
+  lines.push('');
+  lines.push('目录就绪状态：');
+  for (const [kind, health] of Object.entries(providerStatus.health || {})) {
+    lines.push(`- ${kind}: ${stateLabel(health.status)}；${healthText(health)}`);
+  }
+  lines.push('');
+  lines.push('安装来源审计：');
+  const records = providerStatus.manifest?.providers || [];
+  if (!records.length) {
+    lines.push('- 当前没有已记录的受管 Provider。');
+  } else {
+    for (const record of records) {
+      lines.push(`- ${record.kind || '-'} / ${record.name || record.id || '-'}`);
+      lines.push(`  版本：${record.version || '-'}`);
+      lines.push(`  完整性：${record.integrity || '-'}`);
+      lines.push(`  说明：${record.integrity_note || '-'}`);
+      lines.push(`  来源：${record.source || '-'}`);
+      lines.push(`  本地 SHA256：${record.local_sha256 || '-'}`);
+      lines.push(`  安装时间：${record.installed_at || '-'}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+async function copyAuditSummary() {
+  const text = buildAuditSummary();
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', 'readonly');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    document.body.removeChild(area);
+  }
+  providerLog('来源审计摘要已复制到剪贴板。');
+}
+
+async function openReadinessDir() {
+  const response = await fetch(`${api}/providers/open-readiness-dir`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `打开目录失败：${response.status}`);
+  providerLog(`已打开导出目录：${data.path}`);
+}
 function rerenderProviders() {
   if (providerStatus) {
     renderProviderAlerts(providerStatus);
@@ -350,6 +405,8 @@ byId('save').addEventListener('click', () => save().catch((error) => log(String(
 byId('provider_init').addEventListener('click', () => initProviders().catch((error) => providerLog(String(error))));
 byId('provider_apply').addEventListener('click', () => applyManagedProviders().catch((error) => providerLog(String(error))));
 byId('provider_export').addEventListener('click', () => exportReadiness().catch((error) => providerLog(String(error))));
+byId('provider_copy_audit').addEventListener('click', () => copyAuditSummary().catch((error) => providerLog(String(error))));
+byId('provider_open_dir').addEventListener('click', () => openReadinessDir().catch((error) => providerLog(String(error))));
 document.querySelectorAll('[data-health-filter]').forEach((button) => {
   button.addEventListener('click', () => {
     healthFilter = button.dataset.healthFilter || 'all';
