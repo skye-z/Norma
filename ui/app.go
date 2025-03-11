@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -116,8 +117,18 @@ func (a *App) publishEyeIfNeeded(hwnd uintptr) {
 	defer a.mu.Unlock()
 
 	now := time.Now()
-	if now.Sub(a.eyeLastAt) < 80*time.Millisecond {
+	if now.Sub(a.eyeLastAt) < 70*time.Millisecond {
 		return
+	}
+
+	if !a.eyeLastAt.IsZero() {
+		dx := math.Abs(x - a.eyeLastX)
+		dy := math.Abs(y - a.eyeLastY)
+		if dx < 0.025 && dy < 0.025 && now.Sub(a.eyeLastAt) < 220*time.Millisecond {
+			return
+		}
+		x = a.eyeLastX + (x-a.eyeLastX)*0.35
+		y = a.eyeLastY + (y-a.eyeLastY)*0.35
 	}
 
 	a.eyeLastX = x
