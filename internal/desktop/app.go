@@ -27,8 +27,8 @@ func Run(assets fs.FS) error {
 	app := NewApp()
 	return wails.Run(&options.App{
 		Title:             appTitle,
-		Width:             420,
-		Height:            700,
+		Width:             360,
+		Height:            560,
 		Frameless:         true,
 		AlwaysOnTop:       true,
 		DisableResize:     true,

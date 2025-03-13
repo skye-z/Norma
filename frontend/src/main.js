@@ -79,7 +79,6 @@ function createRuntimeEventSource(name, onPayload, onError) {
 function navTabs(active) {
   const tabs = [
     ['http://127.0.0.1:8090/static/debug/home.html', '控制台', 'home'],
-    ['?debug=1', '诊断', 'debug'],
     ['?settings=1', '设置', 'settings'],
     ['http://127.0.0.1:8090/static/debug/home.html', '控制台首页', 'external']
   ];
@@ -122,119 +121,6 @@ function writeLog(target, message) {
   if (!target) return;
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
   target.textContent = `${line}\n${target.textContent}`;
-}
-
-function renderDebugPage() {
-  mount(renderConsoleShell(
-    'debug',
-    'Runtime Trace',
-    '运行时诊断',
-    '查看当前状态、最近事件、队列深度，并手动注入 Live2D 与语音链路事件。',
-    '<button id="refresh" class="primary">刷新诊断</button><button id="bargein">模拟插话</button><button id="speak">语音预览</button>',
-    `
-      <section class="console-grid console-grid-debug">
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>动作注入</h2><span class="console-mini">LIVE2D BUS</span></div>
-          <div class="console-panel-body console-stack">
-            <div class="console-card">
-              <div class="console-label">预览文本</div>
-              <input id="txt" value="你好，我是 Norma，当前正在监控运行时状态。" />
-            </div>
-            <div class="console-mini block">动作控制</div>
-            <div class="console-quick-grid">
-              <button class="m primary" data-m="Idle">待机</button>
-              <button class="m" data-m="Tap">轻点</button>
-              <button class="m" data-m="Flick">快速转头</button>
-              <button class="m" data-m="Idle">恢复待机</button>
-            </div>
-            <div class="console-mini block">面部参数</div>
-            <div class="console-stack">
-              <div class="console-range"><label for="mouth">口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
-              <div class="console-range"><label for="ex">视线 X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-              <div class="console-range"><label for="ey">视线 Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-            </div>
-          </div>
-        </aside>
-        <section class="console-panel">
-          <div class="console-panel-head"><h2>事件流</h2><span class="console-mini">LAST 20 EVENTS</span></div>
-          <div class="console-panel-body"><pre id="events" class="console-terminal"></pre></div>
-        </section>
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>状态摘要</h2><span class="console-mini">SESSION WATCH</span></div>
-          <div class="console-panel-body console-stack">
-            <div class="console-metric-grid">
-              <div class="console-card"><div class="console-label">当前状态</div><div id="state" class="console-value">-</div></div>
-              <div class="console-card"><div class="console-label">最近事件</div><div id="lastEvent" class="console-value console-value-small">-</div></div>
-              <div class="console-card"><div class="console-label">队列深度</div><div id="queueDepth" class="console-value">0</div></div>
-              <div class="console-card"><div class="console-label">会话数量</div><div id="sessionCount" class="console-value">0</div></div>
-            </div>
-            <div class="console-mini">日志流</div>
-            <pre id="log" class="console-terminal"></pre>
-          </div>
-        </aside>
-      </section>
-    `
-  ));
-
-  const logEl = document.getElementById('log');
-  const eventsEl = document.getElementById('events');
-  const stateEl = document.getElementById('state');
-  const lastEventEl = document.getElementById('lastEvent');
-  const queueDepthEl = document.getElementById('queueDepth');
-  const sessionCountEl = document.getElementById('sessionCount');
-
-  async function refreshDiagnostics() {
-    const data = await fetchJSON('/runtime/diagnostics?limit=20');
-    stateEl.textContent = data.state || '-';
-    lastEventEl.textContent = data.last_event || '-';
-    queueDepthEl.textContent = String(data.queue_depth ?? 0);
-    sessionCountEl.textContent = String((data.sessions || []).length);
-    const lines = (data.events || []).map((evt) => JSON.stringify(evt, null, 2));
-    eventsEl.textContent = lines.join('\n\n') || '暂无事件';
-    writeLog(logEl, `事件流已刷新 ${lines.length} 条`);
-  }
-
-  document.querySelectorAll('.m').forEach((button) => button.addEventListener('click', async () => {
-    await publish('live2d.motion', { group: button.dataset.m, index: 0 });
-    writeLog(logEl, `已发送动作事件：${button.dataset.m}`);
-  }));
-
-  document.getElementById('mouth')?.addEventListener('input', async (event) => {
-    await publish('live2d.mouth', { level: Number(event.target.value) });
-  });
-
-  const emitEye = async () => {
-    const x = Number(document.getElementById('ex')?.value || 0);
-    const y = Number(document.getElementById('ey')?.value || 0);
-    await publish('live2d.eye', { x, y });
-  };
-  document.getElementById('ex')?.addEventListener('input', emitEye);
-  document.getElementById('ey')?.addEventListener('input', emitEye);
-
-  document.getElementById('speak')?.addEventListener('click', () => {
-    const text = String(document.getElementById('txt')?.value || '').trim();
-    if (!text) return;
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'zh-CN';
-    const timer = window.setInterval(() => publish('live2d.mouth', { level: 0.2 + Math.random() * 0.8 }), 90);
-    utter.onend = () => {
-      window.clearInterval(timer);
-      publish('live2d.mouth', { level: 0 });
-    };
-    utter.onerror = utter.onend;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utter);
-    writeLog(logEl, `开始语音预览：${text}`);
-  });
-
-  document.getElementById('bargein')?.addEventListener('click', async () => {
-    await publish('audio.vad.start', { source: 'wails-debug' });
-    writeLog(logEl, '已发送模拟插话事件');
-    await refreshDiagnostics();
-  });
-
-  document.getElementById('refresh')?.addEventListener('click', () => refreshDiagnostics().catch((err) => writeLog(logEl, String(err))));
-  refreshDiagnostics().catch((err) => writeLog(logEl, String(err)));
 }
 
 function renderSettingsPage() {
@@ -434,8 +320,42 @@ async function initCompanion() {
     motionIntensity: 0.45,
     eventSources: [],
     baseX: 0,
-    baseY: 0
+    baseY: 0,
+    resizeObserver: null,
+    layoutHandler: null
   };
+
+  async function waitForStageReady(minWidth = 120, minHeight = 180, timeoutMs = 5000) {
+    if (!stage) throw new Error('stage container missing');
+    const start = Date.now();
+    let stableFrames = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
+
+    while (Date.now() - start < timeoutMs) {
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      const visible = stage.getBoundingClientRect();
+      const valid = width >= minWidth && height >= minHeight && visible.width >= minWidth && visible.height >= minHeight;
+      const stable = Math.abs(width - lastWidth) <= 1 && Math.abs(height - lastHeight) <= 1;
+
+      if (valid && stable) {
+        stableFrames += 1;
+        if (stableFrames >= 3) return { width, height };
+      } else if (valid) {
+        stableFrames = 1;
+      } else {
+        stableFrames = 0;
+      }
+
+      lastWidth = width;
+      lastHeight = height;
+      await sleep(60);
+    }
+
+    throw new Error('stage size is not ready');
+  }
 
   function setStatus(text, kind = 'info', autoHide = false) {
     if (!statusEl) return;
@@ -458,6 +378,14 @@ async function initCompanion() {
 
   function destroy() {
     closeEvents();
+    if (state.resizeObserver) {
+      try { state.resizeObserver.disconnect(); } catch (_) {}
+      state.resizeObserver = null;
+    }
+    if (state.layoutHandler) {
+      window.removeEventListener('resize', state.layoutHandler);
+      state.layoutHandler = null;
+    }
     if (state.app) {
       try {
         state.app.destroy(true, { children: true, texture: true, baseTexture: true });
@@ -486,7 +414,7 @@ async function initCompanion() {
       const core = internal.coreModel;
       if (!core || typeof core.addParameterValueById !== 'function') return;
       const gx = clamp(state.focusX, -1, 1);
-      const gy = clamp(state.focusY, -1, 1);
+      const gy = clamp(-state.focusY, -1, 1);
       core.addParameterValueById('ParamEyeBallX', gx * 1.05);
       core.addParameterValueById('ParamEyeBallY', gy * 1.05);
       core.addParameterValueById('ParamAngleX', gx * 24);
@@ -557,6 +485,9 @@ async function initCompanion() {
     const apiReady = await waitForApiReady(8000);
     if (!apiReady) throw new Error('api server is not ready');
 
+    setStatus('API 已就绪，正在等待舞台尺寸稳定...', 'info');
+    await waitForStageReady();
+
     destroy();
     connectEvents();
     setStatus('API 已就绪，开始加载模型...', 'info');
@@ -585,17 +516,26 @@ async function initCompanion() {
     state.model.anchor.set(0.5, 1);
     const layout = () => {
       if (!state.model || !stage) return;
+      if (stage.clientWidth < 80 || stage.clientHeight < 120) return;
       state.model.x = stage.clientWidth / 2;
       state.model.y = stage.clientHeight * 0.96;
       state.baseX = state.model.x;
       state.baseY = state.model.y;
       const width = Math.max(1, state.model.width);
       const height = Math.max(1, state.model.height);
-      const scale = Math.min((stage.clientWidth * 0.82) / width, (stage.clientHeight * 0.9) / height);
+      const scale = Math.min((stage.clientWidth * 0.92) / width, (stage.clientHeight * 0.96) / height);
       state.model.scale.set(scale > 0 ? scale : 0.32);
     };
+    state.layoutHandler = layout;
     layout();
     window.addEventListener('resize', layout);
+    if (typeof ResizeObserver !== 'undefined') {
+      state.resizeObserver = new ResizeObserver(() => layout());
+      state.resizeObserver.observe(stage);
+    }
+    window.setTimeout(layout, 120);
+    window.setTimeout(layout, 420);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(layout));
 
     await state.model.motion('Idle', 0, 1).catch(() => undefined);
     setStatus('Live2D 模型已加载', 'ready', true);
@@ -644,7 +584,7 @@ async function initCompanion() {
 
 async function boot() {
   if (mode === 'debug') {
-    renderDebugPage();
+    window.location.replace('http://127.0.0.1:8090/static/debug/home.html');
     return;
   }
   if (mode === 'settings') {

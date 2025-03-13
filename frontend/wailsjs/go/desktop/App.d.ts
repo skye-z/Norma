@@ -23,8 +23,6 @@ export function Notify(arg1:string,arg2:string):Promise<string>;
 
 export function OpenDebugPanel():Promise<string>;
 
-export function OpenOnboardingPanel():Promise<string>;
-
 export function OpenSettingsPanel():Promise<string>;
 
 export function ReloadCompanion():Promise<string>;

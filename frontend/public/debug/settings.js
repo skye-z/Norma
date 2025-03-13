@@ -25,6 +25,59 @@ let providerStatus = null;
 let providerCatalog = null;
 let healthFilter = 'all';
 
+function normalizeEndpoint(value) {
+  let endpoint = String(value || '').trim();
+  if (!endpoint) endpoint = 'http://127.0.0.1:11434/v1';
+  endpoint = endpoint.replace(/\/+$/, '');
+  try {
+    const parsed = new URL(endpoint);
+    if (!parsed.pathname || parsed.pathname === '/') {
+      parsed.pathname = '/v1';
+      endpoint = parsed.toString().replace(/\/+$/, '');
+    }
+  } catch (_) {
+    // keep raw endpoint when URL parsing fails
+  }
+  return endpoint;
+}
+
+function modelsURL(endpoint) {
+  return `${normalizeEndpoint(endpoint)}/models`;
+}
+
+function toModelName(item) {
+  const candidate = item?.id || item?.name || item?.model || '';
+  return String(candidate || '').trim();
+}
+
+function renderModelOptions(selectId, names, selected) {
+  const select = byId(selectId);
+  if (!select) return;
+  const unique = Array.from(new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean)));
+  const currentValue = String(selected || '').trim();
+  const all = [...unique];
+  if (currentValue && !all.includes(currentValue)) all.unshift(currentValue);
+  if (!all.length) all.push('');
+  select.innerHTML = all.map((name) => `<option value="${name}">${name || '（未发现模型）'}</option>`).join('');
+  select.value = currentValue || all[0] || '';
+}
+
+async function loadModels(selectId, endpoint, selected, label) {
+  const url = modelsURL(endpoint);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`${response.status}`);
+    const data = await response.json();
+    const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
+    const names = list.map(toModelName).filter(Boolean);
+    renderModelOptions(selectId, names, selected);
+    log(`${label} 模型列表已更新：${names.length} 项`);
+  } catch (error) {
+    renderModelOptions(selectId, [], selected);
+    log(`加载 ${label} 模型列表失败（${url}）：${error}`);
+  }
+}
+
 function writeLog(target, message) {
   if (!target) return;
   target.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${target.textContent}`;
@@ -70,9 +123,8 @@ function healthText(health) {
 }
 
 function apply(cfg) {
-  byId('llm_provider').value = cfg.llm?.provider || '';
-  byId('llm_model').value = cfg.llm?.model || '';
-  byId('llm_endpoint').value = cfg.llm?.endpoint || '';
+  byId('llm_provider').value = 'ollama';
+  byId('llm_endpoint').value = normalizeEndpoint(cfg.llm?.endpoint || 'http://127.0.0.1:11434/v1');
   byId('llm_timeout').value = cfg.llm?.request_timeout_ms || 45000;
   byId('asr_provider').value = cfg.asr?.provider || '';
   byId('asr_binary_path').value = cfg.asr?.binary_path || '';
@@ -83,9 +135,8 @@ function apply(cfg) {
   byId('tts_model_path').value = cfg.tts?.model_path || '';
   byId('tts_sentence_first').checked = !!cfg.tts?.sentence_first_enabled;
   byId('audio_wake_mode').value = cfg.audio?.wake_mode || 'wake_word_vad';
-  byId('audio_wake_provider').value = cfg.audio?.wake_provider || 'sherpa-onnx';
+  byId('audio_wake_provider').value = 'ollama';
   byId('audio_wake_binary_path').value = cfg.audio?.wake_binary_path || '';
-  byId('audio_wake_model_path').value = cfg.audio?.wake_model_path || '';
   byId('audio_wake_keywords_file_path').value = cfg.audio?.wake_keywords_file_path || '';
   byId('audio_wake_keyword').value = cfg.audio?.wake_keyword || '诺玛';
   byId('audio_wake_window_ms').value = cfg.audio?.wake_window_ms || 2000;
@@ -120,13 +171,18 @@ function apply(cfg) {
   byId('security_tools').value = (cfg.security?.tool_whitelist || []).join(',');
   byId('security_confirm').checked = !!cfg.security?.high_risk_confirm;
   byId('security_purge_proof_dir').value = cfg.security?.purge_proof_dir || 'resource/diagnostics/purge-proofs';
+
+  renderModelOptions('llm_model', [], cfg.llm?.model || '');
+  renderModelOptions('audio_wake_model_path', [], cfg.audio?.wake_model_path || '');
+  loadModels('llm_model', byId('llm_endpoint').value, cfg.llm?.model || '', 'LLM');
+  loadModels('audio_wake_model_path', byId('llm_endpoint').value, cfg.audio?.wake_model_path || '', 'Wake');
 }
 
 function collect(base) {
   const cfg = structuredClone(base);
-  cfg.llm.provider = byId('llm_provider').value.trim();
+  cfg.llm.provider = 'ollama';
   cfg.llm.model = byId('llm_model').value.trim();
-  cfg.llm.endpoint = byId('llm_endpoint').value.trim();
+  cfg.llm.endpoint = normalizeEndpoint(byId('llm_endpoint').value);
   cfg.llm.request_timeout_ms = Number(byId('llm_timeout').value || 45000);
   cfg.asr.provider = byId('asr_provider').value.trim();
   cfg.asr.binary_path = byId('asr_binary_path').value.trim();
@@ -137,7 +193,7 @@ function collect(base) {
   cfg.tts.model_path = byId('tts_model_path').value.trim();
   cfg.tts.sentence_first_enabled = !!byId('tts_sentence_first').checked;
   cfg.audio.wake_mode = byId('audio_wake_mode').value.trim();
-  cfg.audio.wake_provider = byId('audio_wake_provider').value.trim();
+  cfg.audio.wake_provider = 'ollama';
   cfg.audio.wake_binary_path = byId('audio_wake_binary_path').value.trim();
   cfg.audio.wake_model_path = byId('audio_wake_model_path').value.trim();
   cfg.audio.wake_keywords_file_path = byId('audio_wake_keywords_file_path').value.trim();
@@ -414,6 +470,13 @@ document.querySelectorAll('[data-health-filter]').forEach((button) => {
     button.classList.add('primary');
     rerenderProviders();
   });
+});
+
+byId('llm_endpoint')?.addEventListener('blur', () => {
+  const endpoint = normalizeEndpoint(byId('llm_endpoint').value);
+  byId('llm_endpoint').value = endpoint;
+  loadModels('llm_model', endpoint, byId('llm_model').value, 'LLM');
+  loadModels('audio_wake_model_path', endpoint, byId('audio_wake_model_path').value, 'Wake');
 });
 
 Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => {

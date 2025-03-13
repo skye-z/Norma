@@ -13,9 +13,104 @@ function log(message) {
   logEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${logEl.textContent}`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatTs(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleTimeString();
+}
+
+function summarizeEvent(evt) {
+  const payload = evt?.payload || {};
+  switch (evt?.name) {
+    case 'live2d.eye':
+      return {
+        title: 'Live2D 视线跟随',
+        detail: `视线移动到 X=${Number(payload.x ?? 0).toFixed(2)} / Y=${Number(payload.y ?? 0).toFixed(2)}`
+      };
+    case 'live2d.motion':
+      return {
+        title: 'Live2D 动作触发',
+        detail: `动作组 ${payload.group || '-'}，索引 ${payload.index ?? 0}`
+      };
+    case 'audio.vad.start':
+      return {
+        title: '语音打断开始',
+        detail: '收到 VAD 开始事件，打断链路被触发'
+      };
+    case 'asr.partial':
+      return {
+        title: 'ASR Partial',
+        detail: `识别中内容：${typeof payload === 'string' ? payload : payload.text || '-'}`
+      };
+    case 'asr.final':
+      return {
+        title: 'ASR Final',
+        detail: `最终识别内容：${typeof payload === 'string' ? payload : payload.text || '-'}`
+      };
+    default:
+      return {
+        title: evt?.name || '未知事件',
+        detail: buildPayloadSummary(payload)
+      };
+  }
+}
+
+function buildPayloadSummary(payload) {
+  if (payload == null) return '无附加信息';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload !== 'object') return String(payload);
+  const entries = Object.entries(payload).slice(0, 4).map(([key, value]) => `${key}: ${typeof value === 'object' ? '[对象]' : String(value)}`);
+  return entries.join(' / ') || '无附加信息';
+}
+
+function renderEvents(events) {
+  if (!eventsEl) return;
+  const filtered = (events || []).filter((evt) => evt?.name !== 'live2d.eye').slice(-8).reverse();
+  if (!filtered.length) {
+    eventsEl.innerHTML = '<div class="event-item"><div class="event-title">暂无关键事件</div><div class="event-detail">高频背景事件默认已隐藏。</div></div>';
+    return;
+  }
+  eventsEl.innerHTML = filtered.map((evt) => {
+    const summary = summarizeEvent(evt);
+    return `
+      <div class="event-item">
+        <div class="event-head">
+          <div class="event-title">${escapeHtml(summary.title)}</div>
+          <div class="event-time">${escapeHtml(formatTs(evt.ts_unix_ms))}</div>
+        </div>
+        <div class="event-detail">${escapeHtml(summary.detail)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function showResult(data) {
   if (!resultEl) return;
-  resultEl.textContent = JSON.stringify(data, null, 2);
+  const details = Object.entries(data?.details || {}).map(([key, value]) => `
+    <div class="stat-line">
+      <span>${escapeHtml(key)}</span>
+      <strong>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</strong>
+    </div>
+  `).join('');
+  resultEl.innerHTML = `
+    <div class="result-card">
+      <div class="result-head">
+        <div class="result-title">${escapeHtml(data?.target || '联调结果')}</div>
+        <span class="state-pill ${data?.ok ? '' : 'danger'}">${data?.ok ? '正常' : '异常'}</span>
+      </div>
+      <div class="result-detail">${escapeHtml(data?.summary || '-')}</div>
+      <div class="result-meta">当前状态：${escapeHtml(data?.state || '-')}</div>
+      ${details || '<div class="result-detail">没有更多细节</div>'}
+    </div>
+  `;
 }
 
 async function refreshDiagnostics() {
@@ -26,8 +121,7 @@ async function refreshDiagnostics() {
   lastEventEl.textContent = data.last_event || '-';
   queueDepthEl.textContent = String(data.queue_depth ?? 0);
   sessionCountEl.textContent = String((data.sessions || []).length);
-  const lines = (data.events || []).map((evt) => JSON.stringify(evt, null, 2));
-  eventsEl.textContent = lines.join('\n\n') || '暂无事件';
+  renderEvents(data.events || []);
 }
 
 async function runDiagnostic(target, payload = {}) {

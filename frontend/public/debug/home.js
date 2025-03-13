@@ -10,6 +10,67 @@ function log(message) {
   logEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${logEl.textContent}`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatTs(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleTimeString();
+}
+
+function buildPayloadSummary(payload) {
+  if (payload == null) return '无附加信息';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload !== 'object') return String(payload);
+  const entries = Object.entries(payload).slice(0, 4).map(([key, value]) => `${key}: ${typeof value === 'object' ? '[对象]' : String(value)}`);
+  return entries.join(' / ') || '无附加信息';
+}
+
+function summarizeEvent(evt) {
+  const payload = evt?.payload || {};
+  switch (evt?.name) {
+    case 'runtime.config.updated':
+      return { title: '运行配置更新', detail: `配置文件已更新：${payload.path || '-'}` };
+    case 'diagnostics.llm.requested':
+      return { title: 'LLM 联调请求', detail: `模型 ${payload.model || '-'} / 指令：${payload.text || '-'}` };
+    case 'diagnostics.tts.requested':
+      return { title: 'TTS 联调请求', detail: `Provider ${payload.provider || '-'} / 文本：${payload.text || '-'}` };
+    case 'diagnostics.rag.requested':
+      return { title: '知识库联调请求', detail: `查询：${payload.query || '-'} / TopK=${payload.top_k ?? '-'}` };
+    case 'live2d.motion':
+      return { title: '模型动作事件', detail: `动作组 ${payload.group || '-'}，索引 ${payload.index ?? 0}` };
+    default:
+      return { title: evt?.name || '未知事件', detail: buildPayloadSummary(payload) };
+  }
+}
+
+function renderEvents(events) {
+  if (!eventsEl) return;
+  const filtered = (events || []).filter((evt) => evt?.name !== 'live2d.eye').slice(-6).reverse();
+  if (!filtered.length) {
+    eventsEl.innerHTML = '<div class="event-item"><div class="event-title">暂无关键事件</div><div class="event-detail">高频背景事件默认已隐藏。</div></div>';
+    return;
+  }
+  eventsEl.innerHTML = filtered.map((evt) => {
+    const summary = summarizeEvent(evt);
+    return `
+      <div class="event-item">
+        <div class="event-head">
+          <div class="event-title">${escapeHtml(summary.title)}</div>
+          <div class="event-time">${escapeHtml(formatTs(evt.ts_unix_ms))}</div>
+        </div>
+        <div class="event-detail">${escapeHtml(summary.detail)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function statusClass(ok) {
   return ok ? 'state-pill' : 'state-pill danger';
 }
@@ -61,7 +122,7 @@ async function loadAll() {
   const memories = await memoryResp.json();
 
   const events = diagnostics.events || [];
-  eventsEl.textContent = events.map((evt) => JSON.stringify(evt, null, 2)).join('\n\n') || '暂无事件';
+  renderEvents(events);
 
   renderModuleStatus([
     {

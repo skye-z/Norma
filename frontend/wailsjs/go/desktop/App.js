@@ -46,10 +46,6 @@ export function OpenDebugPanel() {
   return window['go']['desktop']['App']['OpenDebugPanel']();
 }
 
-export function OpenOnboardingPanel() {
-  return window['go']['desktop']['App']['OpenOnboardingPanel']();
-}
-
 export function OpenSettingsPanel() {
   return window['go']['desktop']['App']['OpenSettingsPanel']();
 }

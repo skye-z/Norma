@@ -42,7 +42,6 @@
             <h2>模型 / TTS / ASR</h2>
             <p class="panel-desc">直接调用后端联调接口，对 Live2D、TTS 和 ASR 做真实可执行检查，并返回结果。</p>
           </div>
-          <span class="mini-note">MEDIA PROBES</span>
         </div>
         <div class="panel-content control-stack">
           <div class="metric-tile">
@@ -82,7 +81,6 @@
             <h2>LLM / 记忆 / 知识库</h2>
             <p class="panel-desc">调用后端联调接口，检查 LLM、记忆和知识库相关链路是否真实可用。</p>
           </div>
-          <span class="mini-note">COGNITIVE PROBES</span>
         </div>
         <div class="panel-content control-stack">
           <div class="metric-tile">
@@ -99,11 +97,11 @@
           </div>
           <div class="metric-tile">
             <div class="metric-label">联调结果</div>
-            <pre id="result" class="console"></pre>
+            <div id="result" class="control-stack"></div>
           </div>
           <div class="metric-tile">
             <div class="metric-label">最近事件</div>
-            <pre id="events" class="console"></pre>
+            <div id="events" class="control-stack"></div>
           </div>
         </div>
       </section>
@@ -114,7 +112,6 @@
             <h2>诊断状态</h2>
             <p class="panel-desc">查看当前状态、最近事件、队列与会话数，并记录本页发出的诊断动作。</p>
           </div>
-          <span class="mini-note">STATE WATCH</span>
         </div>
         <div class="panel-content control-stack">
           <div class="metric-grid">

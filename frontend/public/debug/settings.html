@@ -43,13 +43,20 @@
       <section class="panel">
         <div class="panel-header">
           <h2>模型与语音配置</h2>
-          <span class="mini-note">LLM / ASR / TTS</span>
         </div>
         <div class="panel-content">
           <div class="form-grid">
-            <div><label for="llm_provider">LLM Provider</label><input id="llm_provider" /></div>
-            <div><label for="llm_model">LLM 主模型</label><input id="llm_model" /></div>
-            <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" /></div>
+            <div>
+              <label for="llm_provider">LLM Provider</label>
+              <select id="llm_provider">
+                <option value="ollama">ollama</option>
+              </select>
+            </div>
+            <div>
+              <label for="llm_model">LLM 主模型</label>
+              <select id="llm_model"></select>
+            </div>
+            <div class="full"><label for="llm_endpoint">LLM Endpoint</label><input id="llm_endpoint" value="http://127.0.0.1:11434/v1" /></div>
             <div><label for="llm_timeout">LLM 超时（毫秒）</label><input id="llm_timeout" type="number" /></div>
             <div><label for="asr_provider">ASR Provider</label><input id="asr_provider" /></div>
             <div class="full"><label for="asr_binary_path">ASR 二进制路径</label><input id="asr_binary_path" /></div>
@@ -66,14 +73,21 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Wake、检索与记忆配置</h2>
-          <span class="mini-note">WAKE / RAG / MEMORY</span>
         </div>
         <div class="panel-content">
           <div class="form-grid">
             <div><label for="audio_wake_mode">唤醒模式</label><input id="audio_wake_mode" /></div>
-            <div><label for="audio_wake_provider">Wake Provider</label><input id="audio_wake_provider" /></div>
+            <div>
+              <label for="audio_wake_provider">Wake Provider</label>
+              <select id="audio_wake_provider">
+                <option value="ollama">ollama</option>
+              </select>
+            </div>
             <div class="full"><label for="audio_wake_binary_path">Wake 二进制路径</label><input id="audio_wake_binary_path" /></div>
-            <div class="full"><label for="audio_wake_model_path">Wake 模型目录</label><input id="audio_wake_model_path" /></div>
+            <div class="full">
+              <label for="audio_wake_model_path">Wake 模型</label>
+              <select id="audio_wake_model_path"></select>
+            </div>
             <div class="full"><label for="audio_wake_keywords_file_path">Wake 关键词文件</label><input id="audio_wake_keywords_file_path" /></div>
             <div><label for="audio_wake_keyword">Wake 关键词</label><input id="audio_wake_keyword" /></div>
             <div><label for="audio_wake_window_ms">Wake 窗口（毫秒）</label><input id="audio_wake_window_ms" type="number" /></div>
@@ -97,7 +111,6 @@
       <section class="panel">
         <div class="panel-header">
           <h2>模块安装与更新</h2>
-          <span class="mini-note">MANAGED PROVIDERS</span>
         </div>
         <div class="panel-content control-stack">
           <div id="provider_alerts" class="control-stack"></div>
@@ -124,7 +137,6 @@
       <section class="panel">
         <div class="panel-header">
           <h2>性能与更新策略</h2>
-          <span class="mini-note">PERF POLICY</span>
         </div>
         <div class="panel-content">
           <div class="form-grid">
@@ -147,7 +159,6 @@
       <section class="panel">
         <div class="panel-header">
           <h2>安全与目录管理</h2>
-          <span class="mini-note">SECURITY POLICY</span>
         </div>
         <div class="panel-content control-stack">
           <div class="form-grid">

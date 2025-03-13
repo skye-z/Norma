@@ -42,7 +42,6 @@
             <h2>模块状态</h2>
             <p class="panel-desc">汇总 API、运行时、Provider、记忆与指标链路的当前状态。</p>
           </div>
-          <span class="mini-note">MODULE STATUS</span>
         </div>
         <div class="panel-content control-stack" id="module_status"></div>
       </section>
@@ -53,12 +52,11 @@
             <h2>日志流</h2>
             <p class="panel-desc">展示最近事件和控制台观察日志，用来判断系统是否还在流动。</p>
           </div>
-          <span class="mini-note">LOG STREAM</span>
         </div>
         <div class="panel-content control-stack">
           <div class="metric-tile">
             <div class="metric-label">最近事件</div>
-            <pre id="events" class="console"></pre>
+            <div id="events" class="control-stack"></div>
           </div>
           <div class="metric-tile">
             <div class="metric-label">控制台日志</div>
@@ -73,7 +71,6 @@
             <h2>配置项概览</h2>
             <p class="panel-desc">只显示关键运行参数，确认当前接的是哪一套模块与目录。</p>
           </div>
-          <span class="mini-note">CONFIG SNAPSHOT</span>
         </div>
         <div class="panel-content control-stack" id="config_overview"></div>
       </section>

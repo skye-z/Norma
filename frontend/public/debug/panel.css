@@ -359,10 +359,42 @@ select {
 
 .metric-tile,
 .module-item,
-.data-card {
+.data-card,
+.event-item,
+.result-card {
   padding: 14px;
   border: 1px solid var(--border-color);
   background: rgba(17, 17, 17, 0.72);
+}
+
+.event-item,
+.result-card {
+  display: grid;
+  gap: 8px;
+}
+
+.event-head,
+.result-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.event-title,
+.result-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.event-time,
+.result-meta,
+.event-detail,
+.result-detail {
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .metric-value {

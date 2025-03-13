@@ -162,9 +162,6 @@ func (a *App) openExternalURL(url string) {
 }
 
 func debugURL() string {
-	if os.Getenv("devserver") != "" {
-		return "http://localhost:34115/?debug=1"
-	}
 	return "http://127.0.0.1:8090/static/debug/home.html"
 }
 
