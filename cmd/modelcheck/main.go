@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	dir := flag.String("dir", "model", "live2d model dir")
+	dir := flag.String("dir", "resource/model", "live2d model dir")
 	flag.Parse()
 
 	res := live2d.ValidateModelDir(*dir)

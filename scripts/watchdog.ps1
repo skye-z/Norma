@@ -1,6 +1,6 @@
 param(
     [string]$Root = ".",
-    [string]$ConfigPath = "configs/config.yaml",
+    [string]$ConfigPath = "config.yaml",
     [int]$IntervalSec = 10,
     [switch]$Once = $false
 )

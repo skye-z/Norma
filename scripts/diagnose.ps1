@@ -1,6 +1,6 @@
 param(
     [string]$Root = ".",
-    [string]$ConfigPath = "configs/config.yaml",
+    [string]$ConfigPath = "config.yaml",
     [string]$OutDir = "diagnostics"
 )
 
@@ -37,9 +37,9 @@ try {
 
     # 2) Key logs
     $logFiles = @(
-        "logs/app.log",
-        "logs/audio.log",
-        "logs/rag.log",
+        "resource/logs/app.log",
+        "resource/logs/audio.log",
+        "resource/logs/rag.log",
         "logs/startup_report.json"
     )
     foreach ($lf in $logFiles) {

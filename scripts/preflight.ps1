@@ -1,7 +1,7 @@
 param(
     [string]$Root = ".",
-    [string]$ConfigPath = "configs/config.yaml",
-    [string]$ModelDir = "model"
+    [string]$ConfigPath = "config.yaml",
+    [string]$ModelDir = "resource/model"
 )
 
 $ErrorActionPreference = "Stop"
@@ -165,7 +165,7 @@ try {
     }
 
     # 5) Key metrics structured check (from logs)
-    $metricsLog = Join-Path (Get-Location) "logs/app.log"
+    $metricsLog = Join-Path (Get-Location) "resource/logs/app.log"
     if (Test-Path $metricsLog) {
         $tail = Get-Content -Encoding utf8 $metricsLog -Tail 1200
         $summaryLine = $tail | Where-Object { $_ -match '\[metric\] summary' } | Select-Object -Last 1
@@ -175,22 +175,22 @@ try {
         if ($null -eq $summaryLine -or $null -eq $asrLlmLine -or $null -eq $asrTtsLine) {
             $hasSession = $tail | Where-Object { $_ -match 'session=' } | Select-Object -First 1
             if ($null -ne $hasSession) {
-                Add-Warn "missing structured metric lines in logs/app.log (need llm_first_token_ms, tts_first_chunk_ms, summary)"
+                Add-Warn "missing structured metric lines in resource/logs/app.log (need llm_first_token_ms, tts_first_chunk_ms, summary)"
             } else {
                 Add-Ok "no recent session logs; skip strict metric-line check"
             }
         } else {
-            Add-Ok "structured metric lines detected in logs/app.log"
+            Add-Ok "structured metric lines detected in resource/logs/app.log"
         }
     } else {
-        Add-Warn "metrics log not found: logs/app.log"
+        Add-Warn "metrics log not found: resource/logs/app.log"
     }
 
     # 6) Split-log existence check
-    $audioLog = Join-Path (Get-Location) "logs/audio.log"
-    $ragLog = Join-Path (Get-Location) "logs/rag.log"
-    if (Test-Path $audioLog) { Add-Ok "audio log exists: logs/audio.log" } else { Add-Warn "audio log missing: logs/audio.log" }
-    if (Test-Path $ragLog) { Add-Ok "rag log exists: logs/rag.log" } else { Add-Warn "rag log missing: logs/rag.log" }
+    $audioLog = Join-Path (Get-Location) "resource/logs/audio.log"
+    $ragLog = Join-Path (Get-Location) "resource/logs/rag.log"
+    if (Test-Path $audioLog) { Add-Ok "audio log exists: resource/logs/audio.log" } else { Add-Warn "audio log missing: resource/logs/audio.log" }
+    if (Test-Path $ragLog) { Add-Ok "rag log exists: resource/logs/rag.log" } else { Add-Warn "rag log missing: resource/logs/rag.log" }
 
     Write-Host ""
     Write-Host "Summary: fails=$($failed.Count), warnings=$($warnings.Count)"

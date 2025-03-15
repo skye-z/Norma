@@ -2,10 +2,10 @@ app:
   name: Norma
   env: dev
   log_level: info
-  log_dir: logs
+  log_dir: resource/logs
 
 database:
-  path: data/norma.db
+  path: resource/data/norma.db
 
 audio:
   enable_wake_word: true
@@ -50,7 +50,7 @@ tts:
 
 rag:
   top_k: 6
-  vector_index_path: data/vector_index.json
+  vector_index_path: resource/data/vector_index.json
   embed_provider: ollama
   embed_endpoint: http://127.0.0.1:11434
   embed_model: bge-m3:latest
@@ -85,7 +85,7 @@ security:
     - open_debug_panel
     - export_diagnostics
   high_risk_confirm: true
-  purge_proof_dir: diagnostics/purge-proofs
+  purge_proof_dir: resource/diagnostics/purge-proofs
 
 providers:
-  root: runtime/providers
+  root: resource/runtime/providers

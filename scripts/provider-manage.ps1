@@ -2,7 +2,7 @@ param(
     [ValidateSet('init','status','register-local','uninstall')]
     [string]$Action = 'status',
     [string]$Root = '.',
-    [string]$ConfigPath = 'configs/config.yaml',
+    [string]$ConfigPath = 'config.yaml',
     [ValidateSet('wake','asr','tts','embedding','llm')]
     [string]$Kind,
     [string]$Name,
@@ -41,7 +41,7 @@ function Get-ProvidersRoot([string]$ConfigPath) {
     $cfg = Get-Content -Encoding utf8 $ConfigPath
     $providersRoot = Get-ConfigValue -Lines $cfg -Section 'providers' -Key 'root'
     if ([string]::IsNullOrWhiteSpace($providersRoot)) {
-        $providersRoot = 'runtime/providers'
+        $providersRoot = 'resource/runtime/providers'
     }
     return (Join-Path (Get-Location) $providersRoot)
 }

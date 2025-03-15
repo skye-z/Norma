@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"norma/pkg/layout"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,7 @@ type ManifestRecord struct {
 func NewManager(root string) *Manager {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		root = filepath.ToSlash("runtime/providers")
+		root = filepath.ToSlash(layout.ProvidersDir)
 	}
 	return &Manager{root: filepath.Clean(root)}
 }

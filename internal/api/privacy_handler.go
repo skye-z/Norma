@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"norma/internal/config"
+	"norma/pkg/layout"
 )
 
 type PrivacyHandler struct {
@@ -18,7 +19,7 @@ type PrivacyHandler struct {
 
 func NewPrivacyHandler(cfgPath string) *PrivacyHandler {
 	cfg, _ := config.Load(cfgPath)
-	h := &PrivacyHandler{purgeProofDir: "diagnostics/purge-proofs", dbPath: "data/norma.db", logDir: "logs"}
+	h := &PrivacyHandler{purgeProofDir: layout.PurgeProofDir, dbPath: layout.DBPath, logDir: layout.LogsDir}
 	if cfg != nil {
 		h.purgeProofDir = cfg.Security.PurgeProofDir
 		h.dbPath = cfg.Database.Path

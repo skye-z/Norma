@@ -23,20 +23,17 @@ coverage.out
 .gomodcache/
 
 # Runtime data
-/data/
-/logs/
-/diagnostics/
-/runtime/
+/resource/data/
+/resource/logs/
+/resource/diagnostics/
+/resource/runtime/
 *.db
 *.db-shm
 *.db-wal
 
 # Local config overrides
-configs/config.yaml
+config.yaml
 
-# Live2D / model binaries
-model/
-
-# Wails / frontend build outputs (future)
+# Wails / frontend build outputs
 frontend/dist/
 frontend/node_modules/

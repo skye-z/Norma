@@ -14,8 +14,8 @@ import (
 
 func main() {
 	dir := flag.String("dir", "docs", "directory to watch")
-	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
-	vecPath := flag.String("vec", "data/vector_index.json", "vector index path")
+	dbPath := flag.String("db", "resource/data/norma.db", "sqlite db path")
+	vecPath := flag.String("vec", "resource/data/vector_index.json", "vector index path")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

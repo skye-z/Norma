@@ -16,6 +16,7 @@ import (
 	"norma/internal/memory"
 	"norma/internal/metrics"
 	"norma/internal/runtime"
+	"norma/pkg/layout"
 	"xorm.io/xorm"
 )
 
@@ -37,13 +38,17 @@ type Server struct {
 
 func New(opts Options) (*Server, error) {
 	addr := firstNonEmpty(opts.Addr, ":8090")
-	dbPath := firstNonEmpty(opts.DBPath, "data/norma.db")
-	modelDir := firstNonEmpty(opts.ModelDir, "model")
-	configPath := firstNonEmpty(opts.ConfigPath, "configs/config.yaml")
-	debugDir := firstNonEmpty(opts.DebugDir, "web/debug")
+	dbPath := firstNonEmpty(opts.DBPath, layout.DBPath)
+	modelDir := firstNonEmpty(opts.ModelDir, layout.ModelDir)
+	configPath := firstNonEmpty(opts.ConfigPath, layout.ConfigFileName)
+	debugDir := firstNonEmpty(opts.DebugDir, layout.DebugDir)
 	startedAt := opts.StartedAt
 	if startedAt.IsZero() {
 		startedAt = time.Now()
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("prepare db dir: %w", err)
 	}
 
 	engine, err := db.NewEngine(dbPath, false)

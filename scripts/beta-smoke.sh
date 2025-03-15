@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="${1:-.}"
-CONFIG="${2:-configs/config.yaml}"
+CONFIG="${2:-config.yaml}"
 cd "$ROOT"
 export GOCACHE="${PWD}/.gocache"
 export GOMODCACHE="${PWD}/.gomodcache"

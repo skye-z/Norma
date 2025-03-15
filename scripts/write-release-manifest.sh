@@ -35,14 +35,14 @@ cat > "${OUT_DIR}/INSTALL.md" <<'MD'
 ## Artifacts
 
 Place the selected binary together with:
-- `configs/config.yaml`
+- `config.yaml`
 - `model/`
 - local runtime dependencies if using Whisper.cpp / XTTS / Ollama
 
 ## First Run
 
 ```bash
-bash ./scripts/start.sh . configs/config.yaml
+bash ./scripts/start.sh . config.yaml
 ```
 MD
 

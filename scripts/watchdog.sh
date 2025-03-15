@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${1:-.}"
-CONFIG="${2:-configs/config.yaml}"
+CONFIG="${2:-config.yaml}"
 
 if command -v pwsh >/dev/null 2>&1; then
   exec pwsh "$ROOT/scripts/watchdog.ps1" -Root "$ROOT" -ConfigPath "$CONFIG"

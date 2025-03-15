@@ -18,13 +18,28 @@ $commit = ""
 try { $commit = (git rev-parse --short HEAD) } catch { $commit = "unknown" }
 $ldflags = "-X main.version=$Version -X main.commit=$commit"
 foreach ($t in $targets) {
-  $name = "norma-$($t.GOOS)-$($t.GOARCH)$($t.EXE)"
-  $out = Join-Path $OutDir $name
-  Write-Host "Building $name ..."
+  $packageDir = Join-Path $OutDir "Norma-$($t.GOOS)-$($t.GOARCH)"
+  if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
+  New-Item -ItemType Directory -Path $packageDir | Out-Null
+  $binaryName = if ($t.GOOS -eq 'windows') { "Norma.exe" } else { "Norma" }
+  $out = Join-Path $packageDir $binaryName
+  Write-Host "Building $($t.GOOS)-$($t.GOARCH) ..."
   $env:GOOS = $t.GOOS
   $env:GOARCH = $t.GOARCH
   & go build -trimpath -ldflags $ldflags -o $out ./cmd/norma
-  if ($LASTEXITCODE -ne 0) { throw "go build failed for $name" }
+  if ($LASTEXITCODE -ne 0) { throw "go build failed for $($t.GOOS)-$($t.GOARCH)" }
+
+  Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.example.yaml')
+  Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.yaml')
+
+  $resourceRoot = Join-Path $packageDir 'resource'
+  New-Item -ItemType Directory -Force -Path $resourceRoot | Out-Null
+  foreach ($dir in @('data','logs','diagnostics','runtime/providers')) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $resourceRoot $dir) | Out-Null
+  }
+  if (Test-Path 'resource/model') {
+    Copy-Item -Recurse -Force 'resource/model' (Join-Path $resourceRoot 'model')
+  }
 }
 Remove-Item Env:GOOS -ErrorAction SilentlyContinue
 Remove-Item Env:GOARCH -ErrorAction SilentlyContinue

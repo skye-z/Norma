@@ -12,6 +12,7 @@ import (
 	"norma/internal/config"
 	"norma/internal/errs"
 	"norma/internal/providers"
+	"norma/pkg/layout"
 )
 
 type ProviderHandler struct {
@@ -316,7 +317,7 @@ func (h *ProviderHandler) handleExportReadiness(w http.ResponseWriter, r *http.R
 		"health":      providers.BuildHealth(mgr),
 		"manifest":    manifest,
 	}
-	outDir := filepath.Join("diagnostics", "provider-readiness")
+	outDir := layout.Join("", filepath.ToSlash(layout.DiagnosticsDir+"/provider-readiness"))
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		writeAPIError(w, errs.Internal("provider_export_failed", err.Error()))
 		return
@@ -339,7 +340,7 @@ func (h *ProviderHandler) handleOpenReadinessDir(w http.ResponseWriter, r *http.
 		writeAPIError(w, errs.Invalid("method not allowed"))
 		return
 	}
-	outDir := filepath.Join("diagnostics", "provider-readiness")
+	outDir := layout.Join("", filepath.ToSlash(layout.DiagnosticsDir+"/provider-readiness"))
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		writeAPIError(w, errs.Internal("provider_open_dir_failed", err.Error()))
 		return

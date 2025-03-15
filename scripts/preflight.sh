@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${1:-.}"
-CONFIG="${2:-configs/config.yaml}"
+CONFIG="${2:-config.yaml}"
 MODEL_DIR="${3:-model}"
 
 if command -v pwsh >/dev/null 2>&1; then

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"norma/apiserver"
+	"norma/pkg/apiserver"
 )
 
 // App struct

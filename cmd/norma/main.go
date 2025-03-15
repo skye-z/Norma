@@ -22,6 +22,7 @@ import (
 	"norma/internal/providers"
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
+	"norma/pkg/layout"
 )
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 func main() {
-	cfgPath := flag.String("config", "configs/config.yaml", "path to config file")
+	cfgPath := flag.String("config", layout.ConfigFileName, "path to config file")
 	demo := flag.Bool("demo", false, "run event-chain demo and exit")
 	flag.Parse()
 
@@ -312,7 +313,7 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 
 	vecPath := strings.TrimSpace(cfg.RAG.VectorIndexPath)
 	if vecPath == "" {
-		vecPath = "data/vector_index.json"
+		vecPath = layout.VectorIndexPath
 	}
 	if dir := filepath.Dir(vecPath); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -20,10 +20,10 @@ Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
 
 ### 2.2 关键目录
 - `configs/`：运行配置
-- `runtime/providers/`：受管 Provider 与模型目录
-- `data/`：数据库、向量索引、记忆数据
-- `logs/`：运行日志
-- `diagnostics/`：诊断包、设备矩阵、删除证明、验收结果
+- `resource/runtime/providers/`：受管 Provider 与模型目录
+- `resource/data/`：数据库、向量索引、记忆数据
+- `resource/logs/`：运行日志
+- `resource/diagnostics/`：诊断包、设备矩阵、删除证明、验收结果
 
 ## 3. 安装方式
 
@@ -70,17 +70,17 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
    - `tts-piper-voice-zh-cn-huayan-medium`
    - `tts-piper-voice-zh-cn-huayan-x-low`
    - `llm-ollama-windows-x64`
-4. 点击“应用受管 Provider”，把路径和默认值自动回填到 `configs/config.yaml`。
+4. 点击“应用受管 Provider”，把路径和默认值自动回填到 `config.yaml`。
 
 ### 4.2 通过脚本安装
 安装示例：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot runtime/providers
+powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers
 ```
 
 卸载示例：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot runtime/providers -Uninstall
+powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers -Uninstall
 ```
 
 ### 4.3 来源与校验说明
@@ -97,7 +97,7 @@ powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPa
 ## 5. 配置说明
 
 ### 5.1 核心配置文件
-默认配置文件：`configs/config.yaml`
+默认配置文件：`config.yaml`
 
 重点配置项：
 - `audio.wake_mode`
@@ -167,7 +167,7 @@ go run ./cmd/apiserver
 
 ### 6.4 启动主链路演示
 ```powershell
-go run ./cmd/norma -config configs/config.yaml -demo
+go run ./cmd/norma -config config.yaml -demo
 ```
 
 ## 7. 首次启动推荐流程
@@ -259,5 +259,5 @@ powershell -ExecutionPolicy Bypass -File scripts/alpha-smoke.ps1 -Root .
 
 Beta：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/beta-smoke.ps1 -Root . -Config configs/config.yaml
+powershell -ExecutionPolicy Bypass -File scripts/beta-smoke.ps1 -Root . -Config config.yaml
 ```

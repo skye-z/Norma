@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"norma/apiserver"
+	"norma/pkg/apiserver"
+	"norma/pkg/layout"
 )
 
 func (a *App) startLocalAPI() error {
@@ -24,13 +25,16 @@ func (a *App) startLocalAPI() error {
 	if err != nil {
 		return err
 	}
+	if err := layout.EnsureRuntimeLayout(root); err != nil {
+		return err
+	}
 
 	srv, err := apiserver.New(apiserver.Options{
 		Addr:       ":8090",
-		DBPath:     filepath.Join(root, "data", "norma.db"),
-		ModelDir:   filepath.Join(root, "model"),
-		ConfigPath: filepath.Join(root, "configs", "config.yaml"),
-		DebugDir:   filepath.Join(root, "web", "debug"),
+		DBPath:     layout.Join(root, layout.DBPath),
+		ModelDir:   layout.Join(root, layout.ModelDir),
+		ConfigPath: layout.Join(root, layout.ConfigFileName),
+		DebugDir:   layout.Join(root, layout.DebugDir),
 		StartedAt:  time.Now(),
 	})
 	if err != nil {
@@ -92,12 +96,15 @@ func walkParents(start string, limit int) []string {
 }
 
 func hasProjectMarkers(dir string) bool {
-	markers := []string{
+	if layout.HasRuntimeMarkers(dir) {
+		return true
+	}
+	legacyMarkers := []string{
 		filepath.Join(dir, "configs", "config.yaml"),
 		filepath.Join(dir, "model"),
 		filepath.Join(dir, "web", "debug"),
 	}
-	for _, marker := range markers {
+	for _, marker := range legacyMarkers {
 		if _, err := os.Stat(marker); err != nil {
 			return false
 		}

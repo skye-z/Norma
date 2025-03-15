@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="${1:-.}"
-CONFIG_PATH="${2:-configs/config.yaml}"
+CONFIG_PATH="${2:-config.yaml}"
 cd "$ROOT"
 
 export GOCACHE="${PWD}/.gocache"
 export GOMODCACHE="${PWD}/.gomodcache"
 mkdir -p "$GOCACHE" "$GOMODCACHE"
 
-RUN_ROOT="${PWD}/diagnostics/alpha-smoke"
+RUN_ROOT="${PWD}/resource/diagnostics/alpha-smoke"
 LOG_DIR="${RUN_ROOT}/logs"
 OUTPUT_LOG="${RUN_ROOT}/demo-output.log"
 rm -rf "$RUN_ROOT"

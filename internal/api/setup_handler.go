@@ -10,6 +10,7 @@ import (
 	"norma/internal/errs"
 	"norma/internal/live2d"
 	"norma/internal/providers"
+	"norma/pkg/layout"
 )
 
 type SetupHandler struct {
@@ -55,15 +56,15 @@ func (h *SetupHandler) handleWizard(w http.ResponseWriter, r *http.Request) {
 	health := providers.BuildHealth(mgr)
 	modelDir := strings.TrimSpace(h.modelDir)
 	if modelDir == "" {
-		modelDir = filepath.ToSlash("model")
+		modelDir = filepath.ToSlash(layout.ModelDir)
 	}
 	model := live2d.ValidateModelDir(modelDir)
 	deviceScripts := audioMatrixScripts()
 	checks := []SetupCheck{
 		buildSetupCheck("Wake/ASR/TTS Provider", summarizeProviderReady(health), providerDetail(health), "先在设置页安装缺失的 Provider，再点击“应用受管 Provider”。"),
 		buildSetupCheck("Live2D 模型", statusFromBool(model.OK()), modelDetail(model), "如果模型缺失，先补齐 .model3.json、.can3 或 .cmo3。"),
-		buildSetupCheck("配置文件", statusFromBool(fileExists(h.configPath)), absOrRaw(h.configPath), "首启失败时先检查 configs/config.yaml 是否存在且为 UTF-8。"),
-		buildSetupCheck("数据目录", statusFromBool(dirExists(filepath.Dir(cfg.Database.Path))), filepath.Dir(cfg.Database.Path), "若目录不存在，先创建 data 目录。"),
+		buildSetupCheck("配置文件", statusFromBool(fileExists(h.configPath)), absOrRaw(h.configPath), "首启失败时先检查 config.yaml 是否存在且为 UTF-8。"),
+		buildSetupCheck("数据目录", statusFromBool(dirExists(filepath.Dir(cfg.Database.Path))), filepath.Dir(cfg.Database.Path), "若目录不存在，先创建 resource/data 目录。"),
 		buildSetupCheck("设备探测矩阵", statusFromBool(deviceScripts.ready), deviceScripts.detail, "先运行设备矩阵脚本，再按向导建议切到兼容模式。"),
 		buildSetupCheck("权限提示", "partial", "Windows 桌面悬浮与通知通常不需额外权限，但麦克风权限需在系统设置中允许。", "若无法录音，请在系统隐私设置中开启麦克风访问。"),
 	}

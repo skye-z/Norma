@@ -10,6 +10,7 @@ import (
 	"norma/internal/config"
 	"norma/internal/errs"
 	"norma/internal/runtime/bus"
+	"norma/pkg/layout"
 )
 
 type SettingsHandler struct {
@@ -66,7 +67,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		cfg.Audio.WakeProvider = "sherpa-onnx"
 	}
 	if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
-		cfg.Audio.WakeKeyword = "璇虹帥"
+		cfg.Audio.WakeKeyword = "诺玛"
 	}
 	if cfg.Audio.WakeWindowMs <= 0 {
 		cfg.Audio.WakeWindowMs = 2000
@@ -123,10 +124,10 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		cfg.Perf.AlertTTSFirstChunkMs = 1200
 	}
 	if strings.TrimSpace(cfg.Providers.Root) == "" {
-		cfg.Providers.Root = filepath.ToSlash("runtime/providers")
+		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
 	}
 	if cfg.Security.PurgeProofDir == "" {
-		cfg.Security.PurgeProofDir = filepath.ToSlash("diagnostics/purge-proofs")
+		cfg.Security.PurgeProofDir = filepath.ToSlash(layout.PurgeProofDir)
 	}
 	if len(cfg.Security.AllowedRemoteHosts) == 0 {
 		cfg.Security.AllowedRemoteHosts = []string{"127.0.0.1", "localhost"}

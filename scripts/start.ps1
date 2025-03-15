@@ -1,6 +1,6 @@
 param(
     [string]$Root = ".",
-    [string]$ConfigPath = "configs/config.yaml",
+    [string]$ConfigPath = "config.yaml",
     [switch]$RunPreflight = $true,
     [switch]$NoLaunch = $false
 )
@@ -149,14 +149,14 @@ function Find-FreePort {
     return $null
 }
 function Write-StartupReport {
-    $logDir = Join-Path (Get-Location) "logs"
+    $logDir = Join-Path (Get-Location) "resource/logs"
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Force $logDir | Out-Null
     }
     $reportPath = Join-Path $logDir "startup_report.json"
     $json = $report | ConvertTo-Json -Depth 4
     [System.IO.File]::WriteAllText($reportPath, $json, [System.Text.UTF8Encoding]::new($false))
-    Write-Ok "startup report written: logs/startup_report.json"
+    Write-Ok "startup report written: resource/logs/startup_report.json"
 }
 
 Push-Location $Root
@@ -184,7 +184,7 @@ try {
 
     $cfg = Get-Content -Encoding utf8 $ConfigPath
     $providersRoot = Get-ConfigValue -Lines $cfg -Section "providers" -Key "root"
-    if ([string]::IsNullOrWhiteSpace($providersRoot)) { $providersRoot = "runtime/providers" }
+    if ([string]::IsNullOrWhiteSpace($providersRoot)) { $providersRoot = "resource/runtime/providers" }
     $providersRoot = Join-Path (Get-Location) $providersRoot
     $llmProvider = (Get-ConfigValue -Lines $cfg -Section "llm" -Key "provider").ToLowerInvariant()
     $llmEndpoint = Get-ConfigValue -Lines $cfg -Section "llm" -Key "endpoint"
@@ -324,10 +324,10 @@ try {
 
     Write-Step "Launch Norma"
     $report.launch_attempted = $true
-    if (Test-Path "norma.exe") {
-        Start-Process -FilePath ".\\norma.exe" | Out-Null
+    if (Test-Path "Norma.exe") {
+        Start-Process -FilePath ".\\Norma.exe" | Out-Null
         $report.launch_mode = "binary"
-        Write-Ok "launched .\\norma.exe"
+        Write-Ok "launched .\\Norma.exe"
     } else {
         $env:GOCACHE = Join-Path (Get-Location) '.gocache'
         $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'

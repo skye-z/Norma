@@ -3,7 +3,7 @@ param(
     [string]$CatalogPath,
     [Parameter(Mandatory = $true)]
     [string]$ProviderId,
-    [string]$ProvidersRoot = 'runtime/providers',
+    [string]$ProvidersRoot = 'resource/runtime/providers',
     [switch]$Uninstall = $false
 )
 

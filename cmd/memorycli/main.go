@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
+	dbPath := flag.String("db", "resource/data/norma.db", "sqlite db path")
 	action := flag.String("action", "search", "add|search|delete|compact")
 	kind := flag.String("kind", "fact", "fact|preference|event")
 	text := flag.String("text", "", "memory content or query")

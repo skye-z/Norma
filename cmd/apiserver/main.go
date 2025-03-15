@@ -9,14 +9,14 @@ import (
 	"syscall"
 	"time"
 
-	"norma/apiserver"
+	"norma/pkg/apiserver"
 )
 
 func main() {
 	addr := flag.String("addr", ":8090", "http listen address")
-	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
-	modelDir := flag.String("model-dir", "model", "live2d model directory")
-	configPath := flag.String("config", "configs/config.yaml", "runtime config path")
+	dbPath := flag.String("db", "resource/data/norma.db", "sqlite db path")
+	modelDir := flag.String("model-dir", "resource/model", "live2d model directory")
+	configPath := flag.String("config", "config.yaml", "runtime config path")
 	flag.Parse()
 
 	srv, err := apiserver.New(apiserver.Options{

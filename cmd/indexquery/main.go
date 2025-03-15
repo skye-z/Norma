@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	dbPath := flag.String("db", "data/norma.db", "sqlite db path")
-	vecPath := flag.String("vec", "data/vector_index.json", "vector index path")
+	dbPath := flag.String("db", "resource/data/norma.db", "sqlite db path")
+	vecPath := flag.String("vec", "resource/data/vector_index.json", "vector index path")
 	q := flag.String("q", "norma", "search query")
 	k := flag.Int("k", 5, "top k")
 	flag.Parse()

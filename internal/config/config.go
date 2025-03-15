@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"norma/pkg/layout"
 )
 
 // Config contains all runtime configuration.
@@ -122,8 +123,8 @@ type ProvidersConfig struct {
 
 func defaultConfig() Config {
 	return Config{
-		App:      AppConfig{Name: "Norma", Env: "dev", LogLevel: "info", LogDir: "logs"},
-		Database: DatabaseConfig{Path: "data/norma.db"},
+		App:      AppConfig{Name: "Norma", Env: "dev", LogLevel: "info", LogDir: layout.LogsDir},
+		Database: DatabaseConfig{Path: layout.DBPath},
 		Audio: AudioConfig{
 			EnableWakeWord:        true,
 			WakeMode:              "wake_word_vad",
@@ -131,7 +132,7 @@ func defaultConfig() Config {
 			WakeBinaryPath:        "",
 			WakeModelPath:         "",
 			WakeKeywordsFilePath:  "",
-			WakeKeyword:           "璇虹帥",
+			WakeKeyword:           "诺玛",
 			WakeWindowMs:          2000,
 			WakeDetectIntervalMs:  400,
 			EndpointSilenceFrames: 4,
@@ -143,7 +144,7 @@ func defaultConfig() Config {
 		ASR:    ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
 		LLM:    LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434", RequestTimeoutMs: 45000},
 		TTS:    TTSConfig{Provider: "piper", Voice: "zh_CN-huayan-medium", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
-		RAG:    RAGConfig{TopK: 6, VectorIndexPath: "data/vector_index.json", EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434", EmbedModel: "bge-m3:latest"},
+		RAG:    RAGConfig{TopK: 6, VectorIndexPath: layout.VectorIndexPath, EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434", EmbedModel: "bge-m3:latest"},
 		Memory: MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
 		Perf: PerfConfig{
 			AutoDegrade:              true,
@@ -157,9 +158,16 @@ func defaultConfig() Config {
 			DegradedTTSVoice:         "zh_CN-huayan-x_low",
 			AlertLLMFirstTokenMs:     1500,
 			AlertTTSFirstChunkMs:     1200,
-			BaselineFile:             "configs/perf-baseline.json"},
-		Security:  SecurityConfig{AllowRemoteProviders: false, AllowedRemoteHosts: []string{"127.0.0.1", "localhost"}, ToolWhitelist: []string{"open_local_file", "open_debug_panel", "export_diagnostics"}, HighRiskConfirm: true, PurgeProofDir: "diagnostics/purge-proofs"},
-		Providers: ProvidersConfig{Root: "runtime/providers"},
+			BaselineFile:             "configs/perf-baseline.json",
+		},
+		Security: SecurityConfig{
+			AllowRemoteProviders: false,
+			AllowedRemoteHosts:   []string{"127.0.0.1", "localhost"},
+			ToolWhitelist:        []string{"open_local_file", "open_debug_panel", "export_diagnostics"},
+			HighRiskConfirm:      true,
+			PurgeProofDir:        layout.PurgeProofDir,
+		},
+		Providers: ProvidersConfig{Root: layout.ProvidersDir},
 	}
 }
 

@@ -1,6 +1,6 @@
 param(
   [string]$Root = ".",
-  [string]$Config = "configs/config.yaml"
+  [string]$Config = "config.yaml"
 )
 
 $ErrorActionPreference = "Stop"

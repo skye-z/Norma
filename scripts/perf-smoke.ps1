@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Baseline)) { throw "baseline missing: $Baseline" }
 $baselineObj = Get-Content -Raw -Encoding utf8 $Baseline | ConvertFrom-Json
-$logPath = Join-Path $Root 'logs/app.log'
+$logPath = Join-Path $Root 'resource/logs/app.log'
 if (-not (Test-Path $logPath)) { throw "log missing: $logPath" }
 $text = Get-Content -Raw -Encoding utf8 $logPath
 $fails = New-Object System.Collections.Generic.List[string]
