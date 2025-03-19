@@ -80,12 +80,18 @@ body {
   display: grid;
   grid-template-columns: 320px 1fr;
   min-height: calc(100vh - 58px);
+  height: calc(100vh - 58px);
 }
 
 .console-sidebar {
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: calc(100vh - 58px);
+  overflow: auto;
 }
 
 .console-row {
@@ -130,6 +136,20 @@ body {
   display: inline-block;
 }
 
+.module-status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.module-status-text {
+  color: var(--text-soft);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  min-width: 56px;
+  text-align: right;
+}
+
 .module-status.status-gray { background: #6a6a6a; }
 .module-status.status-red { background: #e14b4b; }
 .module-status.status-yellow { background: #d6b134; }
@@ -148,6 +168,7 @@ body {
 .console-main {
   min-height: 100%;
   padding: 18px;
+  overflow: auto;
 }
 
 .console-main-grid {
@@ -189,7 +210,34 @@ body {
 }
 
 .stats .stat-line {
-  padding: 8px 0;
+  padding: 10px 0;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats .stat-line > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats .stat-line > input,
+.stats .stat-line > select,
+.stats .stat-line > label {
+  width: 100%;
+}
+
+.stats .stat-line > label {
+  margin: 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.stats select option {
+  background: #111;
+  color: #fff;
 }
 
 .health-item,
@@ -241,6 +289,43 @@ body {
 
 .detail-actions .event-detail {
   margin-left: auto;
+}
+
+.model-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.provider-manage-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-item {
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.provider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-action-grid button {
+  width: 100%;
 }
 
 .console-row input,

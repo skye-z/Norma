@@ -2,14 +2,19 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/gorilla/websocket"
+
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
+
+var runtimeWSUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 type RuntimeHandler struct {
 	bus       *bus.Bus
@@ -29,7 +34,7 @@ type publishReq struct {
 
 func (h *RuntimeHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/publish", h.handlePublish)
-	mux.HandleFunc("/runtime/events", h.handleEvents)
+	mux.HandleFunc("/runtime/events/ws", h.handleEventsWS)
 	mux.HandleFunc("/runtime/diagnostics", h.handleDiagnostics)
 }
 
@@ -58,7 +63,24 @@ func (h *RuntimeHandler) handlePublish(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
+func (h *RuntimeHandler) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.inspector == nil {
+		writeErr(w, http.StatusNotImplemented, "diagnostics unavailable")
+		return
+	}
+	snapshot := h.inspector.Snapshot()
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit > 0 && len(snapshot.Events) > limit {
+		snapshot.Events = snapshot.Events[len(snapshot.Events)-limit:]
+	}
+	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (h *RuntimeHandler) handleEventsWS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -69,18 +91,11 @@ func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeErr(w, http.StatusInternalServerError, "stream unsupported")
+	conn, err := runtimeWSUpgrader.Upgrade(w, r, nil)
+	if err != nil {
 		return
 	}
-
-	_, _ = fmt.Fprint(w, ": connected\n\n")
-	flusher.Flush()
+	defer conn.Close()
 
 	eventCh := make(chan bus.Event, 16)
 	unsub := h.bus.Subscribe(name, func(evt bus.Event) {
@@ -97,25 +112,9 @@ func (h *RuntimeHandler) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case evt := <-eventCh:
 			b, _ := json.Marshal(evt)
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
-			flusher.Flush()
+			if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
+				return
+			}
 		}
 	}
-}
-
-func (h *RuntimeHandler) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if h.inspector == nil {
-		writeErr(w, http.StatusNotImplemented, "diagnostics unavailable")
-		return
-	}
-	snapshot := h.inspector.Snapshot()
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit > 0 && len(snapshot.Events) > limit {
-		snapshot.Events = snapshot.Events[len(snapshot.Events)-limit:]
-	}
-	writeJSON(w, http.StatusOK, snapshot)
 }

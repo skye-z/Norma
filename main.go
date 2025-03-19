@@ -186,8 +186,8 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		return nil
 	}
 	provider := strings.ToLower(strings.TrimSpace(cfg.Audio.WakeProvider))
-	if provider == "" || provider == "mock" {
-		return &audio.MockWakeWord{}
+	if provider == "" {
+		return &audio.UnavailableWakeWord{Reason: "wake provider is empty"}
 	}
 	if provider == "sherpa-onnx" {
 		binary := mgr.ResolveBinary("wake", "", cfg.Audio.WakeBinaryPath, "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter")
@@ -201,8 +201,8 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
 		keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
 		if binary == "" || encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
-			log.Printf("[wake] sherpa-onnx assets incomplete, fallback to mock wake word")
-			return &audio.MockWakeWord{}
+			log.Printf("[wake] sherpa-onnx assets incomplete")
+			return &audio.UnavailableWakeWord{Reason: "sherpa-onnx assets incomplete"}
 		}
 		wake := audio.NewSherpaWakeWord(binary, encoder, decoder, joiner, tokens, keywords, cfg.Audio.WakeKeyword)
 		wake.WindowFrames = framesFromMs(cfg.Audio.WakeWindowMs)
@@ -210,8 +210,8 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		log.Printf("[wake] use sherpa-onnx binary=%s keyword=%s keywords=%s", binary, cfg.Audio.WakeKeyword, keywords)
 		return wake
 	}
-	log.Printf("[wake] unsupported provider=%s, fallback to mock wake word", provider)
-	return &audio.MockWakeWord{}
+	log.Printf("[wake] unsupported provider=%s", provider)
+	return &audio.UnavailableWakeWord{Reason: "unsupported wake provider: " + provider}
 }
 
 func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
@@ -226,11 +226,10 @@ func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
 }
 
 func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
-	fallback := audio.MockASR{FinalText: "plan today development tasks."}
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
 	case "http":
 		if cfg.ASR.Endpoint == "" {
-			return fallback
+			return audio.UnavailableASR{Reason: "asr.endpoint is empty"}
 		}
 		asr := audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
 		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
@@ -239,18 +238,18 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		binary := mgr.ResolveBinary("asr", "", cfg.ASR.BinaryPath, "whisper-cli.exe", "main.exe", "whisper-cli", "main")
 		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
 		if binary == "" || model == "" {
-			log.Printf("[asr] whispercpp not configured, fallback to mock")
-			return fallback
+			log.Printf("[asr] whispercpp not configured")
+			return audio.UnavailableASR{Reason: "whispercpp binary or model missing"}
 		}
 		log.Printf("[asr] use whisper.cpp binary=%s model=%s", binary, model)
 		return audio.NewWhisperCPPASR(binary, model, cfg.ASR.Language, cfg.ASR.Threads)
 	default:
-		return fallback
+		return audio.UnavailableASR{Reason: "unsupported asr provider: " + strings.TrimSpace(cfg.ASR.Provider)}
 	}
 }
 
 func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.QualityController) audio.TTS {
-	fallback := audio.NewMockTTS()
+	fallback := &audio.UnavailableTTS{Reason: "tts unavailable"}
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
 	case "http", "xtts":
 		if cfg.TTS.Endpoint == "" {
@@ -261,7 +260,7 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.Qual
 		binary := mgr.ResolveBinary("tts", "", cfg.TTS.BinaryPath, "piper.exe", "piper")
 		model := mgr.ResolveFile("tts", "", cfg.TTS.ModelPath, cfg.TTS.Voice+".onnx", "model.onnx")
 		if binary == "" || model == "" {
-			log.Printf("[tts] piper not configured, fallback to mock")
+			log.Printf("[tts] piper not configured")
 			return fallback
 		}
 		primary := audio.NewPiperTTS(binary, model, cfg.TTS.Voice)
@@ -281,17 +280,17 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.Qual
 		}
 		return primary
 	default:
-		return fallback
+		return &audio.UnavailableTTS{Reason: "unsupported tts provider: " + strings.TrimSpace(cfg.TTS.Provider)}
 	}
 }
 
 func chooseLLMStreamer(cfg *config.Config, quality *runtime.QualityController) llm.Streamer {
-	fallback := llm.MockStreamer{}
+	fallback := llm.UnavailableStreamer{Reason: "llm unavailable"}
 	if cfg.LLM.Provider != "ollama" {
 		return fallback
 	}
 	if err := llm.PingOllama(cfg.LLM.Endpoint, 2*time.Second); err != nil {
-		log.Printf("[llm] ollama unavailable, fallback to mock")
+		log.Printf("[llm] ollama unavailable")
 		return fallback
 	}
 
@@ -299,7 +298,7 @@ func chooseLLMStreamer(cfg *config.Config, quality *runtime.QualityController) l
 	if model == "" {
 		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, 2*time.Second)
 		if derr != nil {
-			log.Printf("[llm] discover model failed, fallback to mock: %v", derr)
+			log.Printf("[llm] discover model failed: %v", derr)
 			return fallback
 		}
 		model = discovered

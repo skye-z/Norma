@@ -3,9 +3,27 @@ import * as PIXI from 'pixi.js';
 
 window.PIXI = PIXI;
 
-const apiBase = 'http://127.0.0.1:8090';
-const modelURL = `${apiBase}/static/model/runtime/hiyori_pro_t11.model3.json`;
-const coreURL = `${apiBase}/static/model/runtime/live2dcubismcore.min.js`;
+const apiBase = window.location.origin && window.location.origin.startsWith('http')
+  ? window.location.origin
+  : 'http://127.0.0.1:8090';
+async function resolveModelMeta() {
+  const resp = await fetch(`${apiBase}/runtime/model/resolve`, { cache: 'no-store' });
+  if (!resp.ok) {
+    throw new Error(`/runtime/model/resolve -> ${resp.status}`);
+  }
+  const data = await resp.json();
+  if (!data?.ok || typeof data.model_url !== 'string' || !data.model_url.trim()) {
+    throw new Error('runtime/model/resolve 返回了无效模型路径');
+  }
+  if (typeof data.core_url !== 'string' || !data.core_url.trim()) {
+    throw new Error('runtime/model/resolve 未返回 Cubism Core 路径');
+  }
+  return {
+    modelURL: `${apiBase}${data.model_url}`,
+    coreURL: `${apiBase}${data.core_url}`,
+    modelName: String(data.model_name || '')
+  };
+}
 
 const params = new URLSearchParams(window.location.search);
 const mode = params.get('debug') === '1'
@@ -304,7 +322,7 @@ function renderCompanionPage() {
   `);
 }
 
-async function ensureCore() {
+async function ensureCore(coreURL) {
   if (window.Live2DCubismCore) return;
   await new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -639,8 +657,11 @@ async function initCompanion() {
     if (!stageReady) {
       setStatus('API 已就绪，舞台未完全稳定，继续快速加载模型...', 'info');
     }
-    setStatus('API 已就绪，开始加载模型...', 'info');
-    await ensureCore();
+    setStatus('API 已就绪，正在解析模型目录...', 'info');
+    const modelMeta = await resolveModelMeta();
+
+    setStatus(`API 已就绪，开始加载模型（${modelMeta.modelName || '默认'}）...`, 'info');
+    await ensureCore(modelMeta.coreURL);
     if (!state.Live2DModel) {
       const mod = await import('pixi-live2d-display/cubism4');
       state.Live2DModel = mod.Live2DModel;
@@ -658,7 +679,7 @@ async function initCompanion() {
     });
     stage.appendChild(state.app.view);
 
-    state.model = await state.Live2DModel.from(modelURL, { autoInteract: false });
+    state.model = await state.Live2DModel.from(modelMeta.modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
     installGazeBridge();
 

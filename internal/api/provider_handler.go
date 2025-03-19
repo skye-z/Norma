@@ -36,6 +36,14 @@ type providerInstallRequest struct {
 	ID string `json:"id"`
 }
 
+type providerDiscoverItem struct {
+	Key       string   `json:"key"`
+	Name      string   `json:"name"`
+	Installed bool     `json:"installed"`
+	Paths     []string `json:"paths"`
+	Hint      string   `json:"hint"`
+}
+
 func NewProviderHandler(configPath string) *ProviderHandler {
 	return &ProviderHandler{configPath: configPath}
 }
@@ -49,6 +57,81 @@ func (h *ProviderHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/providers/apply-managed", h.handleApplyManaged)
 	mux.HandleFunc("/providers/export-readiness", h.handleExportReadiness)
 	mux.HandleFunc("/providers/open-readiness-dir", h.handleOpenReadinessDir)
+	mux.HandleFunc("/providers/discover", h.handleDiscover)
+}
+
+func (h *ProviderHandler) handleDiscover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, errs.Invalid("method not allowed"))
+		return
+	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil {
+		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
+		return
+	}
+	mgr := providers.NewManager(cfg.Providers.Root)
+
+	findAll := func(kind string, names ...string) []string {
+		set := map[string]struct{}{}
+		out := make([]string, 0)
+		for _, name := range names {
+			if p := mgr.FindFirst(kind, name); p != "" {
+				if _, ok := set[p]; !ok {
+					set[p] = struct{}{}
+					out = append(out, p)
+				}
+			}
+			if p, lookErr := exec.LookPath(name); lookErr == nil && p != "" {
+				if _, ok := set[p]; !ok {
+					set[p] = struct{}{}
+					out = append(out, p)
+				}
+			}
+		}
+		return out
+	}
+
+	items := []providerDiscoverItem{
+		{
+			Key:       "ollama",
+			Name:      "Ollama",
+			Paths:     findAll("llm", "ollama.exe", "ollama"),
+			Hint:      "用于 LLM/Embedding",
+			Installed: false,
+		},
+		{
+			Key:       "piper",
+			Name:      "Piper",
+			Paths:     findAll("tts", "piper.exe", "piper"),
+			Hint:      "用于 TTS",
+			Installed: false,
+		},
+		{
+			Key:       "whispercpp",
+			Name:      "Whisper.cpp",
+			Paths:     findAll("asr", "whisper-cli.exe", "whisper-cli", "main.exe", "main"),
+			Hint:      "用于 ASR",
+			Installed: false,
+		},
+		{
+			Key:       "sherpa-onnx",
+			Name:      "Sherpa ONNX",
+			Paths:     findAll("wake", "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter"),
+			Hint:      "用于唤醒词",
+			Installed: false,
+		},
+	}
+
+	for i := range items {
+		items[i].Installed = len(items[i].Paths) > 0
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":    true,
+		"root":  mgr.Root(),
+		"items": items,
+	})
 }
 
 func (h *ProviderHandler) handleStatus(w http.ResponseWriter, r *http.Request) {

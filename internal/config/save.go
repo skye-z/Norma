@@ -15,7 +15,7 @@ func Save(path string, cfg *Config) error {
 	}
 
 	doc := map[string]any{
-		"app":      map[string]any{"name": cfg.App.Name, "env": cfg.App.Env, "log_level": cfg.App.LogLevel, "log_dir": cfg.App.LogDir},
+		"app":      map[string]any{"name": cfg.App.Name, "model_name": cfg.App.ModelName, "env": cfg.App.Env, "log_level": cfg.App.LogLevel, "log_dir": cfg.App.LogDir},
 		"database": map[string]any{"path": cfg.Database.Path},
 		"audio": map[string]any{
 			"enable_wake_word":          cfg.Audio.EnableWakeWord,

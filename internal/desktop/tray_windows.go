@@ -37,14 +37,12 @@ func (a *App) initTrayMenu() {
 	}
 	systray.SetTooltip("Norma Desktop Companion")
 
-	menuShow := systray.AddMenuItem("隐藏伴侣", "显示或隐藏桌面伴侣")
+	menuConsole := systray.AddMenuItem("打开控制台", "在浏览器打开开发工具控制台")
 	menuToggle := systray.AddMenuItem("开启完全穿透", "切换完全穿透模式")
 	menuNotify := systray.AddMenuItem("通知策略：重要", "切换通知策略")
-	menuStatus := systray.AddMenuItem("状态：普通交互", "当前桌面状态")
-	menuStatus.Disable()
 
 	systray.AddSeparator()
-	menuConsole := systray.AddMenuItem("打开控制台", "在浏览器打开开发工具控制台")
+	menuShow := systray.AddMenuItem("隐藏伴侣", "显示或隐藏桌面伴侣")
 	menuReload := systray.AddMenuItem("重新加载伴侣", "重新加载窗口与模型")
 	systray.AddSeparator()
 	menuQuit := systray.AddMenuItem("退出", "退出 Norma")
@@ -68,13 +66,6 @@ func (a *App) initTrayMenu() {
 		default:
 			menuNotify.SetTitle("通知策略：重要")
 		}
-		interaction := "普通交互"
-		if a.ForcePassthrough() {
-			interaction = "完全穿透"
-		} else if a.MousePassthrough() {
-			interaction = "自动穿透"
-		}
-		menuStatus.SetTitle("状态：" + interaction + " / 置顶")
 	}
 	refreshMenus()
 
@@ -155,7 +146,7 @@ func (a *App) openExternalURL(url string) {
 }
 
 func debugURL() string {
-	return "http://127.0.0.1:8090/static/debug/home.html"
+	return "http://127.0.0.1:8090/static/debug/"
 }
 
 func settingsURL() string {

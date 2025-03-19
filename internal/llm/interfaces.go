@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -42,4 +43,18 @@ func (m MockStreamer) Stream(ctx context.Context, req Request, onToken func(stri
 	}
 
 	return nil
+}
+
+type UnavailableStreamer struct {
+	Reason string
+}
+
+func (u UnavailableStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
+	_ = ctx
+	_ = req
+	_ = onToken
+	if strings.TrimSpace(u.Reason) == "" {
+		return errors.New("llm unavailable")
+	}
+	return errors.New("llm unavailable: " + strings.TrimSpace(u.Reason))
 }

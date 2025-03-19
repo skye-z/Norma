@@ -1,15 +1,16 @@
 package api
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
@@ -64,7 +65,7 @@ func TestRuntimePublishValidation(t *testing.T) {
 	})
 }
 
-func TestRuntimeEventsSSE(t *testing.T) {
+func TestRuntimeEventsWS(t *testing.T) {
 	rt := runtime.New()
 	h := NewRuntimeHandler(rt.Bus, rt.Inspector)
 	mux := http.NewServeMux()
@@ -72,18 +73,18 @@ func TestRuntimeEventsSSE(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	parsed, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatalf("parse test server url: %v", err)
+	}
+	wsURL := "ws://" + parsed.Host + "/runtime/events/ws?name=live2d.reload"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/runtime/events?name=live2d.reload", nil)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
-		t.Fatalf("new request: %v", err)
+		t.Fatalf("open websocket: %v", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("open sse: %v", err)
-	}
-	defer resp.Body.Close()
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(1200 * time.Millisecond))
 
 	publishBody, _ := json.Marshal(map[string]any{
 		"name":    "live2d.reload",
@@ -95,12 +96,17 @@ func TestRuntimeEventsSSE(t *testing.T) {
 	}
 	postResp.Body.Close()
 
-	line, err := readSSEDataLine(resp.Body, 1200*time.Millisecond)
+	_, msg, err := conn.ReadMessage()
 	if err != nil {
-		t.Fatalf("read sse: %v", err)
+		t.Fatalf("read websocket: %v", err)
 	}
-	if !strings.HasPrefix(line, "data: ") {
-		t.Fatalf("unexpected sse line: %s", line)
+
+	var evt bus.Event
+	if err := json.Unmarshal(msg, &evt); err != nil {
+		t.Fatalf("unmarshal websocket payload: %v", err)
+	}
+	if evt.Name != "live2d.reload" {
+		t.Fatalf("unexpected event name: %s", evt.Name)
 	}
 }
 
@@ -130,20 +136,4 @@ func TestRuntimeDiagnostics(t *testing.T) {
 	if len(snapshot.Events) != 1 {
 		t.Fatalf("expected limited events, got %d", len(snapshot.Events))
 	}
-}
-
-func readSSEDataLine(bodyReader interface{ Read([]byte) (int, error) }, timeout time.Duration) (string, error) {
-	reader := bufio.NewReader(bodyReader)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return "", err
-		}
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "data: ") {
-			return line, nil
-		}
-	}
-	return "", context.DeadlineExceeded
 }

@@ -24,10 +24,11 @@ type Config struct {
 }
 
 type AppConfig struct {
-	Name     string `mapstructure:"name"`
-	Env      string `mapstructure:"env"`
-	LogLevel string `mapstructure:"log_level"`
-	LogDir   string `mapstructure:"log_dir"`
+	Name      string `mapstructure:"name"`
+	ModelName string `mapstructure:"model_name"`
+	Env       string `mapstructure:"env"`
+	LogLevel  string `mapstructure:"log_level"`
+	LogDir    string `mapstructure:"log_dir"`
 }
 
 type DatabaseConfig struct {
@@ -126,7 +127,7 @@ type ProvidersConfig struct {
 
 func defaultConfig() Config {
 	return Config{
-		App:      AppConfig{Name: "Norma", Env: "dev", LogLevel: "info", LogDir: layout.LogsDir},
+		App:      AppConfig{Name: "Norma", ModelName: "", Env: "dev", LogLevel: "info", LogDir: layout.LogsDir},
 		Database: DatabaseConfig{Path: layout.DBPath},
 		Audio: AudioConfig{
 			EnableWakeWord:        true,
@@ -200,6 +201,7 @@ func Load(path string) (*Config, error) {
 
 func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("app.name", cfg.App.Name)
+	v.SetDefault("app.model_name", cfg.App.ModelName)
 	v.SetDefault("app.env", cfg.App.Env)
 	v.SetDefault("app.log_level", cfg.App.LogLevel)
 	v.SetDefault("app.log_dir", cfg.App.LogDir)

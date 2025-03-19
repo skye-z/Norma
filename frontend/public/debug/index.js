@@ -1,10 +1,6 @@
-const api = 'http://127.0.0.1:8090';
-
-const logEl = document.getElementById('log');
-const runtimeStateEl = document.getElementById('runtime-state');
-const runtimeStatsEl = document.getElementById('runtime-stats');
-const healthListEl = document.getElementById('health-list');
-const eventsListEl = document.getElementById('events-list');
+const api = window.location.origin && window.location.origin.startsWith('http')
+  ? window.location.origin
+  : 'http://127.0.0.1:8090';
 
 const detailTitleEl = document.getElementById('detail-title');
 const detailStatusEl = document.getElementById('detail-status');
@@ -14,6 +10,7 @@ const detailApplyEl = document.getElementById('detail-apply');
 const detailRevertEl = document.getElementById('detail-revert');
 const detailDirtyEl = document.getElementById('detail-dirty');
 
+const statusModelEl = document.getElementById('status-model');
 const statusInputEl = document.getElementById('status-input');
 const statusAsrEl = document.getElementById('status-asr');
 const statusRagEl = document.getElementById('status-rag');
@@ -21,6 +18,15 @@ const statusLlmEl = document.getElementById('status-llm');
 const statusTtsEl = document.getElementById('status-tts');
 const statusPerfEl = document.getElementById('status-perf');
 
+const statusTextModelEl = document.getElementById('status-text-model');
+const statusTextInputEl = document.getElementById('status-text-input');
+const statusTextAsrEl = document.getElementById('status-text-asr');
+const statusTextRagEl = document.getElementById('status-text-rag');
+const statusTextLlmEl = document.getElementById('status-text-llm');
+const statusTextTtsEl = document.getElementById('status-text-tts');
+const statusTextPerfEl = document.getElementById('status-text-perf');
+
+const textModelEl = document.getElementById('text-model');
 const textInputEl = document.getElementById('text-input');
 const textAsrEl = document.getElementById('text-asr');
 const textRagEl = document.getElementById('text-rag');
@@ -28,97 +34,121 @@ const textLlmEl = document.getElementById('text-llm');
 const textTtsEl = document.getElementById('text-tts');
 const textPerfEl = document.getElementById('text-perf');
 
-let currentSettings = null;
-let draftSettings = null;
-let currentProviderStatus = null;
-let currentDiagnostics = null;
-let selectedModule = 'input';
-let detailDirty = false;
-let saving = false;
+const modelStorageKey = 'norma.debug.model_url';
+const modelCatalog = [
+  { label: 'Hiyori Pro T11', url: `${api}/static/model/runtime/hiyori_pro_t11.model3.json` },
+  { label: 'Hiyori', url: `${api}/static/model/hiyori/runtime/hiyori_pro_t11.model3.json` },
+  { label: 'Ren', url: `${api}/static/model/ren/runtime/ren.model3.json` },
+  { label: 'Shizuku', url: `${api}/static/model/shizuku/runtime/shizuku.model3.json` },
+  { label: 'Wanko', url: `${api}/static/model/wanko/runtime/wanko_touch.model3.json` },
+  { label: 'Koharu', url: `${api}/static/model/koharu/runtime/haruto.model3.json` }
+];
+
+const componentCatalog = [
+  { key: 'ollama', name: 'Ollama', desc: '用于大模型和向量嵌入' },
+  { key: 'piper', name: 'Piper', desc: '用于语音合成' },
+  { key: 'whispercpp', name: 'Whisper.cpp', desc: '用于语音识别' },
+  { key: 'sherpa-onnx', name: 'Sherpa ONNX', desc: '用于唤醒词' }
+];
 
 const moduleSchemas = {
+  model: {
+    title: '模型模块',
+    summary: '切换 Live2D 模型，读取该模型动作组并手动触发动作和姿态。',
+    fields: [
+      { path: 'debug.model_url', label: '模型文件', type: 'model_select' },
+      { path: 'debug.motion_group', label: '动作组', type: 'motion_select' },
+      { path: 'debug.motion_index', label: '动作序号', type: 'number' },
+      { path: 'debug.eye_x', label: '视线 X', type: 'number' },
+      { path: 'debug.eye_y', label: '视线 Y', type: 'number' },
+      { path: 'debug.mouth_level', label: '口型强度', type: 'number' }
+    ]
+  },
   input: {
     title: '输入模块',
     summary: '麦克风、唤醒词和前置音频策略。',
     fields: [
       { path: 'audio.enable_wake_word', label: '启用唤醒词', type: 'boolean' },
-      { path: 'audio.wake_mode', label: 'Wake 模式', type: 'select', options: ['wake_word_vad', 'vad'] },
-      { path: 'audio.wake_provider', label: 'Wake Provider', type: 'text' },
+      { path: 'audio.wake_mode', label: '唤醒模式', type: 'select', options: [{ value: 'wake_word_vad', label: '唤醒词+语音端点检测' }, { value: 'vad', label: '仅语音端点检测' }] },
+      { path: 'audio.wake_provider', label: '唤醒组件', type: 'select', options: [{ value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
       { path: 'audio.wake_keyword', label: '唤醒词', type: 'text' },
-      { path: 'audio.mic_device_id', label: '麦克风设备 ID', type: 'text' },
+      { path: 'audio.mic_device_id', label: '麦克风设备', type: 'text' },
       { path: 'audio.mic_sample_rate', label: '采样率', type: 'number' }
     ]
   },
   asr: {
     title: '识别模块',
-    summary: 'ASR Provider 与识别链路参数。',
+    summary: '语音识别配置。',
     fields: [
-      { path: 'asr.provider', label: 'ASR Provider', type: 'text' },
-      { path: 'asr.endpoint', label: 'ASR Endpoint', type: 'text' },
-      { path: 'asr.stream_endpoint', label: 'ASR Stream Endpoint', type: 'text' },
-      { path: 'asr.language', label: '语言', type: 'text' },
+      { path: 'asr.provider', label: '识别组件', type: 'select', options: [{ value: 'whispercpp', label: 'Whisper.cpp' }] },
+      { path: 'asr.endpoint', label: '识别接口地址', type: 'text' },
+      { path: 'asr.stream_endpoint', label: '流式识别接口', type: 'text' },
+      { path: 'asr.language', label: '识别语言', type: 'text' },
       { path: 'asr.threads', label: '线程数', type: 'number' },
-      { path: 'asr.request_timeout_ms', label: '超时(ms)', type: 'number' }
+      { path: 'asr.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
     ]
   },
   rag: {
     title: '检索模块',
-    summary: 'RAG 检索与 Embedding 配置。',
+    summary: '知识检索和向量嵌入配置。',
     fields: [
-      { path: 'rag.top_k', label: 'TopK', type: 'number' },
-      { path: 'rag.embed_provider', label: 'Embedding Provider', type: 'text' },
-      { path: 'rag.embed_endpoint', label: 'Embedding Endpoint', type: 'text' },
-      { path: 'rag.embed_model', label: 'Embedding Model', type: 'text' },
+      { path: 'rag.top_k', label: '召回条数', type: 'number' },
+      { path: 'rag.embed_provider', label: '嵌入组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
+      { path: 'rag.embed_endpoint', label: '嵌入接口地址', type: 'text' },
+      { path: 'rag.embed_model', label: '嵌入模型', type: 'text' },
       { path: 'rag.vector_index_path', label: '向量索引路径', type: 'text' }
     ]
   },
   llm: {
     title: '对话模块',
-    summary: 'LLM Provider、模型和请求超时。',
+    summary: '大模型推理配置。',
     fields: [
-      { path: 'llm.provider', label: 'LLM Provider', type: 'text' },
-      { path: 'llm.endpoint', label: 'LLM Endpoint', type: 'text' },
-      { path: 'llm.model', label: 'LLM Model', type: 'text' },
-      { path: 'llm.request_timeout_ms', label: '超时(ms)', type: 'number' }
+      { path: 'llm.provider', label: '大模型组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
+      { path: 'llm.endpoint', label: '大模型接口地址', type: 'text' },
+      { path: 'llm.model', label: '模型名称', type: 'text' },
+      { path: 'llm.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
     ]
   },
   tts: {
     title: '输出模块',
-    summary: 'TTS Provider、声线与合成策略。',
+    summary: '语音合成配置。',
     fields: [
-      { path: 'tts.provider', label: 'TTS Provider', type: 'text' },
-      { path: 'tts.voice', label: 'Voice', type: 'text' },
-      { path: 'tts.endpoint', label: 'TTS Endpoint', type: 'text' },
-      { path: 'tts.request_timeout_ms', label: '超时(ms)', type: 'number' },
-      { path: 'tts.sentence_first_enabled', label: '短句优先', type: 'boolean' }
+      { path: 'tts.provider', label: '合成组件', type: 'select', options: [{ value: 'piper', label: 'Piper' }] },
+      { path: 'tts.voice', label: '声线', type: 'text' },
+      { path: 'tts.endpoint', label: '合成接口地址', type: 'text' },
+      { path: 'tts.request_timeout_ms', label: '超时(毫秒)', type: 'number' },
+      { path: 'tts.sentence_first_enabled', label: '启用短句优先', type: 'boolean' }
     ]
   },
   perf: {
     title: '自动降级',
-    summary: '性能阈值与自动降级策略。',
+    summary: '超时阈值和降级策略。',
     fields: [
       { path: 'perf.auto_degrade', label: '启用自动降级', type: 'boolean' },
-      { path: 'perf.llm_first_token_threshold_ms', label: '首 token 阈值(ms)', type: 'number' },
-      { path: 'perf.degraded_rag_top_k', label: '降级 TopK', type: 'number' },
-      { path: 'perf.degraded_llm_model', label: '降级 LLM 模型', type: 'text' },
-      { path: 'perf.degraded_tts_voice', label: '降级 TTS 声线', type: 'text' }
+      { path: 'perf.llm_first_token_threshold_ms', label: '首 Token 阈值(毫秒)', type: 'number' },
+      { path: 'perf.degraded_rag_top_k', label: '降级后召回条数', type: 'number' },
+      { path: 'perf.degraded_llm_model', label: '降级后模型', type: 'text' },
+      { path: 'perf.degraded_tts_voice', label: '降级后声线', type: 'text' }
     ]
   },
   providers: {
     title: '模块管理',
-    summary: 'Provider 根目录与安全策略。',
-    fields: [
-      { path: 'providers.root', label: 'Provider 根目录', type: 'text' },
-      { path: 'security.allow_remote_providers', label: '允许远程 Provider', type: 'boolean' },
-      { path: 'security.high_risk_confirm', label: '高风险二次确认', type: 'boolean' },
-      { path: 'security.purge_proof_dir', label: '删除证明目录', type: 'text' }
-    ]
+    summary: '固定组件的发现、安装、更新、卸载和配置。',
+    fields: []
   }
 };
 
+let currentSettings = null;
+let draftSettings = null;
+let currentProviderStatus = null;
+let discoverItems = [];
+let selectedModule = 'model';
+let detailDirty = false;
+let saving = false;
+let modelMotionGroups = ['Idle'];
+
 function log(message) {
-  if (!logEl) return;
-  logEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}\n${logEl.textContent}`;
+  console.log(`[debug-console] ${message}`);
 }
 
 function deepClone(value) {
@@ -141,26 +171,20 @@ function statusClass(status) {
 }
 
 function statusLabel(status) {
-  if (status === 'ready') return '就绪';
-  if (status === 'partial') return '部分就绪';
-  return '缺失';
+  if (status === 'ready') return '已就绪';
+  if (status === 'partial') return '不可用';
+  return '未安装';
 }
 
 function indicatorClass(color) {
   return `module-status status-${color}`;
 }
 
-function formatTs(ts) {
-  if (!ts) return '-';
-  return new Date(ts).toLocaleTimeString();
-}
-
-function buildPayloadSummary(payload) {
-  if (payload == null) return '无附加信息';
-  if (typeof payload === 'string') return payload;
-  if (typeof payload !== 'object') return String(payload);
-  const entries = Object.entries(payload).slice(0, 4).map(([key, value]) => `${key}: ${typeof value === 'object' ? '[对象]' : String(value)}`);
-  return entries.join(' / ') || '无附加信息';
+function indicatorText(color) {
+  if (color === 'green') return '已就绪';
+  if (color === 'yellow') return '不可用';
+  if (color === 'red') return '未启用';
+  return '未安装';
 }
 
 function getValueByPath(obj, path) {
@@ -178,11 +202,37 @@ function setValueByPath(obj, path, value) {
   cursor[keys[keys.length - 1]] = value;
 }
 
-function setDirty(nextDirty) {
-  detailDirty = !!nextDirty;
-  if (detailDirtyEl) detailDirtyEl.textContent = detailDirty ? '有未保存改动' : '未修改';
-  if (detailApplyEl) detailApplyEl.disabled = !detailDirty || saving;
-  if (detailRevertEl) detailRevertEl.disabled = !detailDirty || saving;
+function ensureDebugDraft() {
+  if (!draftSettings) return;
+  if (!draftSettings.audio) draftSettings.audio = {};
+  if (!draftSettings.asr) draftSettings.asr = {};
+  if (!draftSettings.tts) draftSettings.tts = {};
+  if (!draftSettings.llm) draftSettings.llm = {};
+  if (!draftSettings.rag) draftSettings.rag = {};
+  if (!draftSettings.perf) draftSettings.perf = {};
+
+  if (!draftSettings.audio.wake_provider) draftSettings.audio.wake_provider = 'sherpa-onnx';
+  if (!draftSettings.asr.provider) draftSettings.asr.provider = 'whispercpp';
+  if (!draftSettings.tts.provider) draftSettings.tts.provider = 'piper';
+  if (!draftSettings.llm.provider) draftSettings.llm.provider = 'ollama';
+  if (!draftSettings.rag.embed_provider) draftSettings.rag.embed_provider = 'ollama';
+  if (!draftSettings.audio.wake_mode) draftSettings.audio.wake_mode = 'wake_word_vad';
+  if (!draftSettings.audio.wake_keyword) draftSettings.audio.wake_keyword = '诺玛';
+  if (!draftSettings.asr.language) draftSettings.asr.language = 'zh';
+  if (!draftSettings.asr.threads) draftSettings.asr.threads = 4;
+  if (!draftSettings.rag.top_k) draftSettings.rag.top_k = 6;
+
+  if (!draftSettings.debug || typeof draftSettings.debug !== 'object') {
+    draftSettings.debug = {};
+  }
+  if (!draftSettings.debug.model_url) {
+    draftSettings.debug.model_url = localStorage.getItem(modelStorageKey) || modelCatalog[0].url;
+  }
+  if (!draftSettings.debug.motion_group) draftSettings.debug.motion_group = 'Idle';
+  if (typeof draftSettings.debug.motion_index !== 'number') draftSettings.debug.motion_index = 0;
+  if (typeof draftSettings.debug.eye_x !== 'number') draftSettings.debug.eye_x = 0;
+  if (typeof draftSettings.debug.eye_y !== 'number') draftSettings.debug.eye_y = 0;
+  if (typeof draftSettings.debug.mouth_level !== 'number') draftSettings.debug.mouth_level = 0.6;
 }
 
 function providerHealthStatus(providerName) {
@@ -196,6 +246,11 @@ function moduleIndicatorColor(moduleKey) {
   if (!currentSettings) return 'gray';
   const stack = currentProviderStatus?.stack || {};
   switch (moduleKey) {
+    case 'model': {
+      if (!draftSettings?.debug?.model_url) return 'gray';
+      if (!modelMotionGroups.length) return 'yellow';
+      return 'green';
+    }
     case 'input': {
       if (!currentSettings.audio?.wake_provider) return 'gray';
       if (!currentSettings.audio?.enable_wake_word) return 'red';
@@ -246,13 +301,6 @@ function moduleIndicatorColor(moduleKey) {
       if (currentSettings.perf?.auto_degrade === undefined) return 'gray';
       return currentSettings.perf.auto_degrade ? 'green' : 'red';
     }
-    case 'providers': {
-      const health = Object.values(currentProviderStatus?.health || {});
-      if (!health.length) return 'gray';
-      if (health.every((item) => item?.status === 'ready')) return 'green';
-      if (health.some((item) => item?.status === 'ready' || item?.status === 'partial')) return 'yellow';
-      return 'gray';
-    }
     default:
       return 'gray';
   }
@@ -265,148 +313,173 @@ function moduleStatus(moduleKey) {
   return 'missing';
 }
 
-function applyIndicator(el, color, label) {
-  if (!el) return;
-  el.className = indicatorClass(color);
-  el.title = label;
+function applyIndicator(el, textEl, color, label) {
+  if (el) {
+    el.className = indicatorClass(color);
+    el.title = label;
+  }
+  if (textEl) textEl.textContent = indicatorText(color);
 }
 
 function renderSidebarIndicators() {
-  applyIndicator(statusInputEl, moduleIndicatorColor('input'), '输入模块状态');
-  applyIndicator(statusAsrEl, moduleIndicatorColor('asr'), '识别模块状态');
-  applyIndicator(statusRagEl, moduleIndicatorColor('rag'), '检索模块状态');
-  applyIndicator(statusLlmEl, moduleIndicatorColor('llm'), '对话模块状态');
-  applyIndicator(statusTtsEl, moduleIndicatorColor('tts'), '输出模块状态');
-  applyIndicator(statusPerfEl, moduleIndicatorColor('perf'), '自动降级状态');
-}
-
-function renderDetailPanel() {
-  if (!detailTitleEl || !detailSummaryEl || !detailConfigEl || !detailStatusEl) return;
-  const schema = moduleSchemas[selectedModule] || moduleSchemas.input;
-  detailTitleEl.textContent = schema.title;
-  detailSummaryEl.textContent = schema.summary;
-  const status = moduleStatus(selectedModule);
-  detailStatusEl.className = statusClass(status);
-  detailStatusEl.textContent = statusLabel(status);
-
-  if (!draftSettings) {
-    detailConfigEl.innerHTML = '<div class="stat-line"><span>状态</span><strong>配置未加载</strong></div>';
-    return;
-  }
-
-  detailConfigEl.innerHTML = schema.fields.map((field) => {
-    const value = getValueByPath(draftSettings, field.path);
-    if (field.type === 'boolean') {
-      return `
-        <div class="stat-line">
-          <span>${escapeHtml(field.label)}</span>
-          <label><input data-path="${escapeHtml(field.path)}" type="checkbox" ${value ? 'checked' : ''} /></label>
-        </div>
-      `;
-    }
-    if (field.type === 'select') {
-      return `
-        <div class="stat-line">
-          <span>${escapeHtml(field.label)}</span>
-          <select data-path="${escapeHtml(field.path)}">
-            ${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(value) === String(option) ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-          </select>
-        </div>
-      `;
-    }
-    const inputType = field.type === 'number' ? 'number' : 'text';
-    return `
-      <div class="stat-line">
-        <span>${escapeHtml(field.label)}</span>
-        <input data-path="${escapeHtml(field.path)}" type="${inputType}" value="${escapeHtml(value ?? '')}" />
-      </div>
-    `;
-  }).join('');
+  applyIndicator(statusModelEl, statusTextModelEl, moduleIndicatorColor('model'), '模型状态');
+  applyIndicator(statusInputEl, statusTextInputEl, moduleIndicatorColor('input'), '输入状态');
+  applyIndicator(statusAsrEl, statusTextAsrEl, moduleIndicatorColor('asr'), '识别状态');
+  applyIndicator(statusRagEl, statusTextRagEl, moduleIndicatorColor('rag'), '检索状态');
+  applyIndicator(statusLlmEl, statusTextLlmEl, moduleIndicatorColor('llm'), '对话状态');
+  applyIndicator(statusTtsEl, statusTextTtsEl, moduleIndicatorColor('tts'), '输出状态');
+  applyIndicator(statusPerfEl, statusTextPerfEl, moduleIndicatorColor('perf'), '自动降级状态');
 }
 
 function renderSidebarText(settings, providerStatus) {
   const stack = providerStatus?.stack || {};
-  if (textInputEl) textInputEl.textContent = `${settings?.audio?.wake_mode || 'wake_word_vad'} ${stack.wake || settings?.audio?.wake_provider || '-'}`;
+  const wakeModeMap = {
+    wake_word_vad: '唤醒词+端点检测',
+    vad: '仅端点检测'
+  };
+  const activeURL = getValueByPath(draftSettings, 'debug.model_url') || modelCatalog[0].url;
+  const hit = modelCatalog.find((item) => item.url === activeURL);
+  if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
+  if (textInputEl) textInputEl.textContent = `${wakeModeMap[settings?.audio?.wake_mode] || '输入策略'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
   if (textAsrEl) textAsrEl.textContent = stack.asr || settings?.asr?.provider || '-';
-  if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} Memory`;
-  if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} ${settings?.rag?.embed_provider || ''}`.trim();
-  if (textTtsEl) textTtsEl.textContent = `${stack.tts || settings?.tts?.provider || '-'} ${settings?.tts?.voice || ''}`.trim();
-  if (textPerfEl) textPerfEl.textContent = `${settings?.perf?.degraded_llm_model || 'default'} 阈值 ${settings?.perf?.llm_first_token_threshold_ms ?? '-'}`;
+  if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
+  if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
+  if (textTtsEl) textTtsEl.textContent = `${stack.tts || settings?.tts?.provider || '-'} / ${settings?.tts?.voice || '默认声线'}`;
+  if (textPerfEl) textPerfEl.textContent = `${settings?.perf?.auto_degrade ? '已启用' : '未启用'} / 阈值 ${settings?.perf?.llm_first_token_threshold_ms ?? '-'}`;
 }
 
-function renderRuntime(diagnostics, providerStatus) {
-  if (!runtimeStateEl || !runtimeStatsEl) return;
-  const state = diagnostics?.state || 'unknown';
-  const stateText = state === 'speaking' ? '输出中' : state === 'listening' ? '输入中' : state;
-  runtimeStateEl.className = statusClass(state && state !== 'error' ? 'ready' : 'missing');
-  runtimeStateEl.textContent = stateText || '未知';
-
-  const sessions = Array.isArray(diagnostics?.sessions) ? diagnostics.sessions.length : 0;
-  const providerReady = Object.values(providerStatus?.health || {}).filter((item) => item?.status === 'ready').length;
-  const providerTotal = Object.values(providerStatus?.health || {}).length;
-  runtimeStatsEl.innerHTML = [
-    ['最近事件', diagnostics?.last_event || '-'],
-    ['队列深度', String(diagnostics?.queue_depth ?? 0)],
-    ['会话数量', String(sessions)],
-    ['Provider 就绪', `${providerReady}/${providerTotal}`]
-  ].map(([k, v]) => `<div class="stat-line"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join('');
-}
-
-function renderHealth(providerStatus) {
-  if (!healthListEl) return;
-  const health = providerStatus?.health || {};
-  const items = Object.entries(health);
-  if (!items.length) {
-    healthListEl.innerHTML = '<div class="health-item"><div class="health-title">暂无 Provider 健康信息</div></div>';
-    return;
+async function loadMotionGroups(modelURL) {
+  try {
+    const resp = await fetch(modelURL, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`读取模型文件失败: ${resp.status}`);
+    const json = await resp.json();
+    const motions = json?.FileReferences?.Motions || {};
+    const groups = Object.keys(motions).filter(Boolean);
+    modelMotionGroups = groups.length ? groups : ['Idle'];
+    const current = getValueByPath(draftSettings, 'debug.motion_group');
+    if (!modelMotionGroups.includes(current)) {
+      setValueByPath(draftSettings, 'debug.motion_group', modelMotionGroups[0]);
+    }
+  } catch (_) {
+    modelMotionGroups = ['Idle'];
   }
-  healthListEl.innerHTML = items.map(([name, item]) => `
-    <div class="health-item">
-      <div class="health-head">
-        <div class="health-title">${escapeHtml(name)}</div>
-        <span class="${statusClass(item?.status)}">${statusLabel(item?.status)}</span>
-      </div>
-      <div class="health-detail">找到: ${escapeHtml((item?.found || []).join('、') || '无')}</div>
-      <div class="health-detail">缺失: ${escapeHtml((item?.missing || []).join('、') || '无')}</div>
-    </div>
-  `).join('');
 }
 
-function renderEvents(events) {
-  if (!eventsListEl) return;
-  const filtered = (events || []).filter((evt) => evt?.name !== 'live2d.eye').slice(-10).reverse();
-  if (!filtered.length) {
-    eventsListEl.innerHTML = '<div class="event-item"><div class="event-title">暂无事件</div></div>';
-    return;
-  }
-  eventsListEl.innerHTML = filtered.map((evt) => `
-    <div class="event-item">
-      <div class="event-head">
-        <div class="event-title">${escapeHtml(evt?.name || '未知事件')}</div>
-        <div class="event-time">${escapeHtml(formatTs(evt?.ts_unix_ms))}</div>
-      </div>
-      <div class="event-detail">${escapeHtml(buildPayloadSummary(evt?.payload))}</div>
-    </div>
-  `).join('');
+function optionListHTML(options, currentValue) {
+  return options.map((opt) => {
+    const value = typeof opt === 'object' ? opt.value : opt;
+    const label = typeof opt === 'object' ? opt.label : opt;
+    return `<option value="${escapeHtml(value)}" ${String(currentValue) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
 }
 
-async function saveSettings(nextSettings, successMessage) {
+function renderProviderManageList() {
+  if (selectedModule !== 'providers') return '';
+  const merged = componentCatalog.map((base) => {
+    const found = discoverItems.find((item) => item.key === base.key);
+    return {
+      ...base,
+      installed: !!found?.installed,
+      paths: found?.paths || [],
+      hint: found?.hint || base.desc
+    };
+  });
+
+  return `
+    <div class="provider-manage-grid">
+      ${merged.map((item) => `
+        <div class="provider-item">
+          <div class="provider-head">
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${item.installed ? '已安装' : '未安装'}</span>
+          </div>
+          <div class="event-detail">${escapeHtml(item.hint)}</div>
+          <div class="event-detail">${escapeHtml(item.paths[0] || '未检测到可执行文件')}</div>
+          <div class="provider-actions">
+            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="install" type="button" ${item.installed ? 'disabled' : ''}>安装</button>
+            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="update" type="button" ${item.installed ? '' : 'disabled'}>更新</button>
+            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="uninstall" type="button" ${item.installed ? '' : 'disabled'}>卸载</button>
+            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="configure" type="button" ${item.installed ? '' : 'disabled'}>应用配置</button>
+          </div>
+        </div>
+      `).join('')}
+      <button data-provider-action="discover" type="button">重新发现已安装组件</button>
+    </div>
+  `;
+}
+
+function renderDetailPanel() {
+  if (!detailTitleEl || !detailSummaryEl || !detailConfigEl || !detailStatusEl || !draftSettings) return;
+  const schema = moduleSchemas[selectedModule] || moduleSchemas.input;
+  detailTitleEl.textContent = schema.title;
+  detailSummaryEl.textContent = schema.summary;
+
+  const status = moduleStatus(selectedModule);
+  detailStatusEl.className = statusClass(status);
+  detailStatusEl.textContent = statusLabel(status);
+
+  const hideDraftButtons = selectedModule === 'model' || selectedModule === 'providers';
+  if (detailApplyEl) detailApplyEl.style.display = hideDraftButtons ? 'none' : '';
+  if (detailRevertEl) detailRevertEl.style.display = hideDraftButtons ? 'none' : '';
+  if (detailDirtyEl) detailDirtyEl.style.display = hideDraftButtons ? 'none' : '';
+
+  const formHTML = schema.fields.map((field) => {
+    const value = getValueByPath(draftSettings, field.path);
+    if (field.type === 'boolean') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><label><input data-path="${escapeHtml(field.path)}" type="checkbox" ${value ? 'checked' : ''} /></label></div>`;
+    }
+    if (field.type === 'select') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(field.options || [], value)}</select></div>`;
+    }
+    if (field.type === 'model_select') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(modelCatalog, value)}</select></div>`;
+    }
+    if (field.type === 'motion_select') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(modelMotionGroups, value)}</select></div>`;
+    }
+    const inputType = field.type === 'number' ? 'number' : 'text';
+    return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="${inputType}" value="${escapeHtml(value ?? '')}" /></div>`;
+  }).join('');
+
+  const modelActions = selectedModule === 'model'
+    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button><button data-model-action="motion" type="button">发送动作</button><button data-model-action="pose" type="button">发送姿态</button><button data-model-action="mouth" type="button">发送口型</button></div>`
+    : '';
+
+  detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderProviderManageList()}`;
+}
+
+function setDirty(nextDirty) {
+  detailDirty = !!nextDirty;
+  if (detailDirtyEl) detailDirtyEl.textContent = detailDirty ? '有未保存改动' : '未修改';
+  if (detailApplyEl) detailApplyEl.disabled = !detailDirty || saving;
+  if (detailRevertEl) detailRevertEl.disabled = !detailDirty || saving;
+}
+
+function sanitizeSettingsForSave(cfg) {
+  const clean = deepClone(cfg);
+  if (clean.debug) delete clean.debug;
+  return clean;
+}
+
+async function saveSettings(nextDraft, successMessage) {
   if (saving) return;
   saving = true;
   if (detailApplyEl) detailApplyEl.disabled = true;
   if (detailRevertEl) detailRevertEl.disabled = true;
   try {
+    const payload = sanitizeSettingsForSave(nextDraft);
     const resp = await fetch(`${api}/settings/runtime`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(nextSettings)
+      body: JSON.stringify(payload)
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data?.ok !== true) {
       throw new Error(data?.error?.message || `保存配置失败: ${resp.status}`);
     }
-    currentSettings = deepClone(nextSettings);
-    draftSettings = deepClone(nextSettings);
+    currentSettings = deepClone(payload);
+    currentSettings.debug = deepClone(nextDraft.debug || {});
+    draftSettings = deepClone(currentSettings);
     setDirty(false);
     log(successMessage);
     await loadAll(false);
@@ -436,8 +509,70 @@ function bindSidebarModuleNav() {
   });
 }
 
+async function publishRuntimeEvent(name, payload) {
+  const resp = await fetch(`${api}/runtime/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, session_id: 'debug-console', trace_id: 'debug-console', payload })
+  });
+  if (!resp.ok) throw new Error(`发送事件失败: ${name}`);
+}
+
+async function runModelAction(kind) {
+  const modelURL = String(getValueByPath(draftSettings, 'debug.model_url') || modelCatalog[0].url).trim();
+  const motion = String(getValueByPath(draftSettings, 'debug.motion_group') || 'Idle').trim();
+  const motionIndex = Number(getValueByPath(draftSettings, 'debug.motion_index') || 0);
+  const eyeX = Number(getValueByPath(draftSettings, 'debug.eye_x') || 0);
+  const eyeY = Number(getValueByPath(draftSettings, 'debug.eye_y') || 0);
+  const mouth = Number(getValueByPath(draftSettings, 'debug.mouth_level') || 0.6);
+
+  if (kind === 'reload') {
+    localStorage.setItem(modelStorageKey, modelURL);
+    await publishRuntimeEvent('live2d.reload', { source: 'debug-console', model_url: modelURL });
+    log(`已触发模型重载: ${modelURL}`);
+    return;
+  }
+  if (kind === 'motion') {
+    await publishRuntimeEvent('live2d.motion', { group: motion, index: Number.isFinite(motionIndex) ? motionIndex : 0 });
+    log(`已发送动作: ${motion}`);
+    return;
+  }
+  if (kind === 'pose') {
+    await publishRuntimeEvent('live2d.eye', { x: Number.isFinite(eyeX) ? eyeX : 0, y: Number.isFinite(eyeY) ? eyeY : 0 });
+    log('已发送视线姿态');
+    return;
+  }
+  if (kind === 'mouth') {
+    await publishRuntimeEvent('live2d.mouth', { level: Number.isFinite(mouth) ? mouth : 0.6 });
+    log('已发送口型事件');
+  }
+}
+
+async function runProviderAction(action, key) {
+  if (action === 'discover') {
+    await loadDiscoverOnly();
+    renderDetailPanel();
+    return;
+  }
+  if (action === 'configure') {
+    const resp = await fetch(`${api}/providers/apply-managed`, { method: 'POST' });
+    if (!resp.ok) throw new Error('应用固定配置失败');
+    await loadAll(false);
+    return;
+  }
+
+  const endpoint = action === 'uninstall' ? '/providers/uninstall' : '/providers/install';
+  const resp = await fetch(`${api}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: key })
+  });
+  if (!resp.ok) throw new Error(`${action} 失败`);
+  await loadAll(false);
+}
+
 function bindDetailEditor() {
-  detailConfigEl?.addEventListener('change', (event) => {
+  detailConfigEl?.addEventListener('change', async (event) => {
     if (!draftSettings) return;
     const target = event.target;
     if (!target || !target.dataset?.path) return;
@@ -458,8 +593,25 @@ function bindDetailEditor() {
     }
 
     setValueByPath(draftSettings, path, nextValue);
-    setDirty(true);
+    if (path === 'debug.model_url') {
+      localStorage.setItem(modelStorageKey, nextValue);
+      await loadMotionGroups(nextValue);
+    }
+    if (!path.startsWith('debug.')) setDirty(true);
+    renderSidebarText(currentSettings, currentProviderStatus);
+    renderSidebarIndicators();
     renderDetailPanel();
+  });
+
+  detailConfigEl?.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target?.dataset?.modelAction) {
+      runModelAction(target.dataset.modelAction).catch((error) => log(String(error)));
+      return;
+    }
+    if (target?.dataset?.providerAction) {
+      runProviderAction(target.dataset.providerAction, target.dataset.providerKey).catch((error) => log(String(error)));
+    }
   });
 
   detailApplyEl?.addEventListener('click', async () => {
@@ -470,42 +622,48 @@ function bindDetailEditor() {
   detailRevertEl?.addEventListener('click', () => {
     if (!currentSettings) return;
     draftSettings = deepClone(currentSettings);
+    ensureDebugDraft();
     setDirty(false);
     renderDetailPanel();
-    log(`已撤销 ${moduleSchemas[selectedModule]?.title || '模块'} 未保存改动`);
   });
 }
 
+async function loadDiscoverOnly() {
+  try {
+    const resp = await fetch(`${api}/providers/discover`);
+    if (!resp.ok) throw new Error('discover failed');
+    const data = await resp.json();
+    discoverItems = Array.isArray(data?.items) ? data.items : [];
+  } catch (_) {
+    discoverItems = [];
+  }
+}
+
 async function loadAll(appendLog = true) {
-  const [diagResp, settingsResp, providerResp] = await Promise.all([
-    fetch(`${api}/runtime/diagnostics?limit=20`),
+  const [settingsResp, providerResp] = await Promise.all([
     fetch(`${api}/settings/runtime`),
     fetch(`${api}/providers/status`)
   ]);
-  if (!diagResp.ok) throw new Error(`读取诊断失败: ${diagResp.status}`);
   if (!settingsResp.ok) throw new Error(`读取配置失败: ${settingsResp.status}`);
   if (!providerResp.ok) throw new Error(`读取 Provider 状态失败: ${providerResp.status}`);
 
-  currentDiagnostics = await diagResp.json();
   const settings = await settingsResp.json();
   currentProviderStatus = await providerResp.json();
+  await loadDiscoverOnly();
 
   if (!detailDirty || !currentSettings) {
     currentSettings = settings;
     draftSettings = deepClone(settings);
+    ensureDebugDraft();
+    await loadMotionGroups(getValueByPath(draftSettings, 'debug.model_url'));
     setDirty(false);
   }
 
   renderSidebarText(currentSettings, currentProviderStatus);
   renderSidebarIndicators();
-  renderRuntime(currentDiagnostics, currentProviderStatus);
-  renderHealth(currentProviderStatus);
-  renderEvents(currentDiagnostics?.events || []);
   renderDetailPanel();
 
-  if (appendLog) {
-    log(`已刷新: state=${currentDiagnostics?.state || '-'} queue=${currentDiagnostics?.queue_depth ?? 0}`);
-  }
+  if (appendLog) log('控制台状态已刷新');
 }
 
 document.getElementById('refresh')?.addEventListener('click', () => {
@@ -517,5 +675,5 @@ bindDetailEditor();
 selectModule(selectedModule);
 loadAll().catch((error) => log(String(error)));
 setInterval(() => {
-  loadAll().catch((error) => log(String(error)));
+  loadAll(false).catch((error) => log(String(error)));
 }, 5000);

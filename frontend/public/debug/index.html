@@ -15,10 +15,24 @@
 
     <div class="console-layout">
       <aside class="console-sidebar" aria-label="模块开关">
+        <section class="console-row" data-module="model">
+          <div class="console-row-head">
+            <span>模型</span>
+            <div class="module-status-wrap">
+              <span id="status-model" class="module-status status-gray" aria-label="模型状态"></span>
+              <span id="status-text-model" class="module-status-text">未安装</span>
+            </div>
+          </div>
+          <p id="text-model">未选择模型</p>
+        </section>
+
         <section class="console-row" data-module="input">
           <div class="console-row-head">
             <span>输入</span>
-            <span id="status-input" class="module-status status-gray" aria-label="输入模块状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-input" class="module-status status-gray" aria-label="输入模块状态"></span>
+              <span id="status-text-input" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-input">xx模式 Provider</p>
         </section>
@@ -26,7 +40,10 @@
         <section class="console-row" data-module="asr">
           <div class="console-row-head">
             <span>识别</span>
-            <span id="status-asr" class="module-status status-gray" aria-label="识别模块状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-asr" class="module-status status-gray" aria-label="识别模块状态"></span>
+              <span id="status-text-asr" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-asr">Provider</p>
         </section>
@@ -34,7 +51,10 @@
         <section class="console-row" data-module="rag">
           <div class="console-row-head">
             <span>检索</span>
-            <span id="status-rag" class="module-status status-gray" aria-label="检索模块状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-rag" class="module-status status-gray" aria-label="检索模块状态"></span>
+              <span id="status-text-rag" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-rag">RAG Memory</p>
         </section>
@@ -42,7 +62,10 @@
         <section class="console-row" data-module="llm">
           <div class="console-row-head">
             <span>对话</span>
-            <span id="status-llm" class="module-status status-gray" aria-label="对话模块状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-llm" class="module-status status-gray" aria-label="对话模块状态"></span>
+              <span id="status-text-llm" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-llm">LLM Embedding</p>
         </section>
@@ -50,7 +73,10 @@
         <section class="console-row" data-module="tts">
           <div class="console-row-head">
             <span>输出</span>
-            <span id="status-tts" class="module-status status-gray" aria-label="输出模块状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-tts" class="module-status status-gray" aria-label="输出模块状态"></span>
+              <span id="status-text-tts" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-tts">TTS xx声线</p>
         </section>
@@ -60,7 +86,10 @@
         <section class="console-row" data-module="perf">
           <div class="console-row-head">
             <span>自动降级</span>
-            <span id="status-perf" class="module-status status-gray" aria-label="自动降级状态"></span>
+            <div class="module-status-wrap">
+              <span id="status-perf" class="module-status status-gray" aria-label="自动降级状态"></span>
+              <span id="status-text-perf" class="module-status-text">未安装</span>
+            </div>
           </div>
           <p id="text-perf">xxx策略 xxx阈值</p>
         </section>
@@ -69,7 +98,7 @@
           <div class="console-row-head single-line">
             <span>模块管理</span>
           </div>
-          <p>Provider</p>
+          <p>组件管理</p>
           <button id="refresh" type="button">刷新状态</button>
         </section>
       </aside>
@@ -89,37 +118,6 @@
                 <span id="detail-dirty" class="event-detail">未修改</span>
               </div>
               <div id="detail-config" class="stats"></div>
-            </div>
-          </section>
-
-          <section class="console-card">
-            <div class="console-card-head">
-              <h2>运行状态</h2>
-              <span id="runtime-state" class="state-pill">未知</span>
-            </div>
-            <div class="console-card-body stats" id="runtime-stats"></div>
-          </section>
-
-          <section class="console-card">
-            <div class="console-card-head">
-              <h2>模块健康</h2>
-            </div>
-            <div class="console-card-body" id="health-list"></div>
-          </section>
-
-          <section class="console-card full-width">
-            <div class="console-card-head">
-              <h2>最近事件</h2>
-            </div>
-            <div class="console-card-body" id="events-list"></div>
-          </section>
-
-          <section class="console-card full-width">
-            <div class="console-card-head">
-              <h2>控制台日志</h2>
-            </div>
-            <div class="console-card-body">
-              <pre id="log" class="console"></pre>
             </div>
           </section>
         </div>

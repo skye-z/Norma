@@ -71,6 +71,7 @@ func New(opts Options) (*Server, error) {
 	se := api.NewSetupHandler(configPath, modelDir)
 	dh := api.NewDiagnosticsHandler(configPath, modelDir, rt.Bus, rt.Inspector, svc)
 	ch := api.NewConversationHandler(configPath, rt.Bus, rt.Inspector)
+	mh2 := api.NewModelHandler(configPath, modelDir)
 
 	mux := http.NewServeMux()
 	api.RegisterHealth(mux, startedAt)
@@ -84,6 +85,7 @@ func New(opts Options) (*Server, error) {
 	se.Register(mux)
 	dh.Register(mux)
 	ch.Register(mux)
+	mh2.Register(mux)
 	registerStaticModel(mux, modelDir)
 	registerStaticDebug(mux, debugDir)
 

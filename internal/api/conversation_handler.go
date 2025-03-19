@@ -272,5 +272,5 @@ func (h *ConversationHandler) buildASR(cfg *config.Config) audio.ASR {
 		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
 		return asr
 	}
-	return audio.MockASR{}
+	return audio.UnavailableASR{Reason: "conversation asr unavailable"}
 }

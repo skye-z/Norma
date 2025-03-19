@@ -56,6 +56,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, errs.Invalid("llm.provider required"))
 		return
 	}
+	cfg.App.ModelName = strings.TrimSpace(cfg.App.ModelName)
 	if strings.TrimSpace(cfg.LLM.Endpoint) == "" {
 		writeAPIError(w, errs.Invalid("llm.endpoint required"))
 		return

@@ -172,7 +172,7 @@ func buildFallbackModes(health map[string]providers.Health) []string {
 		modes = append(modes, "当前 Wake 不就绪，建议首启先关闭唤醒词，仅保留 VAD 免唤醒模式。")
 	}
 	if health["tts"].Status != "ready" {
-		modes = append(modes, "当前 TTS 不就绪，先安装 Piper 或切到 mock TTS 做链路排障。")
+		modes = append(modes, "当前 TTS 不就绪，请先安装并配置 Piper。")
 	}
 	if health["asr"].Status != "ready" {
 		modes = append(modes, "当前 ASR 不就绪，先安装 whisper.cpp 和 ggml-base.bin，再做设备兼容性检查。")
