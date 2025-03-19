@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 运行时设置</title>
+  <title>Norma 设置</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
@@ -12,24 +12,22 @@
       <div class="brand">
         <span class="brand-mark"></span>
         <div>
-          <div class="brand-title">NORMA / SETTINGS CONSOLE</div>
-          <span class="brand-sub">运行配置、Provider 与降级策略</span>
+          <div class="brand-title">NORMA / SETTINGS</div>
+          <span class="brand-sub">安装、配置、更新与模块管理</span>
         </div>
       </div>
       <nav class="nav-tabs">
-        <a href="./index.html">运行时诊断</a>
-        <a href="./memory.html">记忆管理</a>
-        <a href="./metrics.html">指标看板</a>
-        <a class="active" href="./settings.html">运行时设置</a>
-        <a href="./onboarding.html">首启向导</a>
+        <a href="./home.html">控制台</a>
+        <a href="./index.html">诊断</a>
+        <a class="active" href="./settings.html">设置</a>
       </nav>
       <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </header>
 
     <section class="hero">
-      <span class="hero-tag">Runtime Settings</span>
-      <h1>运行时与 Provider 设置</h1>
-      <p>这里严格采用设计稿的控制台式布局。左侧维护模型与语音，中间维护 Wake 与 Provider，底部两栏维护性能和安全，所有控制入口都保持同一视觉节奏。</p>
+      <span class="hero-tag">Settings Management</span>
+      <h1>设置</h1>
+      <p>这里负责各个模块的安装、配置、更新与目录管理。要看系统总览去“控制台”，要发测试指令确认模块是否正常去“诊断”。</p>
       <div class="hero-actions">
         <button id="load">重新读取</button>
         <button id="save" class="primary">保存配置</button>
@@ -44,7 +42,7 @@
     <section class="layout-3 layout-grid three">
       <section class="panel">
         <div class="panel-header">
-          <h2>模型与语音</h2>
+          <h2>模型与语音配置</h2>
           <span class="mini-note">LLM / ASR / TTS</span>
         </div>
         <div class="panel-content">
@@ -67,7 +65,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Wake 与检索</h2>
+          <h2>Wake、检索与记忆配置</h2>
           <span class="mini-note">WAKE / RAG / MEMORY</span>
         </div>
         <div class="panel-content">
@@ -98,7 +96,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Provider 面板</h2>
+          <h2>模块安装与更新</h2>
           <span class="mini-note">MANAGED PROVIDERS</span>
         </div>
         <div class="panel-content control-stack">
@@ -125,7 +123,7 @@
     <section class="layout-2 layout-grid two">
       <section class="panel">
         <div class="panel-header">
-          <h2>性能与降级</h2>
+          <h2>性能与更新策略</h2>
           <span class="mini-note">PERF POLICY</span>
         </div>
         <div class="panel-content">
@@ -148,7 +146,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>安全与目录</h2>
+          <h2>安全与目录管理</h2>
           <span class="mini-note">SECURITY POLICY</span>
         </div>
         <div class="panel-content control-stack">

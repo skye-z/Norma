@@ -42,9 +42,11 @@ powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Root . -NoLaunch
 桌面程序启动时会自动拉起本地 API 服务，无需再单独启动 `cmd/apiserver`。
 
 开发调试面板入口：
-- 调试页源码：[frontend/public/debug/index.html](D:/Project/AI/Norma/frontend/public/debug/index.html)
-- 构建产物：`frontend/dist/debug/index.html`
-- 运行时地址：`http://127.0.0.1:8090/static/debug/index.html`
+- 控制台首页源码：`frontend/public/debug/home.html`
+- 运行诊断源码：`frontend/public/debug/index.html`
+- 构建产物首页：`frontend/dist/debug/home.html`
+- 运行时首页：`http://127.0.0.1:8090/static/debug/home.html`
+- 运行时诊断页：`http://127.0.0.1:8090/static/debug/index.html`
 
 ## 关键文档
 

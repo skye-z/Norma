@@ -78,10 +78,10 @@ function createRuntimeEventSource(name, onPayload, onError) {
 
 function navTabs(active) {
   const tabs = [
-    ['?debug=1', '运行时诊断', 'debug'],
-    ['?settings=1', '运行时设置', 'settings'],
-    ['?onboarding=1', '首启向导', 'onboarding'],
-    ['http://127.0.0.1:8090/static/debug/index.html', '完整调试页', 'external']
+    ['http://127.0.0.1:8090/static/debug/home.html', '控制台', 'home'],
+    ['?debug=1', '诊断', 'debug'],
+    ['?settings=1', '设置', 'settings'],
+    ['http://127.0.0.1:8090/static/debug/home.html', '控制台首页', 'external']
   ];
   return tabs.map(([href, label, key]) => `<a class="${key === active ? 'active' : ''}" href="${href}">${label}</a>`).join('');
 }

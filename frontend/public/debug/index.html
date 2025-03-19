@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 运行时诊断页</title>
+  <title>Norma 诊断</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
@@ -12,91 +12,125 @@
       <div class="brand">
         <span class="brand-mark"></span>
         <div>
-          <div class="brand-title">NORMA / RUNTIME CONSOLE</div>
-          <span class="brand-sub">运行时诊断总控台</span>
+          <div class="brand-title">NORMA / DIAGNOSTICS</div>
+          <span class="brand-sub">控制面板与链路探针</span>
         </div>
       </div>
       <nav class="nav-tabs">
-        <a class="active" href="./index.html">运行时诊断</a>
-        <a href="./memory.html">记忆管理</a>
-        <a href="./metrics.html">指标看板</a>
-        <a href="./settings.html">运行时设置</a>
+        <a href="./home.html">控制台</a>
+        <a class="active" href="./index.html">诊断</a>
+        <a href="./settings.html">设置</a>
       </nav>
       <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </header>
 
     <section class="hero">
-      <span class="hero-tag">Runtime Trace</span>
-      <h1>运行时诊断页</h1>
-      <p>直接参照设计稿的控制台风格布局，左侧是动作与面部参数注入，中间是事件流终端，右侧是状态和会话摘要。这个页面只做诊断，不承担最终用户交互。</p>
+      <span class="hero-tag">Diagnostics Control Panel</span>
+      <h1>诊断</h1>
+      <p>这里主要用来主动发诊断指令，确认模型动作、TTS、ASR、LLM、记忆、知识库这些模块是否还活着、是否有响应。状态总览去“控制台”，安装和配置管理去“设置”。</p>
       <div class="hero-actions">
-        <button id="refresh" class="primary">刷新诊断</button>
-        <button id="bargein">模拟插话打断</button>
-        <button id="speak">语音预览</button>
-        <span class="status-chip">开发模式在线</span>
+        <button id="refresh" class="primary">刷新诊断状态</button>
+        <button id="bargein">模拟打断</button>
+        <span class="status-chip">动作探针页</span>
       </div>
     </section>
 
     <section class="layout-3 layout-grid three">
-      <aside class="panel">
+      <section class="panel">
         <div class="panel-header">
-          <h2>视觉通道</h2>
-          <span class="mini-note">LIVE2D BUS</span>
+          <div>
+            <h2>模型 / TTS / ASR</h2>
+            <p class="panel-desc">直接调用后端联调接口，对 Live2D、TTS 和 ASR 做真实可执行检查，并返回结果。</p>
+          </div>
+          <span class="mini-note">MEDIA PROBES</span>
         </div>
-        <div class="panel-content">
-          <div class="model-viewport">
-            <span class="bracket bracket-tl"></span>
-            <span class="bracket bracket-tr"></span>
-            <span class="bracket bracket-bl"></span>
-            <span class="bracket bracket-br"></span>
-            <div class="model-placeholder">调试视口<br />动作与口型事件从这里注入</div>
+        <div class="panel-content control-stack">
+          <div class="metric-tile">
+              <div class="metric-label">Live2D 联调</div>
+            <div class="quick-grid">
+              <button class="diag-run primary" data-target="live2d" data-motion="Idle">待机</button>
+              <button class="diag-run" data-target="live2d" data-motion="Tap">点击反馈</button>
+              <button class="diag-run" data-target="live2d" data-motion="Flick">快速转头</button>
+              <button class="diag-run" data-target="live2d" data-motion="Tap@Body">身体动作</button>
+            </div>
           </div>
           <div class="metric-tile">
-            <div class="metric-label">预览文本</div>
-            <div class="input-row"><input id="txt" value="你好，我是 Norma，当前正在监控运行时状态。" /></div>
+            <div class="metric-label">口型 / 视线</div>
+            <div class="control-stack">
+              <div class="range-line"><label for="mouth">口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
+              <div class="range-line"><label for="ex">视线 X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+              <div class="range-line"><label for="ey">视线 Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+            </div>
           </div>
-          <div class="mini-note" style="margin: 14px 0 8px;">动作控制</div>
-          <div class="quick-grid">
-            <button class="m primary" data-m="Idle">待机</button>
-            <button class="m" data-m="Tap">点击反馈</button>
-            <button class="m" data-m="Flick">快速转头</button>
-            <button class="m" data-m="Idle">恢复待机</button>
-          </div>
-          <div class="mini-note" style="margin: 14px 0 8px;">面部参数</div>
-          <div class="control-stack">
-            <div class="range-line"><label for="mouth">口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
-            <div class="range-line"><label for="ex">视线 X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-            <div class="range-line"><label for="ey">视线 Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
+          <div class="metric-tile">
+            <div class="metric-label">TTS / ASR 联调</div>
+            <div class="form-grid">
+              <div class="full"><label for="txt">测试文本</label><input id="txt" value="你好，我是 Norma，这是一条诊断语音。" /></div>
+              <div class="full hero-actions" style="margin-top:0;">
+                <button id="run_tts" class="primary">执行 TTS 联调</button>
+                <button id="run_asr_partial">执行 ASR Partial 联调</button>
+                <button id="run_asr_final">执行 ASR Final 联调</button>
+              </div>
+            </div>
           </div>
         </div>
-      </aside>
+      </section>
 
-      <main class="panel">
+      <section class="panel">
         <div class="panel-header">
-          <h2>事件终端</h2>
-          <span class="mini-note">LAST 20 EVENTS</span>
+          <div>
+            <h2>LLM / 记忆 / 知识库</h2>
+            <p class="panel-desc">调用后端联调接口，检查 LLM、记忆和知识库相关链路是否真实可用。</p>
+          </div>
+          <span class="mini-note">COGNITIVE PROBES</span>
         </div>
-        <div class="panel-content">
-          <pre id="events" class="console"></pre>
+        <div class="panel-content control-stack">
+          <div class="metric-tile">
+            <div class="metric-label">LLM / 检索 / 记忆联调</div>
+            <div class="form-grid">
+              <div class="full"><label for="probe_text">诊断指令</label><textarea id="probe_text" rows="5">请总结当前用户最近一次需求，并回答“诊断链路正常”。</textarea></div>
+              <div class="full hero-actions" style="margin-top:0;">
+                <button id="run_llm" class="primary">执行 LLM 联调</button>
+                <button id="run_memory">执行记忆联调</button>
+                <button id="run_rag">执行知识库联调</button>
+                <button id="run_reload">执行模型联调</button>
+              </div>
+            </div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">联调结果</div>
+            <pre id="result" class="console"></pre>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">最近事件</div>
+            <pre id="events" class="console"></pre>
+          </div>
         </div>
-      </main>
+      </section>
 
-      <aside class="panel">
+      <section class="panel">
         <div class="panel-header">
-          <h2>会话摘要</h2>
-          <span class="mini-note">SESSION WATCH</span>
+          <div>
+            <h2>诊断状态</h2>
+            <p class="panel-desc">查看当前状态、最近事件、队列与会话数，并记录本页发出的诊断动作。</p>
+          </div>
+          <span class="mini-note">STATE WATCH</span>
         </div>
         <div class="panel-content control-stack">
           <div class="metric-grid">
             <div class="metric-tile"><div class="metric-label">当前状态</div><div class="metric-value" id="state">-</div></div>
-            <div class="metric-tile"><div class="metric-label">最近事件</div><div class="metric-value" id="lastEvent" style="font-size:18px;">-</div></div>
+            <div class="metric-tile"><div class="metric-label">最近事件</div><div class="metric-value metric-value-compact" id="lastEvent">-</div></div>
             <div class="metric-tile"><div class="metric-label">队列深度</div><div class="metric-value" id="queueDepth">0</div></div>
             <div class="metric-tile"><div class="metric-label">会话数量</div><div class="metric-value" id="sessionCount">0</div></div>
           </div>
-          <div class="mini-note">操作日志</div>
+          <div class="helper-box">
+            <div class="helper-title">使用建议</div>
+            <p>先发探针，再看最近事件有没有进入总线；如果状态不动，再回控制台确认模块状态；如果需要安装或修配置，转到设置页。</p>
+          </div>
+          <div class="mini-note">诊断日志</div>
           <pre id="log" class="console"></pre>
         </div>
-      </aside>
+      </section>
     </section>
   </div>
   <script type="module" src="./panel.js"></script>

@@ -81,9 +81,9 @@ function Test-Live2DModelDir {
     )
 
     $issues = New-Object System.Collections.Generic.List[string]
-    $hasCan3 = @(Get-ChildItem -Path $Dir -Filter "*.can3" -File -ErrorAction SilentlyContinue).Count -gt 0
-    $hasCmo3 = @(Get-ChildItem -Path $Dir -Filter "*.cmo3" -File -ErrorAction SilentlyContinue).Count -gt 0
-    $model3Json = Get-ChildItem -Path $Dir -Filter "*.model3.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $hasCan3 = @(Get-ChildItem -Path $Dir -Filter "*.can3" -File -Recurse -ErrorAction SilentlyContinue).Count -gt 0
+    $hasCmo3 = @(Get-ChildItem -Path $Dir -Filter "*.cmo3" -File -Recurse -ErrorAction SilentlyContinue).Count -gt 0
+    $model3Json = Get-ChildItem -Path $Dir -Filter "*.model3.json" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 
     if (-not $hasCan3) {
         $issues.Add("missing *.can3")

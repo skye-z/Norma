@@ -168,15 +168,15 @@ go run . -config config.yaml -demo
 ```
 
 ## 7. 首次启动推荐流程
-1. 打开 [frontend/public/debug/onboarding.html](D:/Project/AI/Norma/frontend/public/debug/onboarding.html)。
-2. 检查以下项目是否就绪：
+1. 打开 [frontend/public/debug/home.html](D:/Project/AI/Norma/frontend/public/debug/home.html)。
+2. 在控制台先检查以下项目是否就绪：
    - Wake / ASR / TTS Provider
    - Live2D 模型
    - 配置文件
    - 数据目录
    - 设备探测矩阵脚本
 3. 如果有缺失，先到 [frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html) 安装并应用受管 Provider。
-4. 回到首启向导确认状态，再启动主程序。
+4. 回到控制台确认状态，再启动主程序。
 
 ## 8. 如何使用
 
@@ -197,11 +197,9 @@ go run . -config config.yaml -demo
 - 冲突事实会被标记为待确认，可在记忆管理页查看。
 
 ### 8.4 调试页面
-- 运行时诊断：[frontend/public/debug/index.html](D:/Project/AI/Norma/frontend/public/debug/index.html)
-- 记忆管理：[frontend/public/debug/memory.html](D:/Project/AI/Norma/frontend/public/debug/memory.html)
-- 指标看板：[frontend/public/debug/metrics.html](D:/Project/AI/Norma/frontend/public/debug/metrics.html)
-- 运行时设置：[frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)
-- 首启向导：[frontend/public/debug/onboarding.html](D:/Project/AI/Norma/frontend/public/debug/onboarding.html)
+- 控制台：[frontend/public/debug/home.html](D:/Project/AI/Norma/frontend/public/debug/home.html)
+- 诊断：[frontend/public/debug/index.html](D:/Project/AI/Norma/frontend/public/debug/index.html)
+- 设置：[frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)
 
 ## 9. 常见排障
 

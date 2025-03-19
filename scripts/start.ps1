@@ -331,7 +331,7 @@ try {
     } else {
         $env:GOCACHE = Join-Path (Get-Location) '.gocache'
         $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
-        $cmd = "$env:GOCACHE=(Join-Path (Get-Location) '.gocache'); $env:GOMODCACHE=(Join-Path (Get-Location) '.gomodcache'); wails dev"
+        $cmd = "`$env:GOCACHE='$($env:GOCACHE)'; `$env:GOMODCACHE='$($env:GOMODCACHE)'; wails dev"
         Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", $cmd -WindowStyle Normal | Out-Null
         $report.launch_mode = "wails_dev"
         Write-Ok "launched wails dev"

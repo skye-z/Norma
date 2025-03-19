@@ -5,17 +5,17 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"log"
+	"math"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	"io/fs"
-	"log"
-	"math"
-	"os"
-	"strings"
-	"sync"
-	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"norma/pkg/apiserver"
@@ -43,6 +43,12 @@ func Run(assets fs.FS) error {
 			DisableFramelessWindowDecorations: true,
 			BackdropType:                      windows.None,
 		},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "norma.desktop.singleton",
+			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
+				app.onSecondInstanceLaunch(secondInstanceData)
+			},
+		},
 		OnStartup:     app.startup,
 		OnShutdown:    app.shutdown,
 		OnBeforeClose: app.beforeClose,
@@ -50,6 +56,19 @@ func Run(assets fs.FS) error {
 			app,
 		},
 	})
+}
+
+func (a *App) onSecondInstanceLaunch(secondInstanceData options.SecondInstanceData) {
+	log.Printf("second instance blocked: wd=%s args=%v", secondInstanceData.WorkingDirectory, secondInstanceData.Args)
+	if a.ctx == nil {
+		return
+	}
+	wruntime.Show(a.ctx)
+	wruntime.WindowUnminimise(a.ctx)
+	wruntime.WindowShow(a.ctx)
+	wruntime.WindowCenter(a.ctx)
+	a.setVisible(true)
+	go a.openExternalURL(debugURL())
 }
 
 // App struct
@@ -383,21 +402,9 @@ func (a *App) OpenSettingsPanel() string {
 	return "ok"
 }
 
-func (a *App) OpenOnboardingPanel() string {
-	go a.openExternalURL(onboardingPanelURL())
-	return "ok"
-}
-
 func (a *App) ReloadCompanion() string {
 	go a.reloadCompanion()
 	return "ok"
-}
-
-func onboardingPanelURL() string {
-	if os.Getenv("devserver") != "" {
-		return "http://localhost:34115/?onboarding=1"
-	}
-	return "http://127.0.0.1:8090/static/debug/onboarding.html"
 }
 
 func normalizeNotificationMode(mode string) string {

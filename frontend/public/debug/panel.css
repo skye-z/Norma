@@ -2,16 +2,18 @@
   --bg-core: #050505;
   --bg-panel: rgba(10, 10, 12, 0.92);
   --bg-subtle: #111111;
+  --bg-soft: rgba(15, 15, 18, 0.88);
   --accent-primary: #39ff14;
   --accent-dim: rgba(57, 255, 20, 0.12);
   --text-bright: #ffffff;
-  --text-dim: #666666;
-  --text-soft: #a8a8a8;
+  --text-dim: #b6b6b6;
+  --text-soft: #d4d4d4;
+  --text-muted: #8d8d8d;
   --text-dark: #000000;
   --border-color: #2a2a2a;
   --border-active: #39ff14;
-  --font-display: 'Courier New', 'Consolas', monospace;
-  --font-ui: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --font-display: 'IBM Plex Mono', 'Cascadia Mono', 'Consolas', monospace;
+  --font-ui: 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
   --space-xs: 4px;
   --space-s: 8px;
   --space-m: 16px;
@@ -34,8 +36,10 @@ html, body {
 
 body {
   background-color: var(--bg-core);
-  color: var(--text-dim);
-  font-family: var(--font-display);
+  color: var(--text-soft);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
   background-image:
     linear-gradient(var(--border-color) 1px, transparent 1px),
     linear-gradient(90deg, var(--border-color) 1px, transparent 1px);
@@ -87,17 +91,17 @@ select {
 
 .brand-title {
   color: var(--text-bright);
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 1px;
   text-transform: uppercase;
+  font-family: var(--font-display);
 }
 
 .brand-sub {
   display: block;
-  font-size: 11px;
-  color: var(--text-dim);
+  font-size: 13px;
+  color: var(--text-muted);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .nav-tabs {
@@ -109,10 +113,9 @@ select {
 .nav-tabs a,
 .status-chip {
   border: 1px solid var(--border-color);
-  padding: 8px 12px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  padding: 9px 14px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
 }
 
 .nav-tabs a.active,
@@ -136,9 +139,8 @@ select {
 .mini-note,
 .footer-note,
 .metric-label {
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-size: 12px;
 }
 
 .hero-tag,
@@ -155,16 +157,72 @@ select {
 
 .hero h1 {
   color: var(--text-bright);
-  font-size: 34px;
+  font-size: 40px;
   margin-top: 10px;
+  line-height: 1.18;
 }
 
 .hero p {
   margin-top: 12px;
-  max-width: 880px;
-  line-height: 1.7;
+  max-width: 920px;
+  font-size: 17px;
+  line-height: 1.85;
   color: var(--text-soft);
   font-family: var(--font-ui);
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.overview-card {
+  border: 1px solid var(--border-color);
+  background: var(--bg-soft);
+  padding: 18px;
+}
+
+.overview-card-accent {
+  border-color: rgba(57, 255, 20, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(57, 255, 20, 0.08);
+}
+
+.overview-kicker {
+  color: var(--accent-primary);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+}
+
+.overview-card h2 {
+  margin-top: 10px;
+  color: var(--text-bright);
+  font-size: 22px;
+  line-height: 1.35;
+}
+
+.overview-card p {
+  margin-top: 10px;
+  color: var(--text-soft);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.compact-actions {
+  margin-top: 14px;
+}
+
+.primary-link {
+  border-color: var(--accent-primary);
+  color: var(--text-dark);
+  background: var(--accent-primary);
+}
+
+.primary-link:hover {
+  color: var(--text-dark);
+  background: var(--accent-primary);
 }
 
 .hero-actions {
@@ -216,9 +274,17 @@ select {
 .panel-header h2,
 .card-head h2,
 .card-header h2 {
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.panel-desc {
+  margin-top: 6px;
+  color: var(--text-soft);
   font-size: 14px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  line-height: 1.7;
+  max-width: 42ch;
 }
 
 .panel-body,
@@ -300,14 +366,49 @@ select {
 }
 
 .metric-value {
-  font-size: 28px;
-  margin-top: 6px;
+  font-size: 30px;
+  margin-top: 8px;
+  line-height: 1.3;
+  color: var(--text-bright);
+  word-break: break-word;
+}
+
+.metric-value-compact {
+  font-size: 20px;
 }
 
 .metric-foot,
 .footer-note,
 .mini-note {
   color: var(--text-soft);
+}
+
+.field-hint {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.helper-box {
+  border: 1px dashed rgba(57, 255, 20, 0.25);
+  background: rgba(57, 255, 20, 0.04);
+  padding: 14px 16px;
+}
+
+.helper-title {
+  color: var(--text-bright);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+}
+
+.helper-box p {
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .range-line,
@@ -341,7 +442,7 @@ label {
   display: block;
   margin-bottom: 6px;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 14px;
   font-family: var(--font-ui);
 }
 
@@ -350,14 +451,13 @@ button,
 .button-link {
   background: transparent;
   border: 1px solid var(--border-color);
-  color: var(--text-dim);
-  padding: 8px 12px;
-  font-size: 11px;
+  color: var(--text-soft);
+  padding: 10px 14px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   transition: all 0.2s;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.04em;
 }
 
 button:hover,
@@ -399,8 +499,8 @@ pre,
   background: #070707;
   color: #cfcfcf;
   font-family: var(--font-display);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.75;
   white-space: pre-wrap;
 }
 
@@ -422,7 +522,7 @@ pre,
   border-bottom: 1px solid var(--border-color);
   text-align: left;
   vertical-align: top;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .table th {
@@ -482,6 +582,7 @@ pre,
 .barcode span:nth-child(3n) { width: 5px; background: var(--accent-primary); }
 
 @media (max-width: 1180px) {
+  .overview-grid,
   .layout-3,
   .layout-2,
   .layout-grid.three,
@@ -494,7 +595,9 @@ pre,
   .shell { padding: 10px; }
   .topbar { height: auto; padding: 12px; align-items: flex-start; flex-direction: column; }
   .hero { padding: 16px; }
-  .hero h1 { font-size: 26px; }
+  .hero h1 { font-size: 30px; }
+  .hero p { font-size: 16px; }
+  .overview-card h2 { font-size: 20px; }
   .form-grid,
   .quick-grid { grid-template-columns: 1fr; }
 }

@@ -45,9 +45,7 @@ func (a *App) initTrayMenu() {
 	menuStatus.Disable()
 
 	systray.AddSeparator()
-	menuDebug := systray.AddMenuItem("打开诊断页", "在浏览器打开运行时诊断")
-	menuSettings := systray.AddMenuItem("打开设置页", "在浏览器打开运行时设置")
-	menuOnboarding := systray.AddMenuItem("打开首启向导", "在浏览器打开首启向导")
+	menuConsole := systray.AddMenuItem("打开控制台", "在浏览器打开开发工具控制台")
 	menuReload := systray.AddMenuItem("重新加载伴侣", "重新加载窗口与模型")
 	systray.AddSeparator()
 	menuQuit := systray.AddMenuItem("退出", "退出 Norma")
@@ -110,12 +108,8 @@ func (a *App) initTrayMenu() {
 			case <-menuNotify.ClickedCh:
 				a.CycleNotificationMode()
 				refreshMenus()
-			case <-menuDebug.ClickedCh:
+			case <-menuConsole.ClickedCh:
 				go a.openExternalURL(debugURL())
-			case <-menuSettings.ClickedCh:
-				go a.openExternalURL(settingsURL())
-			case <-menuOnboarding.ClickedCh:
-				go a.openExternalURL(onboardingPanelURL())
 			case <-menuReload.ClickedCh:
 				go a.reloadCompanion()
 				refreshMenus()
@@ -171,7 +165,7 @@ func debugURL() string {
 	if os.Getenv("devserver") != "" {
 		return "http://localhost:34115/?debug=1"
 	}
-	return "http://127.0.0.1:8090/static/debug/index.html"
+	return "http://127.0.0.1:8090/static/debug/home.html"
 }
 
 func settingsURL() string {

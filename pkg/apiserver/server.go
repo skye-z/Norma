@@ -69,6 +69,7 @@ func New(opts Options) (*Server, error) {
 	th := api.NewToolPolicyHandler(configPath)
 	pr := api.NewProviderHandler(configPath)
 	se := api.NewSetupHandler(configPath, modelDir)
+	dh := api.NewDiagnosticsHandler(configPath, modelDir, rt.Bus, rt.Inspector, svc)
 
 	mux := http.NewServeMux()
 	api.RegisterHealth(mux, startedAt)
@@ -80,6 +81,7 @@ func New(opts Options) (*Server, error) {
 	th.Register(mux)
 	pr.Register(mux)
 	se.Register(mux)
+	dh.Register(mux)
 	registerStaticModel(mux, modelDir)
 	registerStaticDebug(mux, debugDir)
 
