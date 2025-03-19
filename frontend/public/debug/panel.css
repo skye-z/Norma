@@ -229,6 +229,29 @@ body {
   width: 100%;
 }
 
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-actions select {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-actions button {
+  width: auto;
+  white-space: nowrap;
+}
+
+.field-hint-error {
+  margin-top: 6px;
+  color: #ff6666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .stats .stat-line > label {
   margin: 0;
   display: flex;

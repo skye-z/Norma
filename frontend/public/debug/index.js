@@ -66,11 +66,7 @@ const moduleSchemas = {
     summary: '切换 Live2D 模型，读取该模型动作组并手动触发动作和姿态。',
     fields: [
       { path: 'debug.model_url', label: '模型文件', type: 'model_select' },
-      { path: 'debug.motion_group', label: '动作组', type: 'motion_select' },
-      { path: 'debug.motion_index', label: '动作序号', type: 'number' },
-      { path: 'debug.eye_x', label: '视线 X', type: 'number' },
-      { path: 'debug.eye_y', label: '视线 Y', type: 'number' },
-      { path: 'debug.mouth_level', label: '口型强度', type: 'number' }
+      { path: 'debug.motion_index', label: '动作序号', type: 'number' }
     ]
   },
   input: {
@@ -81,8 +77,7 @@ const moduleSchemas = {
       { path: 'audio.wake_mode', label: '唤醒模式', type: 'select', options: [{ value: 'wake_word_vad', label: '唤醒词+语音端点检测' }, { value: 'vad', label: '仅语音端点检测' }] },
       { path: 'audio.wake_provider', label: '唤醒组件', type: 'select', options: [{ value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
       { path: 'audio.wake_keyword', label: '唤醒词', type: 'text' },
-      { path: 'audio.mic_device_id', label: '麦克风设备', type: 'text' },
-      { path: 'audio.mic_sample_rate', label: '采样率', type: 'number' }
+      { path: 'audio.mic_device_id', label: '麦克风设备', type: 'mic_device_select' }
     ]
   },
   asr: {
@@ -92,7 +87,7 @@ const moduleSchemas = {
       { path: 'asr.provider', label: '识别组件', type: 'select', options: [{ value: 'whispercpp', label: 'Whisper.cpp' }] },
       { path: 'asr.endpoint', label: '识别接口地址', type: 'text' },
       { path: 'asr.stream_endpoint', label: '流式识别接口', type: 'text' },
-      { path: 'asr.language', label: '识别语言', type: 'text' },
+      { path: 'asr.language', label: '识别语言', type: 'select', options: [{ value: 'zh', label: '中文 (zh)' }] },
       { path: 'asr.threads', label: '线程数', type: 'number' },
       { path: 'asr.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
     ]
@@ -103,8 +98,8 @@ const moduleSchemas = {
     fields: [
       { path: 'rag.top_k', label: '召回条数', type: 'number' },
       { path: 'rag.embed_provider', label: '嵌入组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
-      { path: 'rag.embed_endpoint', label: '嵌入接口地址', type: 'text' },
-      { path: 'rag.embed_model', label: '嵌入模型', type: 'text' },
+      { path: 'rag.embed_endpoint', label: '嵌入接口地址', type: 'shared_endpoint' },
+      { path: 'rag.embed_model', label: '嵌入模型', type: 'model_name_select' },
       { path: 'rag.vector_index_path', label: '向量索引路径', type: 'text' }
     ]
   },
@@ -114,7 +109,7 @@ const moduleSchemas = {
     fields: [
       { path: 'llm.provider', label: '大模型组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
       { path: 'llm.endpoint', label: '大模型接口地址', type: 'text' },
-      { path: 'llm.model', label: '模型名称', type: 'text' },
+      { path: 'llm.model', label: '模型名称', type: 'model_name_select' },
       { path: 'llm.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
     ]
   },
@@ -155,6 +150,9 @@ let selectedModule = 'model';
 let detailDirty = false;
 let saving = false;
 let modelMotionGroups = ['Idle'];
+let micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
+let endpointModelOptions = [];
+let endpointModelError = '';
 
 function log(message) {
   console.log(`[debug-console] ${message}`);
@@ -224,7 +222,11 @@ function ensureDebugDraft() {
   if (!draftSettings.asr.provider) draftSettings.asr.provider = 'whispercpp';
   if (!draftSettings.tts.provider) draftSettings.tts.provider = 'piper';
   if (!draftSettings.llm.provider) draftSettings.llm.provider = 'ollama';
+  if (!draftSettings.llm.endpoint) draftSettings.llm.endpoint = 'http://127.0.0.1:11434/v1';
+  if (!draftSettings.llm.model) draftSettings.llm.model = '';
   if (!draftSettings.rag.embed_provider) draftSettings.rag.embed_provider = 'ollama';
+  if (!draftSettings.rag.embed_endpoint) draftSettings.rag.embed_endpoint = draftSettings.llm.endpoint || 'http://127.0.0.1:11434/v1';
+  if (!draftSettings.rag.embed_model) draftSettings.rag.embed_model = '';
   if (!draftSettings.audio.wake_mode) draftSettings.audio.wake_mode = 'wake_word_vad';
   if (!draftSettings.audio.wake_keyword) draftSettings.audio.wake_keyword = '诺玛';
   if (!draftSettings.asr.language) draftSettings.asr.language = 'zh';
@@ -240,9 +242,6 @@ function ensureDebugDraft() {
   }
   if (!draftSettings.debug.motion_group) draftSettings.debug.motion_group = 'Idle';
   if (typeof draftSettings.debug.motion_index !== 'number') draftSettings.debug.motion_index = 0;
-  if (typeof draftSettings.debug.eye_x !== 'number') draftSettings.debug.eye_x = 0;
-  if (typeof draftSettings.debug.eye_y !== 'number') draftSettings.debug.eye_y = 0;
-  if (typeof draftSettings.debug.mouth_level !== 'number') draftSettings.debug.mouth_level = 0.6;
 }
 
 function providerHealthStatus(providerName) {
@@ -379,12 +378,54 @@ async function loadMotionGroups(modelURL) {
   }
 }
 
+
 function optionListHTML(options, currentValue) {
   return options.map((opt) => {
     const value = typeof opt === 'object' ? (opt.value ?? opt.url ?? '') : opt;
     const label = typeof opt === 'object' ? (opt.label ?? opt.name ?? String(value)) : opt;
     return `<option value="${escapeHtml(value)}" ${String(currentValue) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
   }).join('');
+}
+
+async function loadMicDeviceOptions() {
+  try {
+    if (!navigator?.mediaDevices?.enumerateDevices) {
+      micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
+      return;
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter((item) => item.kind === 'audioinput');
+    const opts = mics.map((item, index) => ({
+      value: item.deviceId || 'default',
+      label: item.label || `麦克风 ${index + 1}`
+    }));
+    micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }, ...opts];
+  } catch (_) {
+    micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
+  }
+}
+
+async function loadEndpointModels(endpoint) {
+  const base = String(endpoint || '').trim().replace(/\/+$/, '');
+  if (!base) {
+    endpointModelOptions = [];
+    endpointModelError = '模型接口地址为空';
+    return;
+  }
+  try {
+    const modelsURL = /\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
+    const resp = await fetch(modelsURL, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`接口返回 ${resp.status}`);
+    const data = await resp.json();
+    const list = Array.isArray(data?.data) ? data.data : [];
+    endpointModelOptions = list
+      .map((item) => ({ value: String(item?.id || '').trim(), label: String(item?.id || '').trim() }))
+      .filter((item) => item.value);
+    endpointModelError = endpointModelOptions.length ? '' : '模型接口可达，但返回空模型列表';
+  } catch (_) {
+    endpointModelOptions = [];
+    endpointModelError = '模型接口不可达，请检查地址和服务状态';
+  }
 }
 
 function inferModelNameFromURL(url) {
@@ -462,12 +503,32 @@ function renderDetailPanel() {
     if (field.type === 'motion_select') {
       return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(modelMotionGroups, value)}</select></div>`;
     }
+    if (field.type === 'mic_device_select') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(micDeviceOptions, value || 'default')}</select></div>`;
+    }
+    if (field.type === 'shared_endpoint') {
+      const endpoint = String(getValueByPath(draftSettings, 'llm.endpoint') || '');
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="llm.endpoint" type="text" value="${escapeHtml(endpoint)}" /></div>`;
+    }
+    if (field.type === 'model_name_select') {
+      const current = String(value || '');
+      const options = endpointModelOptions.length
+        ? endpointModelOptions
+        : (current ? [{ value: current, label: `${current} (当前)` }] : []);
+      const hint = endpointModelError ? `<div class="field-hint-error">${escapeHtml(endpointModelError)}</div>` : '';
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><div><div class="inline-actions"><select data-path="${escapeHtml(field.path)}">${optionListHTML(options, current)}</select><button data-model-action="refresh-models" type="button">刷新模型</button></div>${hint}</div></div>`;
+    }
     const inputType = field.type === 'number' ? 'number' : 'text';
     return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="${inputType}" value="${escapeHtml(value ?? '')}" /></div>`;
   }).join('');
 
+  const selectedMotion = String(getValueByPath(draftSettings, 'debug.motion_group') || modelMotionGroups[0] || 'Idle');
+  const motionButtons = selectedModule === 'model'
+    ? `<div class="model-action-grid">${modelMotionGroups.map((group) => `<button data-motion-group="${escapeHtml(group)}" type="button" class="${selectedMotion === String(group) ? 'primary' : ''}">${escapeHtml(group)}</button>`).join('')}</div>`
+    : '';
+
   const modelActions = selectedModule === 'model'
-    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button><button data-model-action="pose" type="button">发送姿态</button><button data-model-action="mouth" type="button">发送口型</button></div><div class="event-detail">动作组下拉切换后会自动发送动作</div>`
+    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button></div>${motionButtons}`
     : '';
 
   detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderProviderManageList()}`;
@@ -547,9 +608,6 @@ async function runModelAction(kind) {
   const modelURL = String(getValueByPath(draftSettings, 'debug.model_url') || (modelCatalog[0]?.url || '')).trim();
   const motion = String(getValueByPath(draftSettings, 'debug.motion_group') || 'Idle').trim();
   const motionIndex = Number(getValueByPath(draftSettings, 'debug.motion_index') || 0);
-  const eyeX = Number(getValueByPath(draftSettings, 'debug.eye_x') || 0);
-  const eyeY = Number(getValueByPath(draftSettings, 'debug.eye_y') || 0);
-  const mouth = Number(getValueByPath(draftSettings, 'debug.mouth_level') || 0.6);
 
   if (kind === 'reload') {
     if (!modelURL) throw new Error('当前没有可用模型文件，请先在“模型文件”里选择有效项');
@@ -563,15 +621,7 @@ async function runModelAction(kind) {
     log(`已发送动作: ${motion}`);
     return;
   }
-  if (kind === 'pose') {
-    await publishRuntimeEvent('live2d.eye', { x: Number.isFinite(eyeX) ? eyeX : 0, y: Number.isFinite(eyeY) ? eyeY : 0 });
-    log('已发送视线姿态');
-    return;
-  }
-  if (kind === 'mouth') {
-    await publishRuntimeEvent('live2d.mouth', { level: Number.isFinite(mouth) ? mouth : 0.6 });
-    log('已发送口型事件');
-  }
+  if (kind === 'pose' || kind === 'mouth') return;
 }
 
 async function runProviderAction(action, key) {
@@ -619,6 +669,10 @@ function bindDetailEditor() {
     }
 
     setValueByPath(draftSettings, path, nextValue);
+    if (path === 'llm.endpoint') {
+      setValueByPath(draftSettings, 'rag.embed_endpoint', String(nextValue || '').trim());
+      await loadEndpointModels(String(nextValue || '').trim());
+    }
     if (path === 'debug.model_url') {
       localStorage.setItem(modelStorageKey, nextValue);
       await loadMotionGroups(nextValue);
@@ -635,9 +689,6 @@ function bindDetailEditor() {
         log('未能从模型路径推导 model_name，重启后可能不会保持该模型');
       }
     }
-    if (path === 'debug.motion_group') {
-      runModelAction('motion').catch((error) => log(String(error)));
-    }
     if (!path.startsWith('debug.')) setDirty(true);
     renderSidebarText(currentSettings, currentProviderStatus);
     renderSidebarIndicators();
@@ -646,6 +697,22 @@ function bindDetailEditor() {
 
   detailConfigEl?.addEventListener('click', (event) => {
     const target = event.target;
+    if (target?.dataset?.motionGroup) {
+      setValueByPath(draftSettings, 'debug.motion_group', String(target.dataset.motionGroup));
+      renderDetailPanel();
+      runModelAction('motion').catch((error) => log(String(error)));
+      return;
+    }
+    if (target?.dataset?.modelAction === 'refresh-models') {
+      const endpoint = String(getValueByPath(draftSettings, 'llm.endpoint') || '').trim();
+      loadEndpointModels(endpoint)
+        .then(() => {
+          renderDetailPanel();
+          log(`已刷新模型列表: ${endpoint || '-'}`);
+        })
+        .catch((error) => log(String(error)));
+      return;
+    }
     if (target?.dataset?.modelAction) {
       runModelAction(target.dataset.modelAction).catch((error) => log(String(error)));
       return;
@@ -698,6 +765,18 @@ async function loadModelCatalog() {
   }
 }
 
+async function resolveRuntimeModelURL() {
+  try {
+    const resp = await fetch(`${api}/runtime/model/resolve`, { cache: 'no-store' });
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    if (!data?.ok || typeof data.model_url !== 'string' || !data.model_url.trim()) return '';
+    return `${api}${String(data.model_url).trim()}`;
+  } catch (_) {
+    return '';
+  }
+}
+
 async function loadAll(appendLog = true) {
   const [settingsResp, providerResp] = await Promise.all([
     fetch(`${api}/settings/runtime`),
@@ -715,9 +794,20 @@ async function loadAll(appendLog = true) {
     currentSettings = settings;
     draftSettings = deepClone(settings);
     ensureDebugDraft();
-    await loadMotionGroups(getValueByPath(draftSettings, 'debug.model_url'));
     setDirty(false);
   }
+
+  await loadMicDeviceOptions();
+  await loadEndpointModels(getValueByPath(draftSettings, 'llm.endpoint'));
+
+  const resolvedModelURL = await resolveRuntimeModelURL();
+  if (resolvedModelURL) {
+    const current = String(getValueByPath(draftSettings, 'debug.model_url') || '').trim();
+    if (!current || !modelCatalog.some((item) => String(item.url) === current)) {
+      setValueByPath(draftSettings, 'debug.model_url', resolvedModelURL);
+    }
+  }
+  await loadMotionGroups(getValueByPath(draftSettings, 'debug.model_url'));
 
   renderSidebarText(currentSettings, currentProviderStatus);
   renderSidebarIndicators();

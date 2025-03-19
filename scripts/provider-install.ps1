@@ -45,7 +45,7 @@ function Test-Sha256([string]$Path, [string]$Expected) {
     $actual = Get-Sha256 -Path $Path
     $expectedNorm = $Expected.Trim().ToLowerInvariant()
     if ($actual -ne $expectedNorm) {
-        throw "sha256 mismatch for $Path: expected=$expectedNorm actual=$actual"
+        throw "sha256 mismatch for ${Path}: expected=$expectedNorm actual=$actual"
     }
 }
 

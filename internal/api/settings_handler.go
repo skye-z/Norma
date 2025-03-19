@@ -100,9 +100,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if strings.TrimSpace(cfg.RAG.EmbedProvider) == "" {
 		cfg.RAG.EmbedProvider = "ollama"
 	}
-	if strings.TrimSpace(cfg.RAG.EmbedEndpoint) == "" {
-		cfg.RAG.EmbedEndpoint = cfg.LLM.Endpoint
-	}
+	cfg.RAG.EmbedEndpoint = cfg.LLM.Endpoint
 	if cfg.Memory.STMTokenBudget <= 0 {
 		cfg.Memory.STMTokenBudget = 2048
 	}

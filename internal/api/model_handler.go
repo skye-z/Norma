@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,6 +24,41 @@ func NewModelHandler(configPath, modelDir string) *ModelHandler {
 func (h *ModelHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/model/resolve", h.handleResolve)
 	mux.HandleFunc("/runtime/model/list", h.handleList)
+	mux.HandleFunc("/runtime/model/pose-groups", h.handlePoseGroups)
+}
+
+func (h *ModelHandler) handlePoseGroups(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, errs.Invalid("method not allowed"))
+		return
+	}
+	modelURL := strings.TrimSpace(r.URL.Query().Get("model_url"))
+	if modelURL == "" {
+		writeAPIError(w, errs.Invalid("model_url required"))
+		return
+	}
+
+	absPath, err := modelURLToAbsPath(h.modelDir, modelURL)
+	if err != nil {
+		writeAPIError(w, errs.Invalid(err.Error()))
+		return
+	}
+	poseFile, groups, err := loadPoseGroups(absPath)
+	if err != nil {
+		writeAPIError(w, errs.Invalid(err.Error()))
+		return
+	}
+	rel, relErr := filepath.Rel(h.modelDir, poseFile)
+	poseURL := ""
+	if relErr == nil {
+		poseURL = "/static/model/" + filepath.ToSlash(rel)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"pose_file":   filepath.ToSlash(poseFile),
+		"pose_url":    poseURL,
+		"pose_groups": groups,
+	})
 }
 
 func (h *ModelHandler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +98,6 @@ func (h *ModelHandler) handleResolve(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, errs.Invalid("model not compatible with current Cubism Core: "+detail))
 		return
 	}
-	corePath := findCoreForModel(filepath.Join(h.modelDir, modelName), resolvedPath)
 
 	rel, err := filepath.Rel(h.modelDir, resolvedPath)
 	if err != nil {
@@ -76,12 +111,6 @@ func (h *ModelHandler) handleResolve(w http.ResponseWriter, r *http.Request) {
 		"model_name": modelName,
 		"model_path": filepath.ToSlash(resolvedPath),
 		"model_url":  urlPath,
-	}
-	if corePath != "" {
-		if coreRel, relErr := filepath.Rel(h.modelDir, corePath); relErr == nil {
-			out["core_url"] = "/static/model/" + filepath.ToSlash(coreRel)
-			out["core_path"] = filepath.ToSlash(corePath)
-		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -327,4 +356,83 @@ func itoa(v int) string {
 		buf = append([]byte{'-'}, buf...)
 	}
 	return string(buf)
+}
+
+func modelURLToAbsPath(modelRootDir, modelURL string) (string, error) {
+	marker := "/static/model/"
+	idx := strings.Index(modelURL, marker)
+	if idx < 0 {
+		return "", errs.Invalid("invalid model_url")
+	}
+	rel := strings.TrimPrefix(modelURL[idx+len(marker):], "/")
+	rel = filepath.FromSlash(rel)
+	absRoot, err := filepath.Abs(modelRootDir)
+	if err != nil {
+		return "", err
+	}
+	abs := filepath.Clean(filepath.Join(absRoot, rel))
+	if !strings.HasPrefix(strings.ToLower(abs), strings.ToLower(absRoot)) {
+		return "", errs.Invalid("model_url out of model root")
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return "", errs.Invalid("model file not found")
+	}
+	return abs, nil
+}
+
+func loadPoseGroups(modelFilePath string) (string, []map[string]any, error) {
+	modelDir := filepath.Dir(modelFilePath)
+	base := strings.TrimSuffix(filepath.Base(modelFilePath), filepath.Ext(modelFilePath))
+	candidates := []string{
+		filepath.Join(modelDir, base+".pose3.json"),
+	}
+	_ = filepath.WalkDir(modelDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(d.Name()), ".pose3.json") {
+			candidates = append(candidates, path)
+		}
+		return nil
+	})
+
+	seen := map[string]struct{}{}
+	for _, path := range candidates {
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var doc struct {
+			Groups [][]struct {
+				ID string `json:"Id"`
+			} `json:"Groups"`
+		}
+		if err := json.Unmarshal(b, &doc); err != nil {
+			continue
+		}
+		if len(doc.Groups) == 0 {
+			continue
+		}
+		out := make([]map[string]any, 0, len(doc.Groups))
+		for i, group := range doc.Groups {
+			parts := make([]string, 0, len(group))
+			for _, item := range group {
+				if strings.TrimSpace(item.ID) != "" {
+					parts = append(parts, item.ID)
+				}
+			}
+			out = append(out, map[string]any{
+				"value": "group_" + itoa(i),
+				"label": "姿势组 " + itoa(i+1),
+				"parts": parts,
+			})
+		}
+		return path, out, nil
+	}
+
+	return "", nil, errs.Invalid("pose3.json not found")
 }

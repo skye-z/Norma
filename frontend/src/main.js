@@ -37,20 +37,8 @@ async function resolveModelMeta() {
     throw new Error('runtime/model/resolve 返回了无效模型路径');
   }
   const modelURL = localPreferred || `${apiBase}${data.model_url}`;
-  let coreURL = typeof data.core_url === 'string' && data.core_url.trim()
-    ? `${apiBase}${data.core_url}`
-    : '';
-
-  if (!coreURL) {
-    const modelPath = String(data.model_url || '');
-    const normalized = modelPath.replace(/\\/g, '/');
-    const baseDir = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : normalized;
-    coreURL = `${apiBase}${baseDir}/live2dcubismcore.min.js`;
-  }
-
   return {
     modelURL,
-    coreURL,
     modelName: String(data.model_name || '')
   };
 }
@@ -64,11 +52,8 @@ function normalizeModelURL(input) {
 }
 
 function siblingCoreURL(modelURL) {
-  const url = normalizeModelURL(modelURL);
-  if (!url) return '';
-  const idx = url.lastIndexOf('/');
-  if (idx <= 0) return '';
-  return `${url.slice(0, idx)}/live2dcubismcore.min.js`;
+  const _ = modelURL;
+  return '/live2dcubismcore.min.js';
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -429,8 +414,23 @@ async function initCompanion() {
     layoutHandler: null,
     speechRecognition: null,
     useSpeechFallback: false,
-    speechListening: false
+    speechListening: false,
+    idleTimer: null
   };
+
+  function idleAfterMotion(ms = 1200) {
+    if (!state.model) return;
+    if (state.idleTimer) {
+      window.clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
+    state.idleTimer = window.setTimeout(async () => {
+      if (!state.model) return;
+      try {
+        await state.model.motion('Idle', 0, 1);
+      } catch (_) {}
+    }, ms);
+  }
 
   function setMicListening(listening) {
     state.speechListening = !!listening;
@@ -546,6 +546,10 @@ async function initCompanion() {
 
   function destroy() {
     closeEvents();
+    if (state.idleTimer) {
+      window.clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
     if (state.speechRecognition && state.speechListening) {
       try { state.speechRecognition.stop(); } catch (_) {}
     }
@@ -644,6 +648,9 @@ async function initCompanion() {
       const index = Number.isInteger(payload?.index) ? payload.index : 0;
       try {
         await state.model.motion(group, index, 3);
+        if (String(group).toLowerCase() !== 'idle') {
+          idleAfterMotion(1200);
+        }
       } catch (_) {
         for (const fallback of ['Tap', 'Flick', 'Idle']) {
           try {
@@ -685,6 +692,19 @@ async function initCompanion() {
       if (Number.isFinite(y)) state.targetY = clamp(y, -1, 1);
     }));
 
+    state.eventSources.push(createRuntimeEventSource('live2d.pose', (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      const parts = Array.isArray(payload.parts) ? payload.parts : [];
+      if (!parts.length) return;
+      const core = state.model?.internalModel?.coreModel;
+      if (!core || typeof core.setPartOpacityById !== 'function') return;
+
+      const active = String(payload.active || parts[0]);
+      parts.forEach((partId) => {
+        core.setPartOpacityById(partId, partId === active ? 1 : 0);
+      });
+    }));
+
     state.eventSources.push(createRuntimeEventSource('live2d.reload', async (payload) => {
       const preferredURL = normalizeModelURL(payload?.model_url || payload?.url || '');
       await reload(preferredURL);
@@ -695,6 +715,11 @@ async function initCompanion() {
     setStatus('正在检查 API 服务...', 'info');
     const apiReady = await waitForApiReady(4000);
     if (!apiReady) throw new Error('api server is not ready');
+
+    if (stage) {
+      stage.style.opacity = '0';
+      stage.style.visibility = 'hidden';
+    }
 
     setStatus('API 已就绪，正在等待舞台尺寸稳定...', 'info');
     const stageReady = await waitForStageReady();
@@ -707,7 +732,7 @@ async function initCompanion() {
     setStatus('API 已就绪，正在解析模型目录...', 'info');
     const modelMeta = await resolveModelMeta();
     const modelURL = normalizeModelURL(preferredModelURL) || modelMeta.modelURL;
-    const coreURL = modelMeta.coreURL || siblingCoreURL(modelURL);
+    const coreURL = siblingCoreURL(modelURL);
 
     setStatus(`API 已就绪，开始加载模型（${modelMeta.modelName || '默认'}）...`, 'info');
     await ensureCore(coreURL);
@@ -757,6 +782,10 @@ async function initCompanion() {
     window.requestAnimationFrame(() => window.requestAnimationFrame(layout));
 
     await state.model.motion('Idle', 0, 1).catch(() => undefined);
+    if (stage) {
+      stage.style.visibility = 'visible';
+      stage.style.opacity = '1';
+    }
     setStatus('Live2D 模型已加载', 'ready', true);
 
     state.app.ticker.add(() => {

@@ -88,6 +88,7 @@ func New(opts Options) (*Server, error) {
 	mh2.Register(mux)
 	registerStaticModel(mux, modelDir)
 	registerStaticDebug(mux, debugDir)
+	registerLive2DCore(mux, debugDir, modelDir)
 
 	return &Server{
 		addr:      addr,
@@ -160,6 +161,30 @@ func registerStaticDebug(mux *http.ServeMux, debugDir string) {
 	fs := http.FileServer(http.Dir(absDir))
 	mux.Handle("/static/debug/", http.StripPrefix("/static/debug/", fs))
 	log.Printf("static debug route: /static/debug/ -> %s", absDir)
+}
+
+func registerLive2DCore(mux *http.ServeMux, debugDir, modelDir string) {
+	candidates := []string{
+		filepath.Join(filepath.Dir(debugDir), "live2dcubismcore.min.js"),
+		filepath.Join(modelDir, "live2dcubismcore.min.js"),
+		filepath.Join(modelDir, "hiyori", "runtime", "live2dcubismcore.min.js"),
+	}
+	for _, candidate := range candidates {
+		abs, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		info, statErr := os.Stat(abs)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		mux.HandleFunc("/live2dcubismcore.min.js", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, abs)
+		})
+		log.Printf("live2d core route: /live2dcubismcore.min.js -> %s", abs)
+		return
+	}
+	log.Printf("skip live2d core route: no core file found")
 }
 
 func withCORS(next http.Handler) http.Handler {
