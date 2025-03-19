@@ -123,7 +123,7 @@ func (h *ProviderHandler) handleCatalog(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, errs.Invalid("method not allowed"))
 		return
 	}
-	catalogPath := filepath.ToSlash("configs/provider-catalog.json")
+	catalogPath := filepath.ToSlash("build/provider-catalog.json")
 	data, err := os.ReadFile(catalogPath)
 	if err != nil {
 		writeAPIError(w, errs.Internal("provider_catalog_read_failed", err.Error()))
@@ -152,7 +152,7 @@ func (h *ProviderHandler) handleInstall(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
 		return
 	}
-	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/provider-install.ps1", "-CatalogPath", "configs/provider-catalog.json", "-ProviderId", req.ID, "-ProvidersRoot", cfg.Providers.Root)
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/provider-install.ps1", "-CatalogPath", "build/provider-catalog.json", "-ProviderId", req.ID, "-ProvidersRoot", cfg.Providers.Root)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		writeAPIError(w, errs.Internal("provider_install_failed", string(out)))
@@ -176,7 +176,7 @@ func (h *ProviderHandler) handleUninstall(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
 		return
 	}
-	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/provider-install.ps1", "-CatalogPath", "configs/provider-catalog.json", "-ProviderId", req.ID, "-ProvidersRoot", cfg.Providers.Root, "-Uninstall")
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/provider-install.ps1", "-CatalogPath", "build/provider-catalog.json", "-ProviderId", req.ID, "-ProvidersRoot", cfg.Providers.Root, "-Uninstall")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		writeAPIError(w, errs.Internal("provider_uninstall_failed", string(out)))

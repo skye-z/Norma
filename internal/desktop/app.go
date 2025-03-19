@@ -1,10 +1,15 @@
 //go:build windows
 
-package main
+package desktop
 
 import (
 	"context"
 	"fmt"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"io/fs"
 	"log"
 	"math"
 	"os"
@@ -15,6 +20,37 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"norma/pkg/apiserver"
 )
+
+const appTitle = "Norma"
+
+func Run(assets fs.FS) error {
+	app := NewApp()
+	return wails.Run(&options.App{
+		Title:             appTitle,
+		Width:             420,
+		Height:            700,
+		Frameless:         true,
+		AlwaysOnTop:       true,
+		DisableResize:     true,
+		HideWindowOnClose: true,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
+		Windows: &windows.Options{
+			WebviewIsTransparent:              true,
+			WindowIsTranslucent:               true,
+			DisableFramelessWindowDecorations: true,
+			BackdropType:                      windows.None,
+		},
+		OnStartup:     app.startup,
+		OnShutdown:    app.shutdown,
+		OnBeforeClose: app.beforeClose,
+		Bind: []interface{}{
+			app,
+		},
+	})
+}
 
 // App struct
 type App struct {

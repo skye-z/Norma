@@ -75,6 +75,36 @@ function Test-TcpEndpoint {
     }
 }
 
+function Test-Live2DModelDir {
+    param(
+        [string]$Dir
+    )
+
+    $issues = New-Object System.Collections.Generic.List[string]
+    $hasCan3 = @(Get-ChildItem -Path $Dir -Filter "*.can3" -File -ErrorAction SilentlyContinue).Count -gt 0
+    $hasCmo3 = @(Get-ChildItem -Path $Dir -Filter "*.cmo3" -File -ErrorAction SilentlyContinue).Count -gt 0
+    $model3Json = Get-ChildItem -Path $Dir -Filter "*.model3.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+
+    if (-not $hasCan3) {
+        $issues.Add("missing *.can3")
+    }
+    if (-not $hasCmo3) {
+        $issues.Add("missing *.cmo3")
+    }
+    if ($null -eq $model3Json) {
+        $issues.Add("missing *.model3.json")
+    }
+
+    return [PSCustomObject]@{
+        ModelDir      = $Dir
+        HasCan3       = $hasCan3
+        HasCmo3       = $hasCmo3
+        HasModel3JSON = ($null -ne $model3Json)
+        Issues        = $issues
+        OK            = ($issues.Count -eq 0)
+    }
+}
+
 Push-Location $Root
 try {
     # 1) Encoding check (strict)
@@ -120,15 +150,22 @@ try {
     $ttsEndpoint = Get-ConfigValue -Lines $cfgLines -Section "tts" -Key "endpoint"
 
     # 3) Model check
-    $env:GOCACHE = Join-Path (Get-Location) '.gocache'
-    $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
     if (-not (Test-Path $ModelDir)) {
         Add-Warn "model dir not found: $ModelDir"
     } else {
-        & go run ./cmd/modelcheck -dir $ModelDir | Out-Host
-        if ($LASTEXITCODE -ne 0) {
+        $modelCheck = Test-Live2DModelDir -Dir $ModelDir
+        Write-Host "ModelDir: $($modelCheck.ModelDir)"
+        Write-Host "HasCan3: $($modelCheck.HasCan3)"
+        Write-Host "HasModel3JSON: $($modelCheck.HasModel3JSON)"
+        Write-Host "HasCmo3: $($modelCheck.HasCmo3)"
+        if (-not $modelCheck.OK) {
+            Write-Host "Status: FAILED"
+            for ($i = 0; $i -lt $modelCheck.Issues.Count; $i++) {
+                Write-Host ("{0}. {1}" -f ($i + 1), $modelCheck.Issues[$i])
+            }
             Add-Warn "model check did not pass"
         } else {
+            Write-Host "Status: OK"
             Add-Ok "model assets check passed"
         }
     }

@@ -21,7 +21,7 @@ try {
 
   Write-Host "[beta] run norma demo"
   $env:NORMA_LLM_PROVIDER = 'mock'
-  go run ./cmd/norma -config $Config -demo *> $logFile
+  go run . -config $Config -demo *> $logFile
   Remove-Item Env:NORMA_LLM_PROVIDER -ErrorAction SilentlyContinue
   if ($LASTEXITCODE -ne 0) { throw "go run demo failed" }
 

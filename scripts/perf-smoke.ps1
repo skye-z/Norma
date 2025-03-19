@@ -1,6 +1,6 @@
 param(
   [string]$Root = ".",
-  [string]$Baseline = "configs/perf-baseline.json"
+  [string]$Baseline = "build/perf-baseline.json"
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Baseline)) { throw "baseline missing: $Baseline" }

@@ -8,7 +8,9 @@ import (
 const (
 	ConfigFileName        = "config.yaml"
 	ConfigExampleFileName = "config.example.yaml"
-	DebugDir              = "web/debug"
+	DebugSourceDir        = "frontend/public/debug"
+	DebugDistDir          = "frontend/dist/debug"
+	DebugReleaseDir       = "debug"
 	ResourceDir           = "resource"
 	ModelDir              = "resource/model"
 	DataDir               = "resource/data"
@@ -47,11 +49,21 @@ func EnsureRuntimeLayout(root string) error {
 	return nil
 }
 
+func ResolveDebugDir(root string) string {
+	candidates := []string{DebugReleaseDir, DebugDistDir, DebugSourceDir}
+	for _, rel := range candidates {
+		full := Join(root, rel)
+		if info, err := os.Stat(full); err == nil && info.IsDir() {
+			return full
+		}
+	}
+	return Join(root, DebugSourceDir)
+}
+
 func HasRuntimeMarkers(root string) bool {
 	markers := []string{
 		ConfigFileName,
 		ModelDir,
-		DebugDir,
 	}
 	for _, marker := range markers {
 		if _, err := os.Stat(Join(root, marker)); err != nil {

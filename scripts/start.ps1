@@ -331,9 +331,10 @@ try {
     } else {
         $env:GOCACHE = Join-Path (Get-Location) '.gocache'
         $env:GOMODCACHE = Join-Path (Get-Location) '.gomodcache'
-        Start-Process -FilePath "go" -ArgumentList "run", "./cmd/norma" -WindowStyle Normal | Out-Null
-        $report.launch_mode = "go_run"
-        Write-Ok "launched go run ./cmd/norma"
+        $cmd = "$env:GOCACHE=(Join-Path (Get-Location) '.gocache'); $env:GOMODCACHE=(Join-Path (Get-Location) '.gomodcache'); wails dev"
+        Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", $cmd -WindowStyle Normal | Out-Null
+        $report.launch_mode = "wails_dev"
+        Write-Ok "launched wails dev"
     }
 
     Write-StartupReport

@@ -25,7 +25,7 @@ go test ./internal/audio -run 'TestPipelineUsesFrameASR|TestPipelineSupportsWake
 go test ./internal/runtime -run 'TestRegressionVoiceQAFlow|TestRegressionVoiceInterrupt' -count=1
 
 echo '[alpha] step 2/3: demo voice chain run'
-go run ./cmd/norma -config "$CONFIG_PATH" -demo 2>&1 | tee "$OUTPUT_LOG"
+go run . -config "$CONFIG_PATH" -demo 2>&1 | tee "$OUTPUT_LOG"
 
 echo '[alpha] step 3/3: verify logs'
 APP_LOG="${LOG_DIR}/app.log"

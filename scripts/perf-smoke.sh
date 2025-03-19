@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="${1:-.}"
-BASELINE="${2:-configs/perf-baseline.json}"
+BASELINE="${2:-build/perf-baseline.json}"
 [[ -f "$BASELINE" ]] || { echo "baseline missing: $BASELINE" >&2; exit 1; }
 LOG_PATH="$ROOT/resource/logs/app.log"
 [[ -f "$LOG_PATH" ]] || { echo "log missing: $LOG_PATH" >&2; exit 1; }

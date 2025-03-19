@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"flag"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"norma/internal/audio"
 	"norma/internal/config"
 	"norma/internal/db"
+	"norma/internal/desktop"
 	"norma/internal/index"
 	"norma/internal/live2d"
 	"norma/internal/llm"
@@ -25,6 +27,9 @@ import (
 	"norma/pkg/layout"
 )
 
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
+
 var (
 	version = "dev"
 	commit  = "unknown"
@@ -34,6 +39,13 @@ func main() {
 	cfgPath := flag.String("config", layout.ConfigFileName, "path to config file")
 	demo := flag.Bool("demo", false, "run event-chain demo and exit")
 	flag.Parse()
+
+	if !*demo {
+		if err := desktop.Run(frontendAssets); err != nil {
+			log.Fatalf("start desktop app: %v", err)
+		}
+		return
+	}
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {

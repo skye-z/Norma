@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
 
 ### 4.1 通过设置页安装
 1. 启动桌面应用，应用会自动拉起本地 API 服务。
-2. 打开 [web/debug/settings.html](D:/Project/AI/Norma/web/debug/settings.html)。
+2. 打开 [frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)。
 3. 在“Provider 面板”中依次安装：
    - `wake-sherpa-onnx-windows-x64-shared`
    - `wake-sherpa-kws-zh-en-model`
@@ -77,12 +77,12 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
 ### 4.2 通过脚本安装
 安装示例：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers
+powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath build/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers
 ```
 
 卸载示例：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath configs/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers -Uninstall
+powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath build/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers -Uninstall
 ```
 
 ### 4.3 来源与校验说明
@@ -164,18 +164,18 @@ powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -NoLaunch
 
 ### 6.3 启动主链路演示
 ```powershell
-go run ./cmd/norma -config config.yaml -demo
+go run . -config config.yaml -demo
 ```
 
 ## 7. 首次启动推荐流程
-1. 打开 [web/debug/onboarding.html](D:/Project/AI/Norma/web/debug/onboarding.html)。
+1. 打开 [frontend/public/debug/onboarding.html](D:/Project/AI/Norma/frontend/public/debug/onboarding.html)。
 2. 检查以下项目是否就绪：
    - Wake / ASR / TTS Provider
    - Live2D 模型
    - 配置文件
    - 数据目录
    - 设备探测矩阵脚本
-3. 如果有缺失，先到 [web/debug/settings.html](D:/Project/AI/Norma/web/debug/settings.html) 安装并应用受管 Provider。
+3. 如果有缺失，先到 [frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html) 安装并应用受管 Provider。
 4. 回到首启向导确认状态，再启动主程序。
 
 ## 8. 如何使用
@@ -197,11 +197,11 @@ go run ./cmd/norma -config config.yaml -demo
 - 冲突事实会被标记为待确认，可在记忆管理页查看。
 
 ### 8.4 调试页面
-- 运行时诊断：[web/debug/index.html](D:/Project/AI/Norma/web/debug/index.html)
-- 记忆管理：[web/debug/memory.html](D:/Project/AI/Norma/web/debug/memory.html)
-- 指标看板：[web/debug/metrics.html](D:/Project/AI/Norma/web/debug/metrics.html)
-- 运行时设置：[web/debug/settings.html](D:/Project/AI/Norma/web/debug/settings.html)
-- 首启向导：[web/debug/onboarding.html](D:/Project/AI/Norma/web/debug/onboarding.html)
+- 运行时诊断：[frontend/public/debug/index.html](D:/Project/AI/Norma/frontend/public/debug/index.html)
+- 记忆管理：[frontend/public/debug/memory.html](D:/Project/AI/Norma/frontend/public/debug/memory.html)
+- 指标看板：[frontend/public/debug/metrics.html](D:/Project/AI/Norma/frontend/public/debug/metrics.html)
+- 运行时设置：[frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)
+- 首启向导：[frontend/public/debug/onboarding.html](D:/Project/AI/Norma/frontend/public/debug/onboarding.html)
 
 ## 9. 常见排障
 

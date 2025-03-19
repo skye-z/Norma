@@ -17,6 +17,7 @@ if (-not (Test-Path $env:GOMODCACHE)) { New-Item -ItemType Directory -Path $env:
 $commit = ""
 try { $commit = (git rev-parse --short HEAD) } catch { $commit = "unknown" }
 $ldflags = "-X main.version=$Version -X main.commit=$commit"
+$debugDist = Join-Path 'frontend' 'dist/debug'
 foreach ($t in $targets) {
   $packageDir = Join-Path $OutDir "Norma-$($t.GOOS)-$($t.GOARCH)"
   if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
@@ -24,15 +25,34 @@ foreach ($t in $targets) {
   $binaryName = if ($t.GOOS -eq 'windows') { "Norma.exe" } else { "Norma" }
   $out = Join-Path $packageDir $binaryName
   Write-Host "Building $($t.GOOS)-$($t.GOARCH) ..."
-  $env:GOOS = $t.GOOS
-  $env:GOARCH = $t.GOARCH
-  & go build -trimpath -ldflags $ldflags -o $out ./cmd/norma
-  if ($LASTEXITCODE -ne 0) { throw "go build failed for $($t.GOOS)-$($t.GOARCH)" }
 
-  Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.example.yaml')
-  Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.yaml')
+	if ($t.GOOS -eq 'windows') {
+		& wails build -clean -m -nopackage -trimpath -platform windows/amd64 -ldflags $ldflags -o Norma
+		if ($LASTEXITCODE -ne 0) { throw "wails build failed for windows-amd64" }
+		$wailsBinary = if (Test-Path 'build/bin/Norma.exe') { 'build/bin/Norma.exe' } else { 'build/bin/Norma' }
+		Copy-Item -Force $wailsBinary $out
+		if (-not (Test-Path $debugDist)) { throw "debug dist missing: $debugDist" }
+	} else {
+		if (-not (Test-Path $debugDist)) {
+			Push-Location frontend
+			try {
+				& npm run build
+				if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
+			} finally {
+				Pop-Location
+			}
+		}
+		$env:GOOS = $t.GOOS
+		$env:GOARCH = $t.GOARCH
+		& go build -trimpath -ldflags $ldflags -o $out .
+    if ($LASTEXITCODE -ne 0) { throw "go build failed for $($t.GOOS)-$($t.GOARCH)" }
+  }
 
-  $resourceRoot = Join-Path $packageDir 'resource'
+	Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.example.yaml')
+	Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.yaml')
+	Copy-Item -Recurse -Force $debugDist (Join-Path $packageDir 'debug')
+
+	$resourceRoot = Join-Path $packageDir 'resource'
   New-Item -ItemType Directory -Force -Path $resourceRoot | Out-Null
   foreach ($dir in @('data','logs','diagnostics','runtime/providers')) {
     New-Item -ItemType Directory -Force -Path (Join-Path $resourceRoot $dir) | Out-Null

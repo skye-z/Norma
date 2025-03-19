@@ -37,3 +37,4 @@ config.yaml
 # Wails / frontend build outputs
 frontend/dist/
 frontend/node_modules/
+/build/bin/

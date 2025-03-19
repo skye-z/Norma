@@ -30,7 +30,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'runtime focused tests failed' }
 
   Write-Host '[alpha] step 2/3: demo voice chain run'
-  & go run ./cmd/norma -config $ConfigPath -demo *>&1 | Tee-Object -FilePath $outputLog | Out-Host
+  & go run . -config $ConfigPath -demo *>&1 | Tee-Object -FilePath $outputLog | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'demo run failed' }
 
   Write-Host '[alpha] step 3/3: verify logs'

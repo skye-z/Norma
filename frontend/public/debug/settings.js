@@ -113,7 +113,7 @@ function apply(cfg) {
   byId('perf_degraded_tts_voice').value = cfg.perf?.degraded_tts_voice || 'zh_CN-huayan-x_low';
   byId('perf_alert_llm').value = cfg.perf?.alert_llm_first_token_ms || 1500;
   byId('perf_alert_tts').value = cfg.perf?.alert_tts_first_chunk_ms || 1200;
-  byId('perf_baseline_file').value = cfg.perf?.baseline_file || 'configs/perf-baseline.json';
+  byId('perf_baseline_file').value = cfg.perf?.baseline_file || 'build/perf-baseline.json';
   byId('providers_root').value = cfg.providers?.root || 'resource/runtime/providers';
   byId('security_allow_remote').checked = !!cfg.security?.allow_remote_providers;
   byId('security_hosts').value = (cfg.security?.allowed_remote_hosts || []).join(',');

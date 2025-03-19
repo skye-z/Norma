@@ -1,13 +1,13 @@
 //go:build windows
 
-package main
+package desktop
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +16,6 @@ import (
 	"github.com/pkg/browser"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-//go:embed build/windows/icon.ico
-var trayIcon []byte
 
 var trayQuitOnce sync.Once
 
@@ -35,8 +32,8 @@ func (a *App) stopTray() {
 }
 
 func (a *App) initTrayMenu() {
-	if len(trayIcon) > 0 {
-		systray.SetIcon(trayIcon)
+	if icon := loadTrayIcon(); len(icon) > 0 {
+		systray.SetIcon(icon)
 	}
 	systray.SetTooltip("Norma Desktop Companion")
 
@@ -182,4 +179,17 @@ func settingsURL() string {
 		return "http://localhost:34115/?settings=1"
 	}
 	return "http://127.0.0.1:8090/static/debug/settings.html"
+}
+
+func loadTrayIcon() []byte {
+	root, err := detectProjectRoot()
+	if err != nil {
+		return nil
+	}
+	iconPath := filepath.Join(root, "build", "windows", "icon.ico")
+	data, err := os.ReadFile(iconPath)
+	if err != nil {
+		return nil
+	}
+	return data
 }

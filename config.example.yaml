@@ -73,7 +73,7 @@ perf:
   degraded_tts_voice: zh_CN-huayan-x_low
   alert_llm_first_token_ms: 1500
   alert_tts_first_chunk_ms: 1200
-  baseline_file: configs/perf-baseline.json
+  baseline_file: build/perf-baseline.json
 
 security:
   allow_remote_providers: false

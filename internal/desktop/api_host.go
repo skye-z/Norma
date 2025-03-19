@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func (a *App) startLocalAPI() error {
 		DBPath:     layout.Join(root, layout.DBPath),
 		ModelDir:   layout.Join(root, layout.ModelDir),
 		ConfigPath: layout.Join(root, layout.ConfigFileName),
-		DebugDir:   layout.Join(root, layout.DebugDir),
+		DebugDir:   layout.ResolveDebugDir(root),
 		StartedAt:  time.Now(),
 	})
 	if err != nil {

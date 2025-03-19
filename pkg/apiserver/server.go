@@ -41,7 +41,7 @@ func New(opts Options) (*Server, error) {
 	dbPath := firstNonEmpty(opts.DBPath, layout.DBPath)
 	modelDir := firstNonEmpty(opts.ModelDir, layout.ModelDir)
 	configPath := firstNonEmpty(opts.ConfigPath, layout.ConfigFileName)
-	debugDir := firstNonEmpty(opts.DebugDir, layout.DebugDir)
+	debugDir := firstNonEmpty(opts.DebugDir, layout.DebugSourceDir)
 	startedAt := opts.StartedAt
 	if startedAt.IsZero() {
 		startedAt = time.Now()

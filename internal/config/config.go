@@ -158,7 +158,7 @@ func defaultConfig() Config {
 			DegradedTTSVoice:         "zh_CN-huayan-x_low",
 			AlertLLMFirstTokenMs:     1500,
 			AlertTTSFirstChunkMs:     1200,
-			BaselineFile:             "configs/perf-baseline.json",
+			BaselineFile:             "build/perf-baseline.json",
 		},
 		Security: SecurityConfig{
 			AllowRemoteProviders: false,

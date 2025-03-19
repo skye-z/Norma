@@ -12,7 +12,7 @@ foreach ($pkg in @('Norma-windows-amd64','Norma-linux-amd64','Norma-darwin-amd64
     if (-not (Test-Path $root)) { Fail "package missing: $pkg"; continue }
     Ok "package exists: $pkg"
     $binary = if ($pkg -like 'Norma-windows-*') { 'Norma.exe' } else { 'Norma' }
-    foreach ($path in @($binary,'config.example.yaml','config.yaml','resource/model','resource/data','resource/logs','resource/diagnostics','resource/runtime/providers')) {
+    foreach ($path in @($binary,'config.example.yaml','config.yaml','debug','resource/model','resource/data','resource/logs','resource/diagnostics','resource/runtime/providers')) {
         $full = Join-Path $root $path
         if (Test-Path $full) { Ok "$pkg => $path" } else { Fail "$pkg missing: $path" }
     }
