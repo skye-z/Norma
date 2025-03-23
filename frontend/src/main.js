@@ -262,6 +262,12 @@ function renderCompanionPage() {
   mount(`
     <main class="companion-shell">
       <div id="stage-status" class="stage-status" data-kind="info">正在加载 Live2D 模型...</div>
+      <button id="mic-fab" class="mic-fab" type="button" aria-label="语音输入" aria-pressed="false" title="点击开始语音输入">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"></path>
+          <path d="M18 12a1 1 0 1 0-2 0 4 4 0 1 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V21H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.09A6 6 0 0 0 18 12Z"></path>
+        </svg>
+      </button>
       <div id="stage" class="stage wails-drag"></div>
     </main>
   `);
@@ -306,6 +312,7 @@ async function initCompanion() {
 
   const stage = document.getElementById('stage');
   const statusEl = document.getElementById('stage-status');
+  const micFabEl = document.getElementById('mic-fab');
   const state = {
     app: null,
     model: null,
@@ -322,10 +329,70 @@ async function initCompanion() {
     baseX: 0,
     baseY: 0,
     resizeObserver: null,
-    layoutHandler: null
+    layoutHandler: null,
+    speechRecognition: null,
+    speechListening: false
   };
 
-  async function waitForStageReady(minWidth = 120, minHeight = 180, timeoutMs = 5000) {
+  function setMicListening(listening) {
+    state.speechListening = !!listening;
+    if (!micFabEl) return;
+    micFabEl.classList.toggle('is-listening', !!listening);
+    micFabEl.setAttribute('aria-pressed', listening ? 'true' : 'false');
+    micFabEl.title = listening ? '点击停止语音输入' : '点击开始语音输入';
+  }
+
+  function setupSpeechRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const recognition = new SR();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      setMicListening(true);
+      setStatus('语音输入已启动，请开始说话...', 'info');
+      publish('audio.vad.start', { source: 'mic-fab' }).catch(() => undefined);
+    };
+
+    recognition.onresult = (event) => {
+      let interimText = '';
+      let finalText = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = String(event.results[i]?.[0]?.transcript || '').trim();
+        if (!transcript) continue;
+        if (event.results[i].isFinal) {
+          finalText += transcript;
+        } else {
+          interimText += transcript;
+        }
+      }
+      if (interimText) {
+        setStatus(`识别中：${interimText}`, 'info');
+        publish('asr.partial', interimText).catch(() => undefined);
+      }
+      if (finalText) {
+        setStatus(`已识别：${finalText}`, 'ready', true);
+        publish('asr.final', finalText).catch(() => undefined);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      setMicListening(false);
+      setStatus(`语音输入失败：${event?.error || 'unknown'}`, 'error');
+    };
+
+    recognition.onend = () => {
+      const wasListening = state.speechListening;
+      setMicListening(false);
+      if (wasListening) setStatus('语音输入已结束', 'info', true);
+    };
+
+    return recognition;
+  }
+
+  async function waitForStageReady(minWidth = 120, minHeight = 180, timeoutMs = 1800) {
     if (!stage) throw new Error('stage container missing');
     const start = Date.now();
     let stableFrames = 0;
@@ -342,7 +409,7 @@ async function initCompanion() {
 
       if (valid && stable) {
         stableFrames += 1;
-        if (stableFrames >= 3) return { width, height };
+        if (stableFrames >= 2) return true;
       } else if (valid) {
         stableFrames = 1;
       } else {
@@ -354,7 +421,7 @@ async function initCompanion() {
       await sleep(60);
     }
 
-    throw new Error('stage size is not ready');
+    return false;
   }
 
   function setStatus(text, kind = 'info', autoHide = false) {
@@ -378,6 +445,11 @@ async function initCompanion() {
 
   function destroy() {
     closeEvents();
+    if (state.speechRecognition && state.speechListening) {
+      try { state.speechRecognition.stop(); } catch (_) {}
+    }
+    state.speechRecognition = null;
+    setMicListening(false);
     if (state.resizeObserver) {
       try { state.resizeObserver.disconnect(); } catch (_) {}
       state.resizeObserver = null;
@@ -395,6 +467,23 @@ async function initCompanion() {
     state.model = null;
     if (stage) stage.innerHTML = '';
   }
+
+  state.speechRecognition = setupSpeechRecognition();
+  micFabEl?.addEventListener('click', () => {
+    if (!state.speechRecognition) {
+      setStatus('当前环境不支持语音输入，请在支持语音识别的环境中使用。', 'error');
+      return;
+    }
+    try {
+      if (state.speechListening) {
+        state.speechRecognition.stop();
+      } else {
+        state.speechRecognition.start();
+      }
+    } catch (error) {
+      setStatus(`语音输入启动失败：${error}`, 'error');
+    }
+  });
 
   function focusByNormalized(x, y, instant = false) {
     if (!state.model) return;
@@ -482,14 +571,17 @@ async function initCompanion() {
 
   async function loadModel() {
     setStatus('正在检查 API 服务...', 'info');
-    const apiReady = await waitForApiReady(8000);
+    const apiReady = await waitForApiReady(4000);
     if (!apiReady) throw new Error('api server is not ready');
 
     setStatus('API 已就绪，正在等待舞台尺寸稳定...', 'info');
-    await waitForStageReady();
+    const stageReady = await waitForStageReady();
 
     destroy();
     connectEvents();
+    if (!stageReady) {
+      setStatus('API 已就绪，舞台未完全稳定，继续快速加载模型...', 'info');
+    }
     setStatus('API 已就绪，开始加载模型...', 'info');
     await ensureCore();
     if (!state.Live2DModel) {
@@ -562,14 +654,14 @@ async function initCompanion() {
   }
 
   async function reload() {
-    for (let attempt = 1; attempt <= 6; attempt += 1) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
         await loadModel();
         return;
       } catch (err) {
-        console.error(`[live2d] init failed (${attempt}/6)`, err);
-        setStatus(`模型加载失败，正在重试 ${attempt}/6`, 'error');
-        await sleep(Math.min(1200 * attempt, 5000));
+        console.error(`[live2d] init failed (${attempt}/3)`, err);
+        setStatus(`模型加载失败，正在重试 ${attempt}/3`, 'error');
+        await sleep(Math.min(400 * attempt, 1200));
       }
     }
     setStatus('Live2D 模型加载失败，请检查模型文件和 API 服务', 'error');

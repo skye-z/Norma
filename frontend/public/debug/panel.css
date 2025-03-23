@@ -462,6 +462,46 @@ select {
   padding: 12px 14px;
 }
 
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--accent-primary);
+  transform: scale(0);
+  transition: transform 0.14s ease;
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--accent-primary);
+  background: rgba(57, 255, 20, 0.1);
+}
+
+input[type="checkbox"]:checked::after {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(57, 255, 20, 0.2);
+}
+
 input:focus,
 textarea:focus,
 select:focus {
@@ -476,6 +516,14 @@ label {
   color: var(--text-soft);
   font-size: 14px;
   font-family: var(--font-ui);
+}
+
+label:has(> input[type="checkbox"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  cursor: pointer;
 }
 
 button,

@@ -49,6 +49,9 @@ func Run(assets fs.FS) error {
 				app.onSecondInstanceLaunch(secondInstanceData)
 			},
 		},
+		Debug: options.Debug{
+			OpenInspectorOnStartup: true,
+		},
 		OnStartup:     app.startup,
 		OnShutdown:    app.shutdown,
 		OnBeforeClose: app.beforeClose,

@@ -39,7 +39,6 @@ func (a *App) initTrayMenu() {
 
 	menuShow := systray.AddMenuItem("隐藏伴侣", "显示或隐藏桌面伴侣")
 	menuToggle := systray.AddMenuItem("开启完全穿透", "切换完全穿透模式")
-	menuTopmost := systray.AddMenuItem("关闭置顶", "切换窗口置顶")
 	menuNotify := systray.AddMenuItem("通知策略：重要", "切换通知策略")
 	menuStatus := systray.AddMenuItem("状态：普通交互", "当前桌面状态")
 	menuStatus.Disable()
@@ -61,11 +60,6 @@ func (a *App) initTrayMenu() {
 		} else {
 			menuToggle.SetTitle("开启完全穿透")
 		}
-		if a.AlwaysOnTop() {
-			menuTopmost.SetTitle("关闭置顶")
-		} else {
-			menuTopmost.SetTitle("开启置顶")
-		}
 		switch a.NotificationMode() {
 		case "all":
 			menuNotify.SetTitle("通知策略：全部")
@@ -80,45 +74,44 @@ func (a *App) initTrayMenu() {
 		} else if a.MousePassthrough() {
 			interaction = "自动穿透"
 		}
-		topmost := "不置顶"
-		if a.AlwaysOnTop() {
-			topmost = "置顶"
-		}
-		menuStatus.SetTitle("状态：" + interaction + " / " + topmost)
+		menuStatus.SetTitle("状态：" + interaction + " / 置顶")
 	}
 	refreshMenus()
 
 	go func() {
-		defer func() {
-			if recover() != nil {
-				// Avoid exiting tray event loop due to unexpected runtime panic.
-			}
-		}()
 		for {
-			select {
-			case <-menuShow.ClickedCh:
-				a.ToggleCompanionVisibility()
-				refreshMenus()
-			case <-menuToggle.ClickedCh:
-				a.ToggleForcePassthrough()
-				refreshMenus()
-			case <-menuTopmost.ClickedCh:
-				a.ToggleAlwaysOnTop()
-				refreshMenus()
-			case <-menuNotify.ClickedCh:
-				a.CycleNotificationMode()
-				refreshMenus()
-			case <-menuConsole.ClickedCh:
-				go a.openExternalURL(debugURL())
-			case <-menuReload.ClickedCh:
-				go a.reloadCompanion()
-				refreshMenus()
-			case <-menuQuit.ClickedCh:
-				if a.ctx != nil {
-					wruntime.Quit(a.ctx)
-				} else {
-					a.stopTray()
+			shouldQuit := false
+			func() {
+				defer func() {
+					if recover() != nil {
+						// Keep tray loop alive when one menu action panics.
+					}
+				}()
+				select {
+				case <-menuShow.ClickedCh:
+					a.ToggleCompanionVisibility()
+					refreshMenus()
+				case <-menuToggle.ClickedCh:
+					a.ToggleForcePassthrough()
+					refreshMenus()
+				case <-menuNotify.ClickedCh:
+					a.CycleNotificationMode()
+					refreshMenus()
+				case <-menuConsole.ClickedCh:
+					go a.openExternalURL(debugURL())
+				case <-menuReload.ClickedCh:
+					go a.reloadCompanion()
+					refreshMenus()
+				case <-menuQuit.ClickedCh:
+					if a.ctx != nil {
+						wruntime.Quit(a.ctx)
+					} else {
+						a.stopTray()
+					}
+					shouldQuit = true
 				}
+			}()
+			if shouldQuit {
 				return
 			}
 		}
