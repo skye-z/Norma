@@ -41,3 +41,37 @@ func (r *RoutedTTS) Stop(sessionID string) error {
 	}
 	return nil
 }
+
+func (r *RoutedTTS) SampleRate() int {
+	if provider, ok := r.selected().(AudioFormatProvider); ok {
+		return provider.SampleRate()
+	}
+	return 22050
+}
+
+func (r *RoutedTTS) Channels() int {
+	if provider, ok := r.selected().(AudioFormatProvider); ok {
+		return provider.Channels()
+	}
+	return 1
+}
+
+func (r *RoutedTTS) Encoding() string {
+	if provider, ok := r.selected().(AudioFormatProvider); ok {
+		return provider.Encoding()
+	}
+	return "pcm_s16le"
+}
+
+func (r *RoutedTTS) selected() TTS {
+	if r == nil {
+		return nil
+	}
+	if r.UseDegraded != nil && r.UseDegraded() && r.Degraded != nil {
+		return r.Degraded
+	}
+	if r.Primary != nil {
+		return r.Primary
+	}
+	return r.Fallback
+}

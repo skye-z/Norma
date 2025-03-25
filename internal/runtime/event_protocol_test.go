@@ -46,6 +46,8 @@ func TestProtocolAudioPlayEvents(t *testing.T) {
 	})
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "p1", TraceID: "tp1", Payload: "hello"})
+	rt.Bus.Publish(bus.Event{Name: "audio.play.start", SessionID: "p1", TraceID: "tp1", Payload: map[string]any{"source": "test-player"}})
+	rt.Bus.Publish(bus.Event{Name: "audio.play.end", SessionID: "p1", TraceID: "tp1", Payload: map[string]any{"source": "test-player", "reason": "done"}})
 
 	select {
 	case <-playStart:

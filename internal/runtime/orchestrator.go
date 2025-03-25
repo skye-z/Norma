@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/base64"
 	"log"
 	"strings"
 	"sync"
@@ -22,9 +23,17 @@ type Orchestrator struct {
 	tts       audio.TTS
 	ragTopK   int
 	quality   *QualityController
+	playback  playbackSink
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+}
+
+type playbackSink interface {
+	Queue(sessionID, traceID string, chunk []byte) error
+	Complete(sessionID, traceID string)
+	Stop(sessionID, traceID, reason string)
+	Wait(ctx context.Context, sessionID string) error
 }
 
 func NewOrchestrator(
@@ -34,6 +43,18 @@ func NewOrchestrator(
 	tts audio.TTS,
 	ragTopK int,
 	quality *QualityController,
+) *Orchestrator {
+	return NewOrchestratorWithPlayback(rt, retriever, llm, tts, ragTopK, quality, nil)
+}
+
+func NewOrchestratorWithPlayback(
+	rt *Runtime,
+	retriever index.Retriever,
+	llm llm.Streamer,
+	tts audio.TTS,
+	ragTopK int,
+	quality *QualityController,
+	playback playbackSink,
 ) *Orchestrator {
 	if ragTopK <= 0 {
 		ragTopK = 4
@@ -45,6 +66,7 @@ func NewOrchestrator(
 		tts:       tts,
 		ragTopK:   ragTopK,
 		quality:   quality,
+		playback:  playback,
 		cancels:   make(map[string]context.CancelFunc),
 	}
 	o.bind()
@@ -63,7 +85,10 @@ func (o *Orchestrator) bind() {
 			log.Printf("[orchestrator] stop tts failed: %v", err)
 			o.publishError(evt.SessionID, evt.TraceID, "tts_stop_failed", err)
 		}
-		o.rt.Bus.Publish(bus.Event{Name: "audio.play.end", SessionID: evt.SessionID, TraceID: evt.TraceID, Payload: "interrupt"})
+		if o.playback != nil {
+			o.playback.Stop(evt.SessionID, evt.TraceID, "interrupt")
+		}
+		o.rt.Bus.Publish(bus.Event{Name: "audio.play.interrupt", SessionID: evt.SessionID, TraceID: evt.TraceID, Payload: map[string]any{"source": "orchestrator", "reason": "interrupt"}})
 	})
 }
 
@@ -123,12 +148,6 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.plan", SessionID: sessionID, TraceID: traceID, Payload: plan})
 	o.rt.Bus.Publish(bus.Event{Name: "live2d.emotion", SessionID: sessionID, TraceID: traceID, Payload: emotion})
 
-	totalChars := 0
-	for _, segment := range plan.Segments {
-		totalChars += len(segment)
-	}
-	o.rt.Bus.Publish(bus.Event{Name: "audio.play.start", SessionID: sessionID, TraceID: traceID, Payload: totalChars})
-
 	for index, segment := range plan.Segments {
 		if err := ctx.Err(); err != nil {
 			return
@@ -144,9 +163,26 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		}})
 		o.emitVisemes(ctx, sessionID, traceID, segment)
 		if err := o.tts.Stream(ctx, segment, func(chunk []byte) {
+			if o.playback != nil {
+				if err := o.playback.Queue(sessionID, traceID, chunk); err != nil {
+					log.Printf("[orchestrator] playback queue error: %v", err)
+				}
+			}
+			sampleRate := 22050
+			channels := 1
+			encoding := "pcm_s16le"
+			if provider, ok := o.tts.(audio.AudioFormatProvider); ok {
+				sampleRate = provider.SampleRate()
+				channels = provider.Channels()
+				encoding = provider.Encoding()
+			}
 			o.rt.Bus.Publish(bus.Event{Name: "tts.chunk.ready", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
 				"segment_index": index,
 				"bytes":         len(chunk),
+				"audio_base64":  encodeBase64(chunk),
+				"sample_rate":   sampleRate,
+				"channels":      channels,
+				"encoding":      encoding,
 			}})
 		}); err != nil {
 			log.Printf("[orchestrator] tts stream error: %v", err)
@@ -154,7 +190,13 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 			break
 		}
 	}
-	o.rt.Bus.Publish(bus.Event{Name: "audio.play.end", SessionID: sessionID, TraceID: traceID, Payload: "done"})
+	if o.playback != nil {
+		o.playback.Complete(sessionID, traceID)
+		if err := o.playback.Wait(ctx, sessionID); err != nil && err != context.Canceled {
+			log.Printf("[orchestrator] playback wait error: %v", err)
+		}
+	}
+	o.rt.Bus.Publish(bus.Event{Name: "tts.stream.done", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "orchestrator", "reason": "done"}})
 	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
 }
 
@@ -212,4 +254,11 @@ func (o *Orchestrator) cancelSession(sessionID string) {
 		cancel()
 		delete(o.cancels, sessionID)
 	}
+}
+
+func encodeBase64(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(data)
 }

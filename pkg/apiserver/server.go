@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"norma/internal/api"
+	"norma/internal/bootstrap"
+	"norma/internal/config"
 	"norma/internal/db"
 	"norma/internal/memory"
-	"norma/internal/metrics"
-	"norma/internal/runtime"
 	"norma/pkg/layout"
 	"xorm.io/xorm"
 )
@@ -55,22 +55,26 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init db: %w", err)
 	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	stack, err := bootstrap.NewStack(cfg, engine)
+	if err != nil {
+		return nil, fmt.Errorf("init runtime stack: %w", err)
+	}
 
 	svc := memory.NewService(engine)
 	mh := api.NewMemoryHandler(svc)
-	rt := runtime.New()
-	tracker := metrics.NewTracker()
-	quality := runtime.NewQualityController(true, 1200, 4)
-	runtime.AttachLatencyObserver(rt, tracker, quality)
-	rh := api.NewRuntimeHandler(rt.Bus, rt.Inspector)
-	sh := api.NewSettingsHandler(configPath, rt.Bus)
-	me := api.NewMetricsHandler(tracker)
+	rh := api.NewRuntimeHandler(stack.Runtime.Bus, stack.Runtime.Inspector)
+	sh := api.NewSettingsHandler(configPath, stack.Runtime.Bus)
+	me := api.NewMetricsHandler(stack.Tracker)
 	ph := api.NewPrivacyHandler(configPath)
 	th := api.NewToolPolicyHandler(configPath)
 	pr := api.NewProviderHandler(configPath)
 	se := api.NewSetupHandler(configPath, modelDir)
-	dh := api.NewDiagnosticsHandler(configPath, modelDir, rt.Bus, rt.Inspector, svc)
-	ch := api.NewConversationHandler(configPath, rt.Bus, rt.Inspector)
+	dh := api.NewDiagnosticsHandler(configPath, modelDir, stack.Runtime.Bus, stack.Runtime.Inspector, svc)
+	ch := api.NewConversationHandler(configPath, stack.Runtime.Bus, stack.Runtime.Inspector, stack.ProviderManager)
 	mh2 := api.NewModelHandler(configPath, modelDir)
 
 	mux := http.NewServeMux()

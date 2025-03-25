@@ -20,6 +20,12 @@ type PiperTTS struct {
 	cancel context.CancelFunc
 }
 
+func (p *PiperTTS) SampleRate() int { return 22050 }
+
+func (p *PiperTTS) Channels() int { return 1 }
+
+func (p *PiperTTS) Encoding() string { return "pcm_s16le" }
+
 func NewPiperTTS(binaryPath, modelPath, speaker string) *PiperTTS {
 	return &PiperTTS{
 		BinaryPath: strings.TrimSpace(binaryPath),

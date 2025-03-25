@@ -43,6 +43,12 @@ type TTS interface {
 	Stop(sessionID string) error
 }
 
+type AudioFormatProvider interface {
+	SampleRate() int
+	Channels() int
+	Encoding() string
+}
+
 // Pipeline coordinates voice-related components.
 type Pipeline struct {
 	VAD           VAD

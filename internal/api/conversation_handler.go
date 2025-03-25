@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"norma/internal/audio"
+	"norma/internal/bootstrap"
 	"norma/internal/config"
+	"norma/internal/providers"
 	"norma/internal/runtime"
 	"norma/internal/runtime/bus"
 )
@@ -20,6 +22,8 @@ type ConversationHandler struct {
 	bus        *bus.Bus
 	inspector  *runtime.Inspector
 	configPath string
+	providers  *providers.Manager
+	streams    map[string]*audio.PushFrameSource
 
 	mu     sync.RWMutex
 	active bool
@@ -43,8 +47,8 @@ type conversationState struct {
 
 var conversationSeq uint64
 
-func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector) *ConversationHandler {
-	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector}
+func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
+	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource)}
 }
 
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
@@ -53,6 +57,7 @@ func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/interrupt", h.handleMicInterrupt)
 	mux.HandleFunc("/conversation/mic/state", h.handleMicState)
 	mux.HandleFunc("/conversation/mic/test", h.handleMicTest)
+	mux.HandleFunc("/conversation/mic/frame", h.handleMicFrame)
 }
 
 func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Request) {
@@ -71,20 +76,39 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	if strings.TrimSpace(tid) == "" {
 		tid = h.newID("trace")
 	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "load config failed")
+		return
+	}
 
 	h.mu.Lock()
 	if h.cancel != nil {
 		h.cancel()
 		h.cancel = nil
 	}
+	if prev := h.streams[sid]; prev != nil {
+		prev.Close()
+		delete(h.streams, sid)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	var source audio.FrameSource
+	platformSource, sourceErr := audio.NewPlatformCaptureSource(cfg.Audio.MicSampleRate, cfg.Audio.MicChannelCount)
+	if sourceErr != nil {
+		h.bus.Publish(bus.Event{Name: "error", SessionID: sid, TraceID: tid, Payload: map[string]string{"code": "mic_capture_unavailable", "message": sourceErr.Error()}})
+		stream := audio.NewPushFrameSource(64)
+		h.streams[sid] = stream
+		source = stream
+	} else {
+		source = platformSource
+	}
 	h.active = true
 	h.sid = sid
 	h.tid = tid
 	h.cancel = cancel
 	h.mu.Unlock()
 
-	go h.runMicPipeline(ctx, sid, tid)
+	go h.runMicPipeline(ctx, sid, tid, source)
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
@@ -104,6 +128,10 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 	if h.cancel != nil {
 		h.cancel()
 		h.cancel = nil
+	}
+	if stream := h.streams[sid]; stream != nil {
+		stream.Close()
+		delete(h.streams, sid)
 	}
 	h.active = false
 	h.mu.Unlock()
@@ -131,6 +159,10 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	if h.cancel != nil {
 		h.cancel()
 		h.cancel = nil
+	}
+	if stream := h.streams[sid]; stream != nil {
+		stream.Close()
+		delete(h.streams, sid)
 	}
 	h.active = false
 	h.mu.Unlock()
@@ -179,6 +211,44 @@ func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+type micFrameReq struct {
+	SessionID string    `json:"session_id"`
+	TraceID   string    `json:"trace_id"`
+	Frames    []float32 `json:"frames"`
+	EOF       bool      `json:"eof"`
+}
+
+func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req micFrameReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	sid, tid := h.resolveIDs(req.SessionID, req.TraceID)
+	h.mu.RLock()
+	stream := h.streams[sid]
+	h.mu.RUnlock()
+	if stream == nil {
+		writeErr(w, http.StatusNotFound, "conversation stream not found")
+		return
+	}
+	accepted := false
+	if len(req.Frames) > 0 {
+		accepted = stream.Push(req.Frames)
+	}
+	if req.EOF {
+		stream.Close()
+		h.mu.Lock()
+		delete(h.streams, sid)
+		h.mu.Unlock()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": accepted, "session_id": sid, "trace_id": tid})
+}
+
 func (h *ConversationHandler) snapshot() conversationState {
 	h.mu.RLock()
 	state := conversationState{Active: h.active, SessionID: h.sid, TraceID: h.tid}
@@ -214,28 +284,24 @@ func (h *ConversationHandler) newID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixMilli(), seq)
 }
 
-func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, traceID string) {
+func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, traceID string, source audio.FrameSource) {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "config_load_failed", "message": err.Error()}})
 		return
 	}
 
-	pipe := audio.Pipeline{
-		VAD:           audio.NewEnergyVAD(0.02),
-		ASR:           h.buildASR(cfg),
-		WakeMode:      cfg.Audio.WakeMode,
-		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
+	providerMgr := h.providers
+	if providerMgr == nil {
+		providerMgr = providers.NewManager(cfg.Providers.Root)
+		_ = providerMgr.EnsureLayout()
 	}
-	if cfg.Audio.AECEnabled || cfg.Audio.NSEnabled {
-		scene := strings.TrimSpace(cfg.Audio.Scene)
-		if scene == "" {
-			scene = "speaker"
-		}
-		pipe.Preprocessors = []audio.Preprocessor{audio.NewMockAECNS(scene)}
+	pipe := bootstrap.BuildVoicePipeline(cfg, providerMgr)
+
+	if closable, ok := any(source).(interface{ Close() error }); ok {
+		defer func() { _ = closable.Close() }()
 	}
 
-	source := audio.NewMockFrameSource(audio.DefaultDemoFrames(), 40*time.Millisecond)
 	err = pipe.Run(
 		ctx,
 		source,
@@ -257,20 +323,11 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	if h.sid == sessionID {
 		h.active = false
 		h.cancel = nil
+		delete(h.streams, sessionID)
 	}
 	h.mu.Unlock()
 
 	if err != nil && err != context.Canceled {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "mic_pipeline_failed", "message": err.Error()}})
 	}
-}
-
-func (h *ConversationHandler) buildASR(cfg *config.Config) audio.ASR {
-	provider := strings.ToLower(strings.TrimSpace(cfg.ASR.Provider))
-	if provider == "http" && strings.TrimSpace(cfg.ASR.Endpoint) != "" {
-		asr := audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
-		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
-		return asr
-	}
-	return audio.UnavailableASR{Reason: "conversation asr unavailable"}
 }

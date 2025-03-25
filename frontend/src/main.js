@@ -415,7 +415,21 @@ async function initCompanion() {
     speechRecognition: null,
     useSpeechFallback: false,
     speechListening: false,
-    idleTimer: null
+    idleTimer: null,
+    mediaStream: null,
+    mediaContext: null,
+    mediaProcessor: null,
+    playbackContext: null,
+    playbackQueue: Promise.resolve(),
+    audioFormat: { sampleRate: 22050, channels: 1, encoding: 'pcm_s16le' },
+    playbackState: {
+      started: false,
+      pending: 0,
+      sessionID: '',
+      traceID: '',
+      interrupted: false,
+      nextStartAt: 0
+    }
   };
 
   function idleAfterMotion(ms = 1200) {
@@ -493,6 +507,153 @@ async function initCompanion() {
     return recognition;
   }
 
+  function downsampleBuffer(input, inputRate, targetRate) {
+    if (!input || !input.length) return new Float32Array(0);
+    if (!inputRate || inputRate === targetRate) return input;
+    const ratio = inputRate / targetRate;
+    const length = Math.max(1, Math.round(input.length / ratio));
+    const output = new Float32Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const idx = Math.min(input.length - 1, Math.round(i * ratio));
+      output[i] = input[idx];
+    }
+    return output;
+  }
+
+  function pcm16ToFloat32(buffer) {
+    const view = new DataView(buffer);
+    const out = new Float32Array(buffer.byteLength / 2);
+    for (let i = 0; i < out.length; i += 1) {
+      out[i] = view.getInt16(i * 2, true) / 32768;
+    }
+    return out;
+  }
+
+  async function sendMicFrame(frame, eof = false) {
+    if (!state.sessionID) return;
+    await postJSON('/conversation/mic/frame', {
+      session_id: state.sessionID,
+      trace_id: state.traceID,
+      frames: Array.from(frame || []),
+      eof
+    }).catch(() => undefined);
+  }
+
+  async function stopMediaCapture(eof = true) {
+    if (state.mediaProcessor) {
+      try { state.mediaProcessor.disconnect(); } catch (_) {}
+      state.mediaProcessor.onaudioprocess = null;
+      state.mediaProcessor = null;
+    }
+    if (state.mediaStream) {
+      state.mediaStream.getTracks().forEach((track) => {
+        try { track.stop(); } catch (_) {}
+      });
+      state.mediaStream = null;
+    }
+    if (state.mediaContext) {
+      try { await state.mediaContext.close(); } catch (_) {}
+      state.mediaContext = null;
+    }
+    if (eof) await sendMicFrame([], true);
+  }
+
+  async function startMediaCapture() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) throw new Error('当前环境不支持 Web Audio');
+    const audioCtx = new AudioCtx();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+    processor.onaudioprocess = (event) => {
+      if (!state.speechListening) return;
+      const input = event.inputBuffer.getChannelData(0);
+      const downsampled = downsampleBuffer(input, audioCtx.sampleRate, 16000);
+      sendMicFrame(downsampled, false).catch(() => undefined);
+    };
+    source.connect(processor);
+    processor.connect(audioCtx.destination);
+    state.mediaStream = stream;
+    state.mediaContext = audioCtx;
+    state.mediaProcessor = processor;
+  }
+
+  async function playPCMChunk(base64Chunk) {
+    if (window.__NORMA_NATIVE_AUDIO__) return null;
+    if (!base64Chunk) return;
+    if (!state.playbackContext) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) throw new Error('当前环境不支持音频播放');
+      state.playbackContext = new AudioCtx({ sampleRate: state.audioFormat.sampleRate || 22050 });
+    }
+    const binary = atob(base64Chunk);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const samples = pcm16ToFloat32(bytes.buffer);
+    const buffer = state.playbackContext.createBuffer(state.audioFormat.channels || 1, samples.length, state.audioFormat.sampleRate || 22050);
+    buffer.copyToChannel(samples, 0);
+    const node = state.playbackContext.createBufferSource();
+    node.buffer = buffer;
+    node.connect(state.playbackContext.destination);
+    const playback = state.playbackState;
+    const now = state.playbackContext.currentTime;
+    const startAt = Math.max(playback.nextStartAt || now, now + 0.01);
+    playback.nextStartAt = startAt + buffer.duration;
+    await new Promise((resolve) => {
+      node.onended = resolve;
+      node.start(startAt);
+    });
+    return samples;
+  }
+
+  function resetPlaybackState() {
+    state.playbackState.started = false;
+    state.playbackState.pending = 0;
+    state.playbackState.sessionID = '';
+    state.playbackState.traceID = '';
+    state.playbackState.interrupted = false;
+    state.playbackState.nextStartAt = 0;
+  }
+
+  function markPlaybackStart(sessionID, traceID) {
+    if (state.playbackState.started) return;
+    state.playbackState.started = true;
+    state.playbackState.sessionID = sessionID;
+    state.playbackState.traceID = traceID;
+    publish('audio.play.start', {
+      source: 'web-audio',
+      sample_rate: state.audioFormat.sampleRate,
+      channels: state.audioFormat.channels,
+      encoding: state.audioFormat.encoding
+    }, { sessionID, traceID }).catch(() => undefined);
+  }
+
+  function finishPlaybackIfIdle(reason = 'done') {
+    const playback = state.playbackState;
+    if (!playback.started || playback.pending > 0) return;
+    const sessionID = playback.sessionID || state.sessionID || '';
+    const traceID = playback.traceID || state.traceID || sessionID || '';
+    publish('audio.play.end', { source: 'web-audio', reason }, { sessionID, traceID }).catch(() => undefined);
+    resetPlaybackState();
+  }
+
+  function computeChunkLevel(samples) {
+    if (!samples || !samples.length) return 0;
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      const v = samples[i];
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / samples.length);
+    return Math.max(0, Math.min(1.15, rms * 6.5));
+  }
+
+  function driveMouthFromSamples(samples, sessionID, traceID) {
+    const level = computeChunkLevel(samples);
+    state.mouthTarget = level;
+    publish('live2d.mouth', { level }, { sessionID, traceID }).catch(() => undefined);
+  }
+
   async function waitForStageReady(minWidth = 120, minHeight = 180, timeoutMs = 1800) {
     if (!stage) throw new Error('stage container missing');
     const start = Date.now();
@@ -553,6 +714,8 @@ async function initCompanion() {
     if (state.speechRecognition && state.speechListening) {
       try { state.speechRecognition.stop(); } catch (_) {}
     }
+    stopMediaCapture(false).catch(() => undefined);
+    resetPlaybackState();
     state.speechRecognition = null;
     setMicListening(false);
     if (state.resizeObserver) {
@@ -586,16 +749,29 @@ async function initCompanion() {
           trace_id: state.traceID,
           reason: 'mic_toggle_stop'
         }).catch(() => undefined);
+        if (state.playbackState.started) {
+          state.playbackState.pending = 0;
+          state.playbackState.interrupted = true;
+          finishPlaybackIfIdle('interrupt');
+        }
+        stopMediaCapture(true).catch(() => undefined);
         if (state.useSpeechFallback) {
           state.speechRecognition.stop();
         }
       } else {
         postJSON('/conversation/mic/start').then((started) => {
-          state.useSpeechFallback = false;
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
           setMicListening(true);
-          setStatus('语音输入已启动（后端主链路）', 'info');
+          startMediaCapture().then(() => {
+            state.useSpeechFallback = false;
+            setStatus('语音输入已启动（真实麦克风）', 'info');
+          }).catch(async () => {
+            if (!state.speechRecognition) throw new Error('no fallback recognizer');
+            state.useSpeechFallback = true;
+            setStatus('语音输入已启动（浏览器识别 fallback）', 'info');
+            state.speechRecognition.start();
+          });
         }).catch(async () => {
           if (!state.speechRecognition) throw new Error('no fallback recognizer');
           state.useSpeechFallback = true;
@@ -708,6 +884,61 @@ async function initCompanion() {
     state.eventSources.push(createRuntimeEventSource('live2d.reload', async (payload) => {
       const preferredURL = normalizeModelURL(payload?.model_url || payload?.url || '');
       await reload(preferredURL);
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('tts.chunk.ready', (payload, evt) => {
+      if (!payload || typeof payload !== 'object') return;
+      if (Number.isFinite(Number(payload.sample_rate))) state.audioFormat.sampleRate = Number(payload.sample_rate);
+      if (Number.isFinite(Number(payload.channels))) state.audioFormat.channels = Number(payload.channels);
+      if (typeof payload.encoding === 'string' && payload.encoding) state.audioFormat.encoding = payload.encoding;
+      if (typeof payload.audio_base64 !== 'string' || !payload.audio_base64) return;
+      const evtSessionID = String(evt?.session_id || state.sessionID || '');
+      const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
+      if (window.__NORMA_NATIVE_AUDIO__) return;
+      markPlaybackStart(evtSessionID, evtTraceID);
+      state.playbackState.pending += 1;
+      state.playbackQueue = state.playbackQueue
+        .then(() => playPCMChunk(payload.audio_base64))
+        .then((samples) => {
+          driveMouthFromSamples(samples, evtSessionID, evtTraceID);
+          return publish('audio.play.progress', {
+            source: 'web-audio',
+            bytes: Number(payload.bytes) || 0,
+            level: computeChunkLevel(samples)
+          }, { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+        })
+        .finally(() => {
+          state.playbackState.pending = Math.max(0, state.playbackState.pending - 1);
+          finishPlaybackIfIdle(state.playbackState.interrupted ? 'interrupt' : 'done');
+        })
+        .catch((error) => console.error(error));
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('audio.play.start', (_payload, evt) => {
+      const evtSessionID = String(evt?.session_id || state.sessionID || '');
+      const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
+      publish('live2d.mouth', 'speaking', { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('audio.play.end', (_payload, evt) => {
+      const evtSessionID = String(evt?.session_id || state.sessionID || '');
+      const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
+      state.mouthTarget = 0;
+      publish('live2d.mouth', { level: 0 }, { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('audio.play.interrupt', (_payload, evt) => {
+      state.playbackState.pending = 0;
+      state.playbackState.interrupted = true;
+      const evtSessionID = String(evt?.session_id || state.sessionID || '');
+      const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
+      state.mouthTarget = 0;
+      publish('live2d.mouth', { level: 0 }, { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+      finishPlaybackIfIdle('interrupt');
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('tts.stream.done', () => {
+      finishPlaybackIfIdle(state.playbackState.interrupted ? 'interrupt' : 'done');
     }));
   }
 

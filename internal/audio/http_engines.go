@@ -96,6 +96,12 @@ type XTTSStreamer struct {
 	stopped bool
 }
 
+func (t *XTTSStreamer) SampleRate() int { return 24000 }
+
+func (t *XTTSStreamer) Channels() int { return 1 }
+
+func (t *XTTSStreamer) Encoding() string { return "pcm_s16le" }
+
 type ttsRequest struct {
 	Text  string `json:"text"`
 	Voice string `json:"voice"`
