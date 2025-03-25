@@ -100,6 +100,38 @@ function Install-ExtraFiles($ExtraFiles, [string]$Tmp, [string]$Target) {
     return ($hashes -join ',')
 }
 
+function Flatten-ProviderPayload([string]$Kind, [string]$Target) {
+    if ($Kind -ne 'wake') {
+        return
+    }
+    $required = @('encoder', 'decoder', 'joiner', 'tokens.txt')
+    foreach ($entry in Get-ChildItem -Path $Target -Directory -Force) {
+        $files = Get-ChildItem -Path $entry.FullName -Recurse -File -Force
+        $hasWakeAssets = $false
+        foreach ($file in $files) {
+            $name = $file.Name.ToLowerInvariant()
+            if ($name -like 'encoder-epoch-*.onnx' -or $name -eq 'encoder.int8.onnx' -or $name -eq 'encoder.onnx' -or
+                $name -like 'decoder-epoch-*.onnx' -or $name -eq 'decoder.int8.onnx' -or $name -eq 'decoder.onnx' -or
+                $name -like 'joiner-epoch-*.onnx' -or $name -eq 'joiner.int8.onnx' -or $name -eq 'joiner.onnx' -or
+                $name -eq 'tokens.txt') {
+                $hasWakeAssets = $true
+                break
+            }
+        }
+        if (-not $hasWakeAssets) {
+            continue
+        }
+        foreach ($file in $files) {
+            $dest = Join-Path $Target $file.Name
+            if (-not (Test-Path $dest)) {
+                Copy-Item -Force $file.FullName $dest
+            }
+        }
+        Remove-Item -Recurse -Force $entry.FullName
+    }
+    Get-ChildItem -Path $Target -File -Force | Where-Object { $_.Extension -in @('.zip', '.bz2', '.tar') } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
 Push-Location .
 try {
     $ProvidersRoot = Join-Path (Get-Location) $ProvidersRoot
@@ -171,7 +203,7 @@ try {
             }
         }
         'tar.bz2' {
-            tar -xf $archive -C $tmp
+            & tar -xf $archive -C $tmp
             $sourceRoot = $tmp
             $children = Get-ChildItem $tmp -Directory
             if ($children.Count -ge 1) {
@@ -197,6 +229,8 @@ try {
     if ($item.managed_files) {
         Write-ManagedFiles -Files $item.managed_files -Target $target
     }
+
+    Flatten-ProviderPayload -Kind $item.kind -Target $target
 
     $manifest.providers = @($manifest.providers | Where-Object { $_.id -ne $item.id })
     $manifest.providers += [pscustomobject]@{

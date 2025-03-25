@@ -268,6 +268,8 @@ function moduleIndicatorColor(moduleKey) {
       return 'green';
     }
     case 'input': {
+      if (currentProviderStatus?.health?.wake?.status === 'ready') return 'green';
+      if (currentProviderStatus?.health?.wake?.status === 'partial') return 'yellow';
       if (!currentSettings.audio?.wake_provider) return 'gray';
       if (!currentSettings.audio?.enable_wake_word) return 'red';
       const st = providerHealthStatus(stack.wake || 'sherpa-onnx');
@@ -277,6 +279,8 @@ function moduleIndicatorColor(moduleKey) {
       return 'yellow';
     }
     case 'asr': {
+      if (currentProviderStatus?.health?.asr?.status === 'ready') return 'green';
+      if (currentProviderStatus?.health?.asr?.status === 'partial') return 'yellow';
       if (!currentSettings.asr?.provider) return 'gray';
       if (currentSettings.asr.provider === 'mock') return 'red';
       const st = providerHealthStatus(stack.asr || 'whispercpp');
@@ -480,11 +484,20 @@ function renderProviderManageList() {
   `;
 }
 
-function renderDownloadCard(module, title, desc, manualPath, state) {
+function renderDownloadCard(module, title, desc, manualPath, state, detected = null) {
   const job = state?.job || null;
   const pct = job && Number.isFinite(job.percent) ? Math.max(0, Math.min(100, Math.round(job.percent))) : 0;
-  const statusText = job ? `${job.status}${job.message ? ` / ${job.message}` : ''}` : '未开始';
+  const detectedReady = detected && detected.status === 'ready';
+  const detectedPartial = detected && detected.status === 'partial';
+  const statusText = detectedReady
+    ? '已就绪'
+    : detectedPartial
+      ? '部分就绪'
+      : job ? `${job.status}${job.message ? ` / ${job.message}` : ''}` : '未开始';
   const err = job?.error ? `<div class="field-hint-error">${escapeHtml(job.error)}</div>` : '';
+  const detectedPaths = detected?.paths && typeof detected.paths === 'object'
+    ? `<div class="event-detail">已识别文件:<br>${Object.entries(detected.paths).map(([key, value]) => `${escapeHtml(key)} = <code>${escapeHtml(value)}</code>`).join('<br>')}</div>`
+    : '';
   return `
     <div class="download-card">
       <div class="download-head">
@@ -493,6 +506,7 @@ function renderDownloadCard(module, title, desc, manualPath, state) {
       </div>
       <div class="event-detail">${escapeHtml(desc)}</div>
       <div class="event-detail">手动放置目录: <code>${escapeHtml(manualPath)}</code></div>
+      ${detectedPaths}
       <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;"></div></div>
       <div class="event-detail">进度: ${pct}%</div>
       <div class="provider-actions">
@@ -508,9 +522,11 @@ function renderDownloadCard(module, title, desc, manualPath, state) {
 function renderEmbeddedDownloadCards() {
   if (selectedModule !== 'input' && selectedModule !== 'asr') return '';
   if (selectedModule === 'input') {
-    return renderDownloadCard('wake_model', '唤醒模型下载', '下载 Sherpa 唤醒模型与关键词文件（内嵌模式仅需模型资产）', 'resource/runtime/providers/wake/current', modelDownloadState.wake_model);
+    if (currentProviderStatus?.health?.wake?.status === 'ready') return '';
+    return renderDownloadCard('wake_model', '唤醒模型下载', '下载 Sherpa 唤醒模型与关键词文件（内嵌模式仅需模型资产）', 'resource/runtime/providers/wake/current', modelDownloadState.wake_model, currentProviderStatus?.health?.wake || null);
   }
-  return renderDownloadCard('asr_model', '识别模型下载', '下载 Whisper 基础模型（内嵌模式仅需模型文件）', 'resource/runtime/providers/asr/current', modelDownloadState.asr_model);
+  if (currentProviderStatus?.health?.asr?.status === 'ready') return '';
+  return renderDownloadCard('asr_model', '识别模型下载', '下载 Whisper 基础模型（内嵌模式仅需模型文件）', 'resource/runtime/providers/asr/current', modelDownloadState.asr_model, currentProviderStatus?.health?.asr || null);
 }
 
 function renderDetailPanel() {

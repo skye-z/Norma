@@ -3,10 +3,11 @@ package providers
 import "strings"
 
 type Health struct {
-	Status   string   `json:"status"`
-	Required []string `json:"required"`
-	Found    []string `json:"found"`
-	Missing  []string `json:"missing"`
+	Status   string            `json:"status"`
+	Required []string          `json:"required"`
+	Found    []string          `json:"found"`
+	Missing  []string          `json:"missing"`
+	Paths    map[string]string `json:"paths,omitempty"`
 }
 
 func BuildHealth(mgr *Manager) map[string]Health {
@@ -51,5 +52,11 @@ func classifyHealth(required []string, foundMap map[string]string) Health {
 	} else if len(found) > 0 {
 		status = "partial"
 	}
-	return Health{Status: status, Required: required, Found: found, Missing: missing}
+	paths := make(map[string]string, len(foundMap))
+	for key, value := range foundMap {
+		if strings.TrimSpace(value) != "" {
+			paths[key] = value
+		}
+	}
+	return Health{Status: status, Required: required, Found: found, Missing: missing, Paths: paths}
 }

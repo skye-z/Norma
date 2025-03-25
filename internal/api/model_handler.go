@@ -111,8 +111,45 @@ func (h *ModelHandler) handleResolve(w http.ResponseWriter, r *http.Request) {
 		"model_name": modelName,
 		"model_path": filepath.ToSlash(resolvedPath),
 		"model_url":  urlPath,
+		"mapping":    loadModelMapping(filepath.Dir(resolvedPath)),
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func loadModelMapping(modelDir string) map[string]any {
+	readJSON := func(path string) map[string]any {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		var out map[string]any
+		if err := json.Unmarshal(data, &out); err != nil {
+			return nil
+		}
+		return out
+	}
+	combined := readJSON(filepath.Join(modelDir, "live2d.map.json"))
+	motions := map[string]any{}
+	expressions := map[string]any{}
+	if combined != nil {
+		if part, ok := combined["motions"].(map[string]any); ok {
+			motions = part
+		}
+		if part, ok := combined["expressions"].(map[string]any); ok {
+			expressions = part
+		}
+	}
+	if len(motions) == 0 {
+		if part := readJSON(filepath.Join(modelDir, "motion_map.json")); part != nil {
+			motions = part
+		}
+	}
+	if len(expressions) == 0 {
+		if part := readJSON(filepath.Join(modelDir, "expression_map.json")); part != nil {
+			expressions = part
+		}
+	}
+	return map[string]any{"motions": motions, "expressions": expressions}
 }
 
 func resolveLive2DModelPath(rootDir, configuredModelName string) (string, string, error) {
@@ -140,11 +177,17 @@ func resolveLive2DModelPath(rootDir, configuredModelName string) (string, string
 			return "", "", readErr
 		}
 		for _, entry := range entries {
-			if entry.IsDir() {
-				modelName = entry.Name()
-				modelDir = filepath.Join(absRoot, modelName)
-				break
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
 			}
+			candidateName := entry.Name()
+			candidateDir := filepath.Join(absRoot, candidateName)
+			if _, findErr := findFirstModelFile(candidateDir); findErr != nil {
+				continue
+			}
+			modelName = candidateName
+			modelDir = candidateDir
+			break
 		}
 		if modelDir == "" {
 			return "", "", errs.Invalid("no model folder found under resource/model")
@@ -256,11 +299,15 @@ func listModelCandidates(rootDir string) ([]map[string]any, error) {
 	}
 	out := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		name := entry.Name()
 		modelDir := filepath.Join(absRoot, name)
+		modelPath, findErr := findFirstModelFile(modelDir)
+		if findErr != nil {
+			continue
+		}
 		ok, detail := isModelCompatible(modelDir)
 		if !ok {
 			out = append(out, map[string]any{
@@ -270,10 +317,6 @@ func listModelCandidates(rootDir string) ([]map[string]any, error) {
 				"compatible": false,
 				"reason":     detail,
 			})
-			continue
-		}
-		modelPath, findErr := findFirstModelFile(modelDir)
-		if findErr != nil {
 			continue
 		}
 		rel, relErr := filepath.Rel(absRoot, modelPath)

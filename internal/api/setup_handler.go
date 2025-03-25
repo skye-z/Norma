@@ -100,9 +100,23 @@ func summarizeProviderReady(health map[string]providers.Health) string {
 func providerDetail(health map[string]providers.Health) string {
 	parts := make([]string, 0, 3)
 	for _, kind := range []string{"wake", "asr", "tts"} {
-		parts = append(parts, kind+": "+health[kind].Status)
+		part := kind + ": " + health[kind].Status
+		if kind == "wake" && len(health[kind].Paths) > 0 {
+			part += " (" + strings.Join(compactHealthPaths(health[kind].Paths), ", ") + ")"
+		}
+		parts = append(parts, part)
 	}
 	return strings.Join(parts, " / ")
+}
+
+func compactHealthPaths(paths map[string]string) []string {
+	out := make([]string, 0, len(paths))
+	for _, key := range []string{"encoder", "decoder", "joiner", "tokens", "keywords"} {
+		if value := strings.TrimSpace(paths[key]); value != "" {
+			out = append(out, key+"="+filepath.Base(value))
+		}
+	}
+	return out
 }
 
 func modelDetail(model live2d.ValidationResult) string {
