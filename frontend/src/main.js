@@ -41,11 +41,13 @@ async function postJSON(path, body) {
   return resp.json();
 }
 
-async function publish(name, payload) {
+async function publish(name, payload, meta = {}) {
+  const sessionID = meta.sessionID || `wails-${mode}`;
+  const traceID = meta.traceID || `wails-${mode}`;
   return postJSON('/runtime/publish', {
     name,
-    session_id: `wails-${mode}`,
-    trace_id: `wails-${mode}`,
+    session_id: sessionID,
+    trace_id: traceID,
     payload
   });
 }
@@ -328,9 +330,12 @@ async function initCompanion() {
     eventSources: [],
     baseX: 0,
     baseY: 0,
+    sessionID: '',
+    traceID: '',
     resizeObserver: null,
     layoutHandler: null,
     speechRecognition: null,
+    useSpeechFallback: false,
     speechListening: false
   };
 
@@ -353,7 +358,6 @@ async function initCompanion() {
     recognition.onstart = () => {
       setMicListening(true);
       setStatus('语音输入已启动，请开始说话...', 'info');
-      publish('audio.vad.start', { source: 'mic-fab' }).catch(() => undefined);
     };
 
     recognition.onresult = (event) => {
@@ -370,11 +374,15 @@ async function initCompanion() {
       }
       if (interimText) {
         setStatus(`识别中：${interimText}`, 'info');
-        publish('asr.partial', interimText).catch(() => undefined);
+        if (state.useSpeechFallback) {
+          publish('asr.partial', interimText, { sessionID: state.sessionID, traceID: state.traceID }).catch(() => undefined);
+        }
       }
       if (finalText) {
         setStatus(`已识别：${finalText}`, 'ready', true);
-        publish('asr.final', finalText).catch(() => undefined);
+        if (state.useSpeechFallback) {
+          publish('asr.final', finalText, { sessionID: state.sessionID, traceID: state.traceID }).catch(() => undefined);
+        }
       }
     };
 
@@ -476,9 +484,29 @@ async function initCompanion() {
     }
     try {
       if (state.speechListening) {
-        state.speechRecognition.stop();
+        postJSON('/conversation/mic/interrupt', {
+          session_id: state.sessionID,
+          trace_id: state.traceID,
+          reason: 'mic_toggle_stop'
+        }).catch(() => undefined);
+        if (state.useSpeechFallback) {
+          state.speechRecognition.stop();
+        }
       } else {
-        state.speechRecognition.start();
+        postJSON('/conversation/mic/start').then((started) => {
+          state.useSpeechFallback = false;
+          state.sessionID = String(started?.session_id || '');
+          state.traceID = String(started?.trace_id || started?.session_id || '');
+          setMicListening(true);
+          setStatus('语音输入已启动（后端主链路）', 'info');
+        }).catch(async () => {
+          if (!state.speechRecognition) throw new Error('no fallback recognizer');
+          state.useSpeechFallback = true;
+          const started = await postJSON('/conversation/mic/start').catch(() => ({}));
+          state.sessionID = String(started?.session_id || '');
+          state.traceID = String(started?.trace_id || started?.session_id || '');
+          state.speechRecognition.start();
+        });
       }
     } catch (error) {
       setStatus(`语音输入启动失败：${error}`, 'error');

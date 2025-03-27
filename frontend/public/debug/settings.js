@@ -25,57 +25,15 @@ let providerStatus = null;
 let providerCatalog = null;
 let healthFilter = 'all';
 
-function normalizeEndpoint(value) {
+function normalizeEndpoint(value, fallback = '') {
   let endpoint = String(value || '').trim();
-  if (!endpoint) endpoint = 'http://127.0.0.1:11434/v1';
-  endpoint = endpoint.replace(/\/+$/, '');
-  try {
-    const parsed = new URL(endpoint);
-    if (!parsed.pathname || parsed.pathname === '/') {
-      parsed.pathname = '/v1';
-      endpoint = parsed.toString().replace(/\/+$/, '');
-    }
-  } catch (_) {
-    // keep raw endpoint when URL parsing fails
-  }
-  return endpoint;
-}
-
-function modelsURL(endpoint) {
-  return `${normalizeEndpoint(endpoint)}/models`;
+  if (!endpoint) endpoint = fallback;
+  return endpoint.replace(/\/+$/, '');
 }
 
 function toModelName(item) {
-  const candidate = item?.id || item?.name || item?.model || '';
+  const candidate = item?.name || item?.id || item?.model || '';
   return String(candidate || '').trim();
-}
-
-function renderModelOptions(selectId, names, selected) {
-  const select = byId(selectId);
-  if (!select) return;
-  const unique = Array.from(new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean)));
-  const currentValue = String(selected || '').trim();
-  const all = [...unique];
-  if (currentValue && !all.includes(currentValue)) all.unshift(currentValue);
-  if (!all.length) all.push('');
-  select.innerHTML = all.map((name) => `<option value="${name}">${name || '（未发现模型）'}</option>`).join('');
-  select.value = currentValue || all[0] || '';
-}
-
-async function loadModels(selectId, endpoint, selected, label) {
-  const url = modelsURL(endpoint);
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`${response.status}`);
-    const data = await response.json();
-    const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
-    const names = list.map(toModelName).filter(Boolean);
-    renderModelOptions(selectId, names, selected);
-    log(`${label} 模型列表已更新：${names.length} 项`);
-  } catch (error) {
-    renderModelOptions(selectId, [], selected);
-    log(`加载 ${label} 模型列表失败（${url}）：${error}`);
-  }
 }
 
 function writeLog(target, message) {
@@ -122,114 +80,224 @@ function healthText(health) {
   return `已找到：${joinAssets(health.found)}；缺少：${joinAssets(health.missing)}`;
 }
 
-function apply(cfg) {
-  byId('llm_provider').value = 'ollama';
-  byId('llm_endpoint').value = normalizeEndpoint(cfg.llm?.endpoint || 'http://127.0.0.1:11434/v1');
-  byId('llm_timeout').value = cfg.llm?.request_timeout_ms || 45000;
-  byId('asr_provider').value = cfg.asr?.provider || '';
-  byId('asr_binary_path').value = cfg.asr?.binary_path || '';
-  byId('asr_model_path').value = cfg.asr?.model_path || '';
-  byId('tts_provider').value = cfg.tts?.provider || '';
-  byId('tts_voice').value = cfg.tts?.voice || '';
-  byId('tts_binary_path').value = cfg.tts?.binary_path || '';
-  byId('tts_model_path').value = cfg.tts?.model_path || '';
-  byId('tts_sentence_first').checked = !!cfg.tts?.sentence_first_enabled;
-  byId('audio_wake_mode').value = cfg.audio?.wake_mode || 'wake_word_vad';
-  byId('audio_wake_provider').value = 'ollama';
-  byId('audio_wake_binary_path').value = cfg.audio?.wake_binary_path || '';
-  byId('audio_wake_keywords_file_path').value = cfg.audio?.wake_keywords_file_path || '';
-  byId('audio_wake_keyword').value = cfg.audio?.wake_keyword || '诺玛';
-  byId('audio_wake_window_ms').value = cfg.audio?.wake_window_ms || 2000;
-  byId('audio_wake_detect_interval_ms').value = cfg.audio?.wake_detect_interval_ms || 400;
-  byId('audio_silence').value = cfg.audio?.endpoint_silence_frames || 4;
-  byId('audio_interrupt').checked = !!cfg.audio?.interrupt_during_speaking;
-  byId('audio_aec').checked = !!cfg.audio?.aec_enabled;
-  byId('audio_ns').checked = !!cfg.audio?.ns_enabled;
-  byId('audio_scene').value = cfg.audio?.scene || 'speaker';
-  byId('rag_topk').value = cfg.rag?.top_k || 6;
-  byId('rag_embed_provider').value = cfg.rag?.embed_provider || 'ollama';
-  byId('rag_embed_endpoint').value = cfg.rag?.embed_endpoint || '';
-  byId('rag_embed_model').value = cfg.rag?.embed_model || '';
-  byId('stm_budget').value = cfg.memory?.stm_token_budget || 2048;
-  byId('stm_keep_important').checked = !!cfg.memory?.stm_reserve_important;
-  byId('memory_summary_auto').checked = !!cfg.memory?.summary_auto_write;
-  byId('perf_auto').checked = !!cfg.perf?.auto_degrade;
-  byId('perf_first').value = cfg.perf?.llm_first_token_threshold_ms || 1200;
-  byId('perf_topk').value = cfg.perf?.degraded_rag_top_k || 4;
-  byId('perf_ef_search').value = cfg.perf?.degraded_ef_search || 24;
-  byId('perf_extra_factor').value = cfg.perf?.degraded_retriever_extra_factor || 1;
-  byId('perf_fuse_factor').value = cfg.perf?.degraded_retriever_fuse_factor || 2;
-  byId('perf_audio_chunk').value = cfg.perf?.degraded_audio_chunk_size || 4096;
-  byId('perf_degraded_llm_model').value = cfg.perf?.degraded_llm_model || '';
-  byId('perf_degraded_tts_voice').value = cfg.perf?.degraded_tts_voice || 'zh_CN-huayan-x_low';
-  byId('perf_alert_llm').value = cfg.perf?.alert_llm_first_token_ms || 1500;
-  byId('perf_alert_tts').value = cfg.perf?.alert_tts_first_chunk_ms || 1200;
-  byId('perf_baseline_file').value = cfg.perf?.baseline_file || 'build/perf-baseline.json';
-  byId('providers_root').value = cfg.providers?.root || 'resource/runtime/providers';
-  byId('security_allow_remote').checked = !!cfg.security?.allow_remote_providers;
-  byId('security_hosts').value = (cfg.security?.allowed_remote_hosts || []).join(',');
-  byId('security_tools').value = (cfg.security?.tool_whitelist || []).join(',');
-  byId('security_confirm').checked = !!cfg.security?.high_risk_confirm;
-  byId('security_purge_proof_dir').value = cfg.security?.purge_proof_dir || 'resource/diagnostics/purge-proofs';
+function setInput(id, value, fallback = '') {
+  const el = byId(id);
+  if (!el) return;
+  el.value = value ?? fallback;
+}
 
-  renderModelOptions('llm_model', [], cfg.llm?.model || '');
-  renderModelOptions('audio_wake_model_path', [], cfg.audio?.wake_model_path || '');
-  loadModels('llm_model', byId('llm_endpoint').value, cfg.llm?.model || '', 'LLM');
-  loadModels('audio_wake_model_path', byId('llm_endpoint').value, cfg.audio?.wake_model_path || '', 'Wake');
+function setCheck(id, value) {
+  const el = byId(id);
+  if (!el) return;
+  el.checked = !!value;
+}
+
+function getValue(id, fallback = '') {
+  const el = byId(id);
+  if (!el) return fallback;
+  return String(el.value || fallback).trim();
+}
+
+function getNumber(id, fallback) {
+  const raw = getValue(id, '');
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function getChecked(id) {
+  const el = byId(id);
+  return !!el?.checked;
+}
+
+function renderModelOptions(names, selected) {
+  const select = byId('llm_model');
+  if (!select) return;
+  const unique = Array.from(new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean)));
+  const picked = String(selected || '').trim();
+  if (picked && !unique.includes(picked)) unique.unshift(picked);
+  if (!unique.length) unique.push('');
+  select.innerHTML = unique.map((name) => `<option value="${name}">${name || '（未发现模型）'}</option>`).join('');
+  select.value = picked || unique[0] || '';
+}
+
+async function loadLLMModels() {
+  const endpoint = normalizeEndpoint(getValue('llm_endpoint'), 'http://127.0.0.1:11434');
+  const selected = getValue('llm_model');
+  const attempts = [
+    `${endpoint}/api/tags`,
+    `${endpoint}/v1/models`,
+    `${endpoint}/models`
+  ];
+
+  for (const url of attempts) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const list = Array.isArray(data?.models) ? data.models : (Array.isArray(data?.data) ? data.data : []);
+      const names = list.map(toModelName).filter(Boolean);
+      if (names.length) {
+        renderModelOptions(names, selected);
+        log(`LLM 模型列表已更新：${names.length} 项（${url}）`);
+        return;
+      }
+    } catch (_) {
+      // try next path
+    }
+  }
+
+  renderModelOptions([], selected);
+  log(`加载 LLM 模型列表失败：${endpoint}`);
+}
+
+function apply(cfg) {
+  setCheck('audio_enable_wake_word', cfg.audio?.enable_wake_word ?? true);
+  setInput('audio_wake_mode', cfg.audio?.wake_mode || 'wake_word_vad');
+  setInput('audio_wake_provider', cfg.audio?.wake_provider || 'sherpa-onnx');
+  setInput('audio_wake_binary_path', cfg.audio?.wake_binary_path || '');
+  setInput('audio_wake_model_path', cfg.audio?.wake_model_path || '');
+  setInput('audio_wake_keywords_file_path', cfg.audio?.wake_keywords_file_path || '');
+  setInput('audio_wake_keyword', cfg.audio?.wake_keyword || '诺玛');
+  setInput('audio_wake_window_ms', cfg.audio?.wake_window_ms || 2000);
+  setInput('audio_wake_detect_interval_ms', cfg.audio?.wake_detect_interval_ms || 400);
+  setInput('audio_silence', cfg.audio?.endpoint_silence_frames || 4);
+  setCheck('audio_interrupt', cfg.audio?.interrupt_during_speaking ?? true);
+  setCheck('audio_aec', cfg.audio?.aec_enabled || false);
+  setCheck('audio_ns', cfg.audio?.ns_enabled || false);
+  setInput('audio_scene', cfg.audio?.scene || 'speaker');
+  setInput('audio_mic_device_id', cfg.audio?.mic_device_id || 'default');
+  setInput('audio_mic_sample_rate', cfg.audio?.mic_sample_rate || 16000);
+  setInput('audio_mic_channel_count', cfg.audio?.mic_channel_count || 1);
+
+  setInput('asr_provider', cfg.asr?.provider || 'whispercpp');
+  setInput('asr_timeout', cfg.asr?.request_timeout_ms || 10000);
+  setInput('asr_endpoint', cfg.asr?.endpoint || '');
+  setInput('asr_stream_endpoint', cfg.asr?.stream_endpoint || '');
+  setInput('asr_binary_path', cfg.asr?.binary_path || '');
+  setInput('asr_model_path', cfg.asr?.model_path || '');
+  setInput('asr_language', cfg.asr?.language || 'zh');
+  setInput('asr_threads', cfg.asr?.threads || 4);
+
+  setInput('llm_provider', cfg.llm?.provider || 'ollama');
+  setInput('llm_endpoint', normalizeEndpoint(cfg.llm?.endpoint, 'http://127.0.0.1:11434'));
+  setInput('llm_timeout', cfg.llm?.request_timeout_ms || 45000);
+  renderModelOptions([], cfg.llm?.model || '');
+
+  setInput('rag_embed_provider', cfg.rag?.embed_provider || 'ollama');
+  setInput('rag_embed_endpoint', normalizeEndpoint(cfg.rag?.embed_endpoint, normalizeEndpoint(cfg.llm?.endpoint, 'http://127.0.0.1:11434')));
+  setInput('rag_embed_model', cfg.rag?.embed_model || '');
+
+  setInput('tts_provider', cfg.tts?.provider || 'piper');
+  setInput('tts_timeout', cfg.tts?.request_timeout_ms || 30000);
+  setInput('tts_voice', cfg.tts?.voice || '');
+  setInput('tts_endpoint', cfg.tts?.endpoint || '');
+  setInput('tts_binary_path', cfg.tts?.binary_path || '');
+  setInput('tts_model_path', cfg.tts?.model_path || '');
+  setCheck('tts_sentence_first', cfg.tts?.sentence_first_enabled ?? true);
+
+  setInput('rag_topk', cfg.rag?.top_k || 6);
+  setInput('rag_vector_index_path', cfg.rag?.vector_index_path || 'resource/index/vector.index');
+  setInput('stm_budget', cfg.memory?.stm_token_budget || 2048);
+  setInput('memory_compact_hours', cfg.memory?.governance_compact_hours || 24);
+  setCheck('stm_keep_important', cfg.memory?.stm_reserve_important ?? true);
+  setCheck('memory_summary_auto', cfg.memory?.summary_auto_write ?? true);
+
+  setCheck('perf_auto', cfg.perf?.auto_degrade ?? true);
+  setInput('perf_first', cfg.perf?.llm_first_token_threshold_ms || 1200);
+  setInput('perf_topk', cfg.perf?.degraded_rag_top_k || 4);
+  setInput('perf_ef_search', cfg.perf?.degraded_ef_search || 24);
+  setInput('perf_extra_factor', cfg.perf?.degraded_retriever_extra_factor || 1);
+  setInput('perf_fuse_factor', cfg.perf?.degraded_retriever_fuse_factor || 2);
+  setInput('perf_audio_chunk', cfg.perf?.degraded_audio_chunk_size || 4096);
+  setInput('perf_degraded_llm_model', cfg.perf?.degraded_llm_model || '');
+  setInput('perf_degraded_tts_voice', cfg.perf?.degraded_tts_voice || 'zh_CN-huayan-x_low');
+  setInput('perf_alert_llm', cfg.perf?.alert_llm_first_token_ms || 1500);
+  setInput('perf_alert_tts', cfg.perf?.alert_tts_first_chunk_ms || 1200);
+  setInput('perf_baseline_file', cfg.perf?.baseline_file || 'build/perf-baseline.json');
+
+  setInput('providers_root', cfg.providers?.root || 'resource/runtime/providers');
+  setCheck('security_allow_remote', cfg.security?.allow_remote_providers || false);
+  setInput('security_hosts', (cfg.security?.allowed_remote_hosts || []).join(','));
+  setInput('security_tools', (cfg.security?.tool_whitelist || []).join(','));
+  setCheck('security_confirm', cfg.security?.high_risk_confirm ?? true);
+  setInput('security_purge_proof_dir', cfg.security?.purge_proof_dir || 'resource/diagnostics/purge-proofs');
 }
 
 function collect(base) {
   const cfg = structuredClone(base);
-  cfg.llm.provider = 'ollama';
-  cfg.llm.model = byId('llm_model').value.trim();
-  cfg.llm.endpoint = normalizeEndpoint(byId('llm_endpoint').value);
-  cfg.llm.request_timeout_ms = Number(byId('llm_timeout').value || 45000);
-  cfg.asr.provider = byId('asr_provider').value.trim();
-  cfg.asr.binary_path = byId('asr_binary_path').value.trim();
-  cfg.asr.model_path = byId('asr_model_path').value.trim();
-  cfg.tts.provider = byId('tts_provider').value.trim();
-  cfg.tts.voice = byId('tts_voice').value.trim();
-  cfg.tts.binary_path = byId('tts_binary_path').value.trim();
-  cfg.tts.model_path = byId('tts_model_path').value.trim();
-  cfg.tts.sentence_first_enabled = !!byId('tts_sentence_first').checked;
-  cfg.audio.wake_mode = byId('audio_wake_mode').value.trim();
-  cfg.audio.wake_provider = 'ollama';
-  cfg.audio.wake_binary_path = byId('audio_wake_binary_path').value.trim();
-  cfg.audio.wake_model_path = byId('audio_wake_model_path').value.trim();
-  cfg.audio.wake_keywords_file_path = byId('audio_wake_keywords_file_path').value.trim();
-  cfg.audio.wake_keyword = byId('audio_wake_keyword').value.trim();
-  cfg.audio.wake_window_ms = Number(byId('audio_wake_window_ms').value || 2000);
-  cfg.audio.wake_detect_interval_ms = Number(byId('audio_wake_detect_interval_ms').value || 400);
-  cfg.audio.endpoint_silence_frames = Number(byId('audio_silence').value || 4);
-  cfg.audio.interrupt_during_speaking = !!byId('audio_interrupt').checked;
-  cfg.audio.aec_enabled = !!byId('audio_aec').checked;
-  cfg.audio.ns_enabled = !!byId('audio_ns').checked;
-  cfg.audio.scene = byId('audio_scene').value.trim();
-  cfg.rag.top_k = Number(byId('rag_topk').value || 6);
-  cfg.rag.embed_provider = byId('rag_embed_provider').value.trim();
-  cfg.rag.embed_endpoint = byId('rag_embed_endpoint').value.trim();
-  cfg.rag.embed_model = byId('rag_embed_model').value.trim();
-  cfg.memory.stm_token_budget = Number(byId('stm_budget').value || 2048);
-  cfg.memory.stm_reserve_important = !!byId('stm_keep_important').checked;
-  cfg.memory.summary_auto_write = !!byId('memory_summary_auto').checked;
-  cfg.perf.auto_degrade = !!byId('perf_auto').checked;
-  cfg.perf.llm_first_token_threshold_ms = Number(byId('perf_first').value || 1200);
-  cfg.perf.degraded_rag_top_k = Number(byId('perf_topk').value || 4);
-  cfg.perf.degraded_ef_search = Number(byId('perf_ef_search').value || 24);
-  cfg.perf.degraded_retriever_extra_factor = Number(byId('perf_extra_factor').value || 1);
-  cfg.perf.degraded_retriever_fuse_factor = Number(byId('perf_fuse_factor').value || 2);
-  cfg.perf.degraded_audio_chunk_size = Number(byId('perf_audio_chunk').value || 4096);
-  cfg.perf.degraded_llm_model = byId('perf_degraded_llm_model').value.trim();
-  cfg.perf.degraded_tts_voice = byId('perf_degraded_tts_voice').value.trim();
-  cfg.perf.alert_llm_first_token_ms = Number(byId('perf_alert_llm').value || 1500);
-  cfg.perf.alert_tts_first_chunk_ms = Number(byId('perf_alert_tts').value || 1200);
-  cfg.perf.baseline_file = byId('perf_baseline_file').value.trim();
-  cfg.providers.root = byId('providers_root').value.trim();
-  cfg.security.allow_remote_providers = !!byId('security_allow_remote').checked;
-  cfg.security.allowed_remote_hosts = csv(byId('security_hosts').value);
-  cfg.security.tool_whitelist = csv(byId('security_tools').value);
-  cfg.security.high_risk_confirm = !!byId('security_confirm').checked;
-  cfg.security.purge_proof_dir = byId('security_purge_proof_dir').value.trim();
+
+  cfg.audio.enable_wake_word = getChecked('audio_enable_wake_word');
+  cfg.audio.wake_mode = getValue('audio_wake_mode', 'wake_word_vad');
+  cfg.audio.wake_provider = getValue('audio_wake_provider', 'sherpa-onnx');
+  cfg.audio.wake_binary_path = getValue('audio_wake_binary_path');
+  cfg.audio.wake_model_path = getValue('audio_wake_model_path');
+  cfg.audio.wake_keywords_file_path = getValue('audio_wake_keywords_file_path');
+  cfg.audio.wake_keyword = getValue('audio_wake_keyword', '诺玛');
+  cfg.audio.wake_window_ms = getNumber('audio_wake_window_ms', 2000);
+  cfg.audio.wake_detect_interval_ms = getNumber('audio_wake_detect_interval_ms', 400);
+  cfg.audio.endpoint_silence_frames = getNumber('audio_silence', 4);
+  cfg.audio.interrupt_during_speaking = getChecked('audio_interrupt');
+  cfg.audio.aec_enabled = getChecked('audio_aec');
+  cfg.audio.ns_enabled = getChecked('audio_ns');
+  cfg.audio.scene = getValue('audio_scene', 'speaker');
+  cfg.audio.mic_device_id = getValue('audio_mic_device_id', 'default');
+  cfg.audio.mic_sample_rate = getNumber('audio_mic_sample_rate', 16000);
+  cfg.audio.mic_channel_count = getNumber('audio_mic_channel_count', 1);
+
+  cfg.asr.provider = getValue('asr_provider', 'whispercpp');
+  cfg.asr.request_timeout_ms = getNumber('asr_timeout', 10000);
+  cfg.asr.endpoint = getValue('asr_endpoint');
+  cfg.asr.stream_endpoint = getValue('asr_stream_endpoint');
+  cfg.asr.binary_path = getValue('asr_binary_path');
+  cfg.asr.model_path = getValue('asr_model_path');
+  cfg.asr.language = getValue('asr_language', 'zh');
+  cfg.asr.threads = getNumber('asr_threads', 4);
+
+  cfg.llm.provider = getValue('llm_provider', 'ollama');
+  cfg.llm.endpoint = normalizeEndpoint(getValue('llm_endpoint'), 'http://127.0.0.1:11434');
+  cfg.llm.request_timeout_ms = getNumber('llm_timeout', 45000);
+  cfg.llm.model = getValue('llm_model');
+
+  cfg.rag.embed_provider = getValue('rag_embed_provider', 'ollama');
+  cfg.rag.embed_endpoint = normalizeEndpoint(getValue('rag_embed_endpoint'), cfg.llm.endpoint);
+  cfg.rag.embed_model = getValue('rag_embed_model');
+
+  cfg.tts.provider = getValue('tts_provider', 'piper');
+  cfg.tts.request_timeout_ms = getNumber('tts_timeout', 30000);
+  cfg.tts.voice = getValue('tts_voice');
+  cfg.tts.endpoint = getValue('tts_endpoint');
+  cfg.tts.binary_path = getValue('tts_binary_path');
+  cfg.tts.model_path = getValue('tts_model_path');
+  cfg.tts.sentence_first_enabled = getChecked('tts_sentence_first');
+
+  cfg.rag.top_k = getNumber('rag_topk', 6);
+  cfg.rag.vector_index_path = getValue('rag_vector_index_path');
+
+  cfg.memory.stm_token_budget = getNumber('stm_budget', 2048);
+  cfg.memory.governance_compact_hours = getNumber('memory_compact_hours', 24);
+  cfg.memory.stm_reserve_important = getChecked('stm_keep_important');
+  cfg.memory.summary_auto_write = getChecked('memory_summary_auto');
+
+  cfg.perf.auto_degrade = getChecked('perf_auto');
+  cfg.perf.llm_first_token_threshold_ms = getNumber('perf_first', 1200);
+  cfg.perf.degraded_rag_top_k = getNumber('perf_topk', 4);
+  cfg.perf.degraded_ef_search = getNumber('perf_ef_search', 24);
+  cfg.perf.degraded_retriever_extra_factor = getNumber('perf_extra_factor', 1);
+  cfg.perf.degraded_retriever_fuse_factor = getNumber('perf_fuse_factor', 2);
+  cfg.perf.degraded_audio_chunk_size = getNumber('perf_audio_chunk', 4096);
+  cfg.perf.degraded_llm_model = getValue('perf_degraded_llm_model');
+  cfg.perf.degraded_tts_voice = getValue('perf_degraded_tts_voice', 'zh_CN-huayan-x_low');
+  cfg.perf.alert_llm_first_token_ms = getNumber('perf_alert_llm', 1500);
+  cfg.perf.alert_tts_first_chunk_ms = getNumber('perf_alert_tts', 1200);
+  cfg.perf.baseline_file = getValue('perf_baseline_file', 'build/perf-baseline.json');
+
+  cfg.providers.root = getValue('providers_root');
+  cfg.security.allow_remote_providers = getChecked('security_allow_remote');
+  cfg.security.allowed_remote_hosts = csv(getValue('security_hosts'));
+  cfg.security.tool_whitelist = csv(getValue('security_tools'));
+  cfg.security.high_risk_confirm = getChecked('security_confirm');
+  cfg.security.purge_proof_dir = getValue('security_purge_proof_dir');
+
   return cfg;
 }
 
@@ -319,7 +387,6 @@ function renderProviderCatalog(catalog) {
   });
 }
 
-
 function buildAuditSummary() {
   if (!providerStatus) return 'Provider 状态尚未加载。';
   const lines = [];
@@ -374,6 +441,7 @@ async function openReadinessDir() {
   if (!response.ok) throw new Error(data?.error?.message || `打开目录失败：${response.status}`);
   providerLog(`已打开导出目录：${data.path}`);
 }
+
 function rerenderProviders() {
   if (providerStatus) {
     renderProviderAlerts(providerStatus);
@@ -387,6 +455,7 @@ async function load() {
   if (!response.ok) throw new Error(`读取配置失败：${response.status}`);
   current = await response.json();
   apply(current);
+  await loadLLMModels();
   log('已读取当前运行时配置。');
 }
 
@@ -407,7 +476,11 @@ async function loadProviderCatalog() {
 
 async function save() {
   if (!current) return;
-  const response = await fetch(`${api}/settings/runtime`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collect(current)) });
+  const response = await fetch(`${api}/settings/runtime`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(collect(current))
+  });
   if (!response.ok) throw new Error(`保存配置失败：${response.status} ${await response.text()}`);
   log('配置保存成功，已广播运行时更新事件。');
   await load();
@@ -438,7 +511,11 @@ async function exportReadiness() {
 
 async function installProvider(id) {
   providerLog(`开始安装 ${id} ...`);
-  const response = await fetch(`${api}/providers/install`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const response = await fetch(`${api}/providers/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `安装失败：${response.status}`);
   providerLog(String(data.output || `${id} 安装成功`));
@@ -448,7 +525,11 @@ async function installProvider(id) {
 
 async function uninstallProvider(id) {
   providerLog(`开始卸载 ${id} ...`);
-  const response = await fetch(`${api}/providers/uninstall`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const response = await fetch(`${api}/providers/uninstall`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message || `卸载失败：${response.status}`);
   providerLog(String(data.output || `${id} 卸载成功`));
@@ -456,13 +537,31 @@ async function uninstallProvider(id) {
   await loadProviderCatalog();
 }
 
-byId('load').addEventListener('click', () => Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => log(String(error))));
-byId('save').addEventListener('click', () => save().catch((error) => log(String(error))));
-byId('provider_init').addEventListener('click', () => initProviders().catch((error) => providerLog(String(error))));
-byId('provider_apply').addEventListener('click', () => applyManagedProviders().catch((error) => providerLog(String(error))));
-byId('provider_export').addEventListener('click', () => exportReadiness().catch((error) => providerLog(String(error))));
-byId('provider_copy_audit').addEventListener('click', () => copyAuditSummary().catch((error) => providerLog(String(error))));
-byId('provider_open_dir').addEventListener('click', () => openReadinessDir().catch((error) => providerLog(String(error))));
+async function testMicrophone() {
+  const response = await fetch(`${api}/conversation/mic/test`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || `麦克风测试失败：${response.status}`);
+  const mic = data.mic || {};
+  log(`${data.summary}（设备=${mic.device_id || '-'}，采样率=${mic.sample_rate || '-'}，声道=${mic.channel_count || '-'}，speech_frames=${mic.speech_frames || 0}）`);
+}
+
+byId('load')?.addEventListener('click', () => Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => log(String(error))));
+byId('save')?.addEventListener('click', () => save().catch((error) => log(String(error))));
+byId('audio_mic_test')?.addEventListener('click', () => testMicrophone().catch((error) => log(String(error))));
+byId('refresh_llm_models')?.addEventListener('click', () => loadLLMModels().catch((error) => log(String(error))));
+
+byId('provider_init')?.addEventListener('click', () => initProviders().catch((error) => providerLog(String(error))));
+byId('provider_apply')?.addEventListener('click', () => applyManagedProviders().catch((error) => providerLog(String(error))));
+byId('provider_export')?.addEventListener('click', () => exportReadiness().catch((error) => providerLog(String(error))));
+byId('provider_copy_audit')?.addEventListener('click', () => copyAuditSummary().catch((error) => providerLog(String(error))));
+byId('provider_open_dir')?.addEventListener('click', () => openReadinessDir().catch((error) => providerLog(String(error))));
+
+byId('llm_endpoint')?.addEventListener('blur', () => {
+  const endpoint = normalizeEndpoint(getValue('llm_endpoint'), 'http://127.0.0.1:11434');
+  setInput('llm_endpoint', endpoint);
+  loadLLMModels().catch((error) => log(String(error)));
+});
+
 document.querySelectorAll('[data-health-filter]').forEach((button) => {
   button.addEventListener('click', () => {
     healthFilter = button.dataset.healthFilter || 'all';
@@ -470,13 +569,6 @@ document.querySelectorAll('[data-health-filter]').forEach((button) => {
     button.classList.add('primary');
     rerenderProviders();
   });
-});
-
-byId('llm_endpoint')?.addEventListener('blur', () => {
-  const endpoint = normalizeEndpoint(byId('llm_endpoint').value);
-  byId('llm_endpoint').value = endpoint;
-  loadModels('llm_model', endpoint, byId('llm_model').value, 'LLM');
-  loadModels('audio_wake_model_path', endpoint, byId('audio_wake_model_path').value, 'Wake');
 });
 
 Promise.all([load(), loadProviderStatus(), loadProviderCatalog()]).catch((error) => {

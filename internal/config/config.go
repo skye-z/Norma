@@ -36,6 +36,9 @@ type DatabaseConfig struct {
 
 type AudioConfig struct {
 	EnableWakeWord        bool   `mapstructure:"enable_wake_word"`
+	MicDeviceID           string `mapstructure:"mic_device_id"`
+	MicSampleRate         int    `mapstructure:"mic_sample_rate"`
+	MicChannelCount       int    `mapstructure:"mic_channel_count"`
 	WakeMode              string `mapstructure:"wake_mode"`
 	WakeProvider          string `mapstructure:"wake_provider"`
 	WakeBinaryPath        string `mapstructure:"wake_binary_path"`
@@ -127,6 +130,9 @@ func defaultConfig() Config {
 		Database: DatabaseConfig{Path: layout.DBPath},
 		Audio: AudioConfig{
 			EnableWakeWord:        true,
+			MicDeviceID:           "default",
+			MicSampleRate:         16000,
+			MicChannelCount:       1,
 			WakeMode:              "wake_word_vad",
 			WakeProvider:          "sherpa-onnx",
 			WakeBinaryPath:        "",
@@ -199,6 +205,9 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("app.log_dir", cfg.App.LogDir)
 	v.SetDefault("database.path", cfg.Database.Path)
 	v.SetDefault("audio.enable_wake_word", cfg.Audio.EnableWakeWord)
+	v.SetDefault("audio.mic_device_id", cfg.Audio.MicDeviceID)
+	v.SetDefault("audio.mic_sample_rate", cfg.Audio.MicSampleRate)
+	v.SetDefault("audio.mic_channel_count", cfg.Audio.MicChannelCount)
 	v.SetDefault("audio.wake_mode", cfg.Audio.WakeMode)
 	v.SetDefault("audio.wake_provider", cfg.Audio.WakeProvider)
 	v.SetDefault("audio.wake_binary_path", cfg.Audio.WakeBinaryPath)

@@ -1,73 +1,94 @@
 # Norma - 诺玛
 
-> 一个基于 Golang + Live2D 的桌面人格化伴侣开源项目。
+> 基于 Golang + Live2D 的本地优先桌面人格化伴侣。
 
-Norma 当前目标不是 MVP，而是一个可长期使用、可发布、可运维、可持续迭代的完整桌面伴侣产品。
+## 核心目标
 
-## 产品定位
+1. 轻量本地部署：双击启动，单机运行，无 Redis/ES 等中间件。
+2. 高拟人化体验：Live2D 动作、情绪、口型联动。
+3. 极简架构：Go 核心 + 事件总线 + 可替换 Provider。
 
-Norma 以 Go 为核心，结合 Live2D、语音交互、本地大模型、记忆系统和本地知识检索，打造本地优先的桌面虚拟伙伴。
+## 定版技术基线
 
-核心方向：
-1. 高拟人化交互：动作、表情、口型、情绪联动。
-2. 文本 + 语音双通道：支持唤醒、VAD、ASR、TTS、可打断交互。
-3. 记忆与知识增强：STM/LTM + 本地文件索引 + Hybrid RAG。
-4. 极简部署：单机运行，不依赖 Redis/ES 等外部中间件。
-5. 发布级运维：自检、诊断包、日志分层、依赖自愈、质量门禁。
+- 后端：Golang
+- 配置：Viper
+- 数据层：XORM + SQLite（modernc.org/sqlite）
+- 桌面层：Wails + Live2D
+- Wake：sherpa-onnx
+- ASR：whisper.cpp
+- TTS：Piper
+- LLM / Embedding：Ollama
 
-## 当前架构
+## 架构总览
 
-1. 运行时内核：状态机、事件总线、取消机制、运行时观测。
-2. 语音链路：Wake Word/VAD、端点检测、流式 ASR、分句 TTS、打断闭环。
-3. 记忆系统：STM token 预算裁剪、LTM 字段化存储、治理任务、管理接口。
-4. RAG：本地文件抽取、结构化分块、混合检索、增量索引。
-5. 运维：启动链路、watchdog、诊断包、发布前检查。
+### 1) 分层架构
 
-## 运行方式
+1. 交互层：Wails 窗口、Live2D 前端、mic 按钮、调试页。
+2. 运行时层：状态机、事件总线、会话与取消机制。
+3. 编排层：`asr.final -> rag.ready -> llm.token -> tts.chunk.ready -> audio.play.end`。
+4. 能力层：语音、知识库检索、记忆、诊断与设置。
+5. 基础层：SQLite、本地文件系统、Ollama、本地语音 Provider。
 
-### 启动应用
+### 2) 关键约束
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Root .
-```
+1. 模块间通过事件通信，避免深度耦合。
+2. 全链路携带 `session_id` / `trace_id`。
+3. Speaking 阶段必须支持 interrupt 打断。
+4. 默认本地优先，外网能力显式开关。
 
-### 仅执行预检查和依赖检查
+## 语音链路
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1 -Root . -NoLaunch
-```
+目标链路：
 
-### API 与开发调试面板
+`mic -> wake(sherpa-onnx) -> vad/endpoint -> asr(whisper.cpp) -> llm(ollama) -> tts(piper) -> audio play -> live2d`
 
-桌面程序启动时会自动拉起本地 API 服务，无需再单独启动 `cmd/apiserver`。
+关键事件：
 
-开发调试面板入口：
-- 控制台首页源码：`frontend/public/debug/home.html`
-- 运行诊断源码：`frontend/public/debug/index.html`
-- 构建产物首页：`frontend/dist/debug/home.html`
-- 运行时首页：`http://127.0.0.1:8090/static/debug/home.html`
-- 运行时诊断页：`http://127.0.0.1:8090/static/debug/index.html`
+`audio.vad.start / asr.partial / asr.final / rag.ready / llm.token / llm.done / tts.chunk.ready / audio.play.start / audio.play.end / interrupt`
 
-## 关键文档
+## 知识库与索引架构
 
-1. [开发计划](D:/Project/AI/Norma/docs/开发计划.md)
-2. [方案](D:/Project/AI/Norma/docs/方案.md)
-3. [部署与运维](D:/Project/AI/Norma/docs/部署与运维.md)
-4. [发布与首启指南](D:/Project/AI/Norma/docs/发布与首启指南.md)
-5. [记忆系统设计](D:/Project/AI/Norma/docs/记忆系统设计.md)
-6. [语音交互模块设计](D:/Project/AI/Norma/docs/语音交互模块设计.md)
+### 1) 数据来源
 
-## 当前状态
+1. 本地文件（txt / md / pdf / docx）。
+2. 对话与记忆衍生文本。
 
-已完成的关键能力：
-1. Hybrid Retriever 主链路接入。
-2. 文档提取扩展到 `txt/md/pdf/docx`。
-3. 结构化分块、检索去重/合并/轻量重排、增量索引治理。
-4. 运行时事件协议、取消机制、延迟观测和启动自检。
-5. 开发模式调试面板、记忆 API 与基础管理能力。
+### 2) 索引技术
 
-仍在推进的重点：
-1. 全仓乱码治理与 UTF-8 门禁。
-2. 语音链路产品化闭环。
-3. 记忆系统摘要/冲突/治理深度完善。
-4. 跨平台发布工程与质量封板。
+1. 关键词检索：SQLite FTS5（BM25）。
+2. 向量检索：HNSW 本地向量索引。
+3. 融合排序：RRF（Reciprocal Rank Fusion）。
+4. 后处理：去重、相邻合并、轻量重排。
+
+### 3) 检索流程
+
+`query -> embedding(ollama) -> HNSW召回 + FTS5召回 -> RRF融合 -> 上下文整理 -> LLM`
+
+### 4) 索引治理
+
+1. 增量更新：监听新增/修改文件后重建受影响 chunk。
+2. 回收删除：文件删除后清理对应索引项。
+3. 元数据：保存路径、mtime、hash、chunk 溯源信息。
+
+## 当前状态（简版）
+
+已具备：
+
+1. mic 会话 API、状态机/事件总线、基础编排模块。
+2. Hybrid RAG（FTS5 + HNSW + RRF）与本地记忆模块。
+3. Live2D 事件驱动桥接（motion/mouth/emotion）。
+
+仍需收口：
+
+1. 桌面主流程中的编排接线闭环。
+2. 真实麦克风采集与真实播放链路稳定化。
+3. 播放期口型同步与稳定 barge-in。
+
+## 文档入口
+
+- 项目计划：`TODO.md`
+- 架构增强：`docs/架构增强方案.md`
+- 语音设计：`docs/语音交互模块设计.md`
+- 状态机与事件：`docs/状态机与事件总线.md`
+- 测试与验收：`docs/测试与验收.md`
+- 文档索引：`docs/README.md`

@@ -19,6 +19,9 @@ func Save(path string, cfg *Config) error {
 		"database": map[string]any{"path": cfg.Database.Path},
 		"audio": map[string]any{
 			"enable_wake_word":          cfg.Audio.EnableWakeWord,
+			"mic_device_id":             cfg.Audio.MicDeviceID,
+			"mic_sample_rate":           cfg.Audio.MicSampleRate,
+			"mic_channel_count":         cfg.Audio.MicChannelCount,
 			"wake_mode":                 cfg.Audio.WakeMode,
 			"wake_provider":             cfg.Audio.WakeProvider,
 			"wake_binary_path":          cfg.Audio.WakeBinaryPath,
