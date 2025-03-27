@@ -65,24 +65,53 @@ async function waitForApiReady(timeoutMs = 10000) {
 }
 
 function createRuntimeEventSource(name, onPayload, onError) {
-  const es = new EventSource(`${apiBase}/runtime/events?name=${encodeURIComponent(name)}`);
-  es.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onPayload(data.payload, data);
-    } catch (_) {}
+  const parsed = new URL(apiBase);
+  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsURL = `${parsed.origin}/runtime/events/ws?name=${encodeURIComponent(name)}`;
+  let socket = null;
+  let reconnectTimer = null;
+  let closed = false;
+
+  const connect = () => {
+    if (closed) return;
+    socket = new WebSocket(wsURL);
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onPayload(data.payload, data);
+      } catch (_) {}
+    };
+    socket.onerror = () => {
+      try { socket.close(); } catch (_) {}
+    };
+    socket.onclose = () => {
+      if (closed) return;
+      if (typeof onError === 'function') onError(name);
+      reconnectTimer = window.setTimeout(connect, 500);
+    };
   };
-  es.onerror = () => {
-    if (typeof onError === 'function') onError(name);
+
+  connect();
+
+  return {
+    close() {
+      closed = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+        try { socket.close(); } catch (_) {}
+      }
+    }
   };
-  return es;
 }
 
 function navTabs(active) {
   const tabs = [
-    ['http://127.0.0.1:8090/static/debug/home.html', '控制台', 'home'],
+    ['http://127.0.0.1:8090/static/debug/index.html', '控制台', 'home'],
     ['?settings=1', '设置', 'settings'],
-    ['http://127.0.0.1:8090/static/debug/home.html', '控制台首页', 'external']
+    ['http://127.0.0.1:8090/static/debug/index.html', '控制台首页', 'external']
   ];
   return tabs.map(([href, label, key]) => `<a class="${key === active ? 'active' : ''}" href="${href}">${label}</a>`).join('');
 }
@@ -704,7 +733,7 @@ async function initCompanion() {
 
 async function boot() {
   if (mode === 'debug') {
-    window.location.replace('http://127.0.0.1:8090/static/debug/home.html');
+    window.location.replace('http://127.0.0.1:8090/static/debug/index.html');
     return;
   }
   if (mode === 'settings') {

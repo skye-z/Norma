@@ -47,6 +47,219 @@ body {
   background-position: center;
 }
 
+.console-frame {
+  min-height: 100vh;
+  margin: 0;
+  border: 1px solid var(--border-color);
+  background: rgba(4, 4, 4, 0.96);
+}
+
+.console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.console-header h1 {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 24px;
+  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+}
+
+.console-version {
+  color: var(--text-soft);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.console-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: calc(100vh - 58px);
+}
+
+.console-sidebar {
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.console-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 74px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.console-row:hover {
+  background: rgba(57, 255, 20, 0.04);
+}
+
+.console-row.active {
+  background: rgba(57, 255, 20, 0.1);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.console-row-spacer {
+  flex: 1;
+  min-height: 180px;
+}
+
+.console-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.console-row-head span {
+  color: var(--text-bright);
+  font-size: 16px;
+}
+
+.console-row-head .module-status {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  display: inline-block;
+}
+
+.module-status.status-gray { background: #6a6a6a; }
+.module-status.status-red { background: #e14b4b; }
+.module-status.status-yellow { background: #d6b134; }
+.module-status.status-green { background: #3ec66d; }
+
+.console-row-head.single-line {
+  justify-content: flex-start;
+}
+
+.console-row p {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.console-main {
+  min-height: 100%;
+  padding: 18px;
+}
+
+.console-main-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.console-card {
+  border: 1px solid var(--border-color);
+  background: rgba(12, 12, 12, 0.9);
+  min-width: 0;
+}
+
+.console-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.console-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 12px;
+}
+
+.console-card-head h2 {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 16px;
+}
+
+.console-card-body {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.stats .stat-line {
+  padding: 8px 0;
+}
+
+.health-item,
+.event-item {
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px;
+}
+
+.health-head,
+.event-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.health-title,
+.event-title {
+  color: var(--text-bright);
+  font-size: 14px;
+}
+
+.health-detail,
+.event-detail,
+.event-time {
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.console-row button {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.detail-actions button {
+  width: auto;
+  min-width: 92px;
+}
+
+.detail-actions .event-detail {
+  margin-left: auto;
+}
+
+.console-row input,
+.console-row button {
+  pointer-events: auto;
+}
+
+.state-pill.state-ready::before {
+  background: var(--accent-primary);
+}
+
+.state-pill.state-partial::before {
+  background: #ffcc00;
+}
+
+.state-pill.state-missing::before {
+  background: #ff3333;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -680,4 +893,8 @@ pre,
   .overview-card h2 { font-size: 20px; }
   .form-grid,
   .quick-grid { grid-template-columns: 1fr; }
+  .console-layout { grid-template-columns: 1fr; }
+  .console-sidebar { border-right: 0; border-bottom: 1px solid var(--border-color); }
+  .console-main { min-height: 280px; }
+  .console-main-grid { grid-template-columns: 1fr; }
 }

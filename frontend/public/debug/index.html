@@ -3,133 +3,129 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Norma 诊断</title>
+  <title>Norma Console</title>
   <link rel="stylesheet" href="./panel.css" />
 </head>
 <body>
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark"></span>
-        <div>
-          <div class="brand-title">NORMA / DIAGNOSTICS</div>
-          <span class="brand-sub">控制面板与链路探针</span>
-        </div>
-      </div>
-      <nav class="nav-tabs">
-        <a href="./home.html">控制台</a>
-        <a class="active" href="./index.html">诊断</a>
-        <a href="./settings.html">设置</a>
-      </nav>
-      <div class="barcode" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="console-frame">
+    <header class="console-header">
+      <h1>Norma Console</h1>
+      <span class="console-version">v1.0.0</span>
     </header>
 
-    <section class="hero">
-      <span class="hero-tag">Diagnostics Control Panel</span>
-      <h1>诊断</h1>
-      <p>这里主要用来主动发诊断指令，确认模型动作、TTS、ASR、LLM、记忆、知识库这些模块是否还活着、是否有响应。状态总览去“控制台”，安装和配置管理去“设置”。</p>
-      <div class="hero-actions">
-        <button id="refresh" class="primary">刷新诊断状态</button>
-        <button id="bargein">模拟打断</button>
-        <span class="status-chip">动作探针页</span>
-      </div>
-    </section>
+    <div class="console-layout">
+      <aside class="console-sidebar" aria-label="模块开关">
+        <section class="console-row" data-module="input">
+          <div class="console-row-head">
+            <span>输入</span>
+            <span id="status-input" class="module-status status-gray" aria-label="输入模块状态"></span>
+          </div>
+          <p id="text-input">xx模式 Provider</p>
+        </section>
 
-    <section class="layout-3 layout-grid three">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>模型 / TTS / ASR</h2>
-            <p class="panel-desc">直接调用后端联调接口，对 Live2D、TTS 和 ASR 做真实可执行检查，并返回结果。</p>
+        <section class="console-row" data-module="asr">
+          <div class="console-row-head">
+            <span>识别</span>
+            <span id="status-asr" class="module-status status-gray" aria-label="识别模块状态"></span>
           </div>
-        </div>
-        <div class="panel-content control-stack">
-          <div class="metric-tile">
-              <div class="metric-label">Live2D 联调</div>
-            <div class="quick-grid">
-              <button class="diag-run primary" data-target="live2d" data-motion="Idle">待机</button>
-              <button class="diag-run" data-target="live2d" data-motion="Tap">点击反馈</button>
-              <button class="diag-run" data-target="live2d" data-motion="Flick">快速转头</button>
-              <button class="diag-run" data-target="live2d" data-motion="Tap@Body">身体动作</button>
+          <p id="text-asr">Provider</p>
+        </section>
+
+        <section class="console-row" data-module="rag">
+          <div class="console-row-head">
+            <span>检索</span>
+            <span id="status-rag" class="module-status status-gray" aria-label="检索模块状态"></span>
+          </div>
+          <p id="text-rag">RAG Memory</p>
+        </section>
+
+        <section class="console-row" data-module="llm">
+          <div class="console-row-head">
+            <span>对话</span>
+            <span id="status-llm" class="module-status status-gray" aria-label="对话模块状态"></span>
+          </div>
+          <p id="text-llm">LLM Embedding</p>
+        </section>
+
+        <section class="console-row" data-module="tts">
+          <div class="console-row-head">
+            <span>输出</span>
+            <span id="status-tts" class="module-status status-gray" aria-label="输出模块状态"></span>
+          </div>
+          <p id="text-tts">TTS xx声线</p>
+        </section>
+
+        <section class="console-row console-row-spacer" aria-hidden="true"></section>
+
+        <section class="console-row" data-module="perf">
+          <div class="console-row-head">
+            <span>自动降级</span>
+            <span id="status-perf" class="module-status status-gray" aria-label="自动降级状态"></span>
+          </div>
+          <p id="text-perf">xxx策略 xxx阈值</p>
+        </section>
+
+        <section class="console-row" data-module="providers">
+          <div class="console-row-head single-line">
+            <span>模块管理</span>
+          </div>
+          <p>Provider</p>
+          <button id="refresh" type="button">刷新状态</button>
+        </section>
+      </aside>
+
+      <main class="console-main" aria-label="主体内容区域">
+        <div class="console-main-grid">
+          <section class="console-card full-width">
+            <div class="console-card-head">
+              <h2 id="detail-title">模块详情</h2>
+              <span id="detail-status" class="state-pill">-</span>
             </div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">口型 / 视线</div>
-            <div class="control-stack">
-              <div class="range-line"><label for="mouth">口型</label><input id="mouth" type="range" min="0" max="1.2" step="0.01" value="0" /></div>
-              <div class="range-line"><label for="ex">视线 X</label><input id="ex" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-              <div class="range-line"><label for="ey">视线 Y</label><input id="ey" type="range" min="-1" max="1" step="0.01" value="0" /></div>
-            </div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">TTS / ASR 联调</div>
-            <div class="form-grid">
-              <div class="full"><label for="txt">测试文本</label><input id="txt" value="你好，我是 Norma，这是一条诊断语音。" /></div>
-              <div class="full hero-actions" style="margin-top:0;">
-                <button id="run_tts" class="primary">执行 TTS 联调</button>
-                <button id="run_asr_partial">执行 ASR Partial 联调</button>
-                <button id="run_asr_final">执行 ASR Final 联调</button>
+            <div class="console-card-body">
+              <div id="detail-summary" class="event-detail">-</div>
+              <div class="detail-actions">
+                <button id="detail-apply" class="primary" type="button">应用改动</button>
+                <button id="detail-revert" type="button">撤销改动</button>
+                <span id="detail-dirty" class="event-detail">未修改</span>
               </div>
+              <div id="detail-config" class="stats"></div>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>LLM / 记忆 / 知识库</h2>
-            <p class="panel-desc">调用后端联调接口，检查 LLM、记忆和知识库相关链路是否真实可用。</p>
-          </div>
-        </div>
-        <div class="panel-content control-stack">
-          <div class="metric-tile">
-            <div class="metric-label">LLM / 检索 / 记忆联调</div>
-            <div class="form-grid">
-              <div class="full"><label for="probe_text">诊断指令</label><textarea id="probe_text" rows="5">请总结当前用户最近一次需求，并回答“诊断链路正常”。</textarea></div>
-              <div class="full hero-actions" style="margin-top:0;">
-                <button id="run_llm" class="primary">执行 LLM 联调</button>
-                <button id="run_memory">执行记忆联调</button>
-                <button id="run_rag">执行知识库联调</button>
-                <button id="run_reload">执行模型联调</button>
-              </div>
+          <section class="console-card">
+            <div class="console-card-head">
+              <h2>运行状态</h2>
+              <span id="runtime-state" class="state-pill">未知</span>
             </div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">联调结果</div>
-            <div id="result" class="control-stack"></div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">最近事件</div>
-            <div id="events" class="control-stack"></div>
-          </div>
-        </div>
-      </section>
+            <div class="console-card-body stats" id="runtime-stats"></div>
+          </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <h2>诊断状态</h2>
-            <p class="panel-desc">查看当前状态、最近事件、队列与会话数，并记录本页发出的诊断动作。</p>
-          </div>
+          <section class="console-card">
+            <div class="console-card-head">
+              <h2>模块健康</h2>
+            </div>
+            <div class="console-card-body" id="health-list"></div>
+          </section>
+
+          <section class="console-card full-width">
+            <div class="console-card-head">
+              <h2>最近事件</h2>
+            </div>
+            <div class="console-card-body" id="events-list"></div>
+          </section>
+
+          <section class="console-card full-width">
+            <div class="console-card-head">
+              <h2>控制台日志</h2>
+            </div>
+            <div class="console-card-body">
+              <pre id="log" class="console"></pre>
+            </div>
+          </section>
         </div>
-        <div class="panel-content control-stack">
-          <div class="metric-grid">
-            <div class="metric-tile"><div class="metric-label">当前状态</div><div class="metric-value" id="state">-</div></div>
-            <div class="metric-tile"><div class="metric-label">最近事件</div><div class="metric-value metric-value-compact" id="lastEvent">-</div></div>
-            <div class="metric-tile"><div class="metric-label">队列深度</div><div class="metric-value" id="queueDepth">0</div></div>
-            <div class="metric-tile"><div class="metric-label">会话数量</div><div class="metric-value" id="sessionCount">0</div></div>
-          </div>
-          <div class="helper-box">
-            <div class="helper-title">使用建议</div>
-            <p>先发探针，再看最近事件有没有进入总线；如果状态不动，再回控制台确认模块状态；如果需要安装或修配置，转到设置页。</p>
-          </div>
-          <div class="mini-note">诊断日志</div>
-          <pre id="log" class="console"></pre>
-        </div>
-      </section>
-    </section>
+      </main>
+    </div>
   </div>
-  <script type="module" src="./panel.js"></script>
+  <script type="module" src="./index.js"></script>
 </body>
 </html>
