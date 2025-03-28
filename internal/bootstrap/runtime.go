@@ -55,6 +55,8 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	if err := providerMgr.EnsureLayout(); err != nil {
 		return nil, err
 	}
+	log.Printf("[build] embedded whisper: %v", audio.EmbeddedWhisperEnabled())
+	log.Printf("[build] embedded sherpa: %v", audio.EmbeddedSherpaEnabled())
 
 	rt := runtime.New()
 	quality := runtime.NewQualityController(
@@ -91,15 +93,24 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 }
 
 func BuildVoicePipeline(cfg *config.Config, mgr *providers.Manager) audio.Pipeline {
+	return BuildVoicePipelineForMode(cfg, mgr, "")
+}
+
+func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overrideMode string) audio.Pipeline {
 	wakeStatus := ResolveWakeConfig(cfg, mgr)
+	effectiveMode := wakeStatus.EffectiveMode
+	if strings.TrimSpace(overrideMode) != "" {
+		effectiveMode = strings.TrimSpace(overrideMode)
+	}
 	pipe := audio.Pipeline{
 		VAD:           audio.NewEnergyVAD(0.02),
 		WakeWord:      chooseWakeWord(cfg, mgr),
 		ASR:           chooseASR(cfg, mgr),
-		WakeMode:      wakeStatus.EffectiveMode,
+		WakeMode:      effectiveMode,
 		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
+		AllowBargeIn:  cfg.Audio.InterruptDuringSpeak,
 	}
-	if !wakeStatus.Enabled || !wakeStatus.Ready {
+	if effectiveMode != audio.WakeModeWakeWordVAD || !wakeStatus.Enabled || !wakeStatus.Ready {
 		pipe.WakeWord = nil
 	}
 	pipe.Preprocessors = choosePreprocessors(cfg)
@@ -144,11 +155,35 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 		modelDir = filepath.Join(mgr.Root(), "wake", "current")
 	}
 	status.ModelDir = modelDir
-	encoder := firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
-	decoder := firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
-	joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
-	tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
-	keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+	encoder := ""
+	decoder := ""
+	joiner := ""
+	tokens := ""
+	keywords := strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath)
+	if mgr != nil {
+		encoder = mgr.FindGlob("wake", "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx")
+		decoder = mgr.FindGlob("wake", "decoder-epoch-*.onnx", "decoder.int8.onnx", "decoder.onnx")
+		joiner = mgr.FindGlob("wake", "joiner-epoch-*.onnx", "joiner.int8.onnx", "joiner.onnx")
+		tokens = mgr.FindFirst("wake", "tokens.txt")
+		if keywords == "" {
+			keywords = mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt")
+		}
+	}
+	if encoder == "" {
+		encoder = firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
+	}
+	if decoder == "" {
+		decoder = firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
+	}
+	if joiner == "" {
+		joiner = firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
+	}
+	if tokens == "" {
+		tokens = firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
+	}
+	if keywords == "" {
+		keywords = firstExistingPath(filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+	}
 	status.KeywordsFile = keywords
 	missing := make([]string, 0, 5)
 	if encoder == "" {
@@ -198,18 +233,41 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		return &audio.UnavailableWakeWord{Reason: "wake provider is empty"}
 	}
 	if provider == "sherpa-onnx" {
+		log.Printf("[wake] embedded sherpa enabled=%v", audio.EmbeddedSherpaEnabled())
 		modelDir := status.ModelDir
-		encoder := firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
-		decoder := firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
-		joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
-		tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
+		encoder := ""
+		decoder := ""
+		joiner := ""
+		tokens := ""
+		if mgr != nil {
+			encoder = mgr.FindGlob("wake", "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx")
+			decoder = mgr.FindGlob("wake", "decoder-epoch-*.onnx", "decoder.int8.onnx", "decoder.onnx")
+			joiner = mgr.FindGlob("wake", "joiner-epoch-*.onnx", "joiner.int8.onnx", "joiner.onnx")
+			tokens = mgr.FindFirst("wake", "tokens.txt")
+		}
+		if encoder == "" {
+			encoder = firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
+		}
+		if decoder == "" {
+			decoder = firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
+		}
+		if joiner == "" {
+			joiner = firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
+		}
+		if tokens == "" {
+			tokens = firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
+		}
 		keywords := status.KeywordsFile
 		if encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
-			log.Printf("[wake] sherpa-onnx assets incomplete")
+			log.Printf("[wake] sherpa-onnx assets incomplete encoder=%v decoder=%v joiner=%v tokens=%v keywords=%v", encoder != "", decoder != "", joiner != "", tokens != "", keywords != "")
 			return &audio.UnavailableWakeWord{Reason: "sherpa-onnx assets incomplete"}
 		}
 		wake := audio.NewSherpaEmbeddedWakeWord(encoder, decoder, joiner, tokens, keywords, cfg.Audio.WakeKeyword)
-		log.Printf("[wake] use embedded sherpa-onnx keyword=%s keywords=%s", cfg.Audio.WakeKeyword, keywords)
+		if _, unavailable := wake.(*audio.UnavailableWakeWord); unavailable {
+			log.Printf("[wake] embedded sherpa constructor returned unavailable keyword=%s keywords=%s", cfg.Audio.WakeKeyword, keywords)
+		} else {
+			log.Printf("[wake] embedded sherpa ready keyword=%s keywords=%s", cfg.Audio.WakeKeyword, keywords)
+		}
 		return wake
 	}
 	log.Printf("[wake] unsupported provider=%s", provider)
@@ -224,7 +282,7 @@ func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
 	if label == "" {
 		label = "speaker"
 	}
-	return []audio.Preprocessor{audio.NewMockAECNS(label)}
+	return []audio.Preprocessor{audio.NewPassthroughAECNS(label)}
 }
 
 func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
@@ -237,6 +295,7 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
 		return asr
 	case "whisper", "whispercpp":
+		log.Printf("[asr] embedded whisper enabled=%v", audio.EmbeddedWhisperEnabled())
 		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
 		if model == "" {
 			log.Printf("[asr] whisper model not configured")
@@ -245,6 +304,8 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		if embedded, err := audio.NewWhisperEmbeddedASR(model, cfg.ASR.Language, cfg.ASR.Threads); err == nil {
 			log.Printf("[asr] use embedded whisper model=%s", model)
 			return embedded
+		} else {
+			log.Printf("[asr] embedded whisper init failed: %v", err)
 		}
 		binary := mgr.ResolveBinary("asr", "", cfg.ASR.BinaryPath, "whisper-cli.exe", "main.exe", "whisper-cli", "main")
 		if binary == "" {

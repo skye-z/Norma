@@ -28,6 +28,12 @@ func (s *PlatformCaptureSource) Close() error {
 	return nil
 }
 
+func (s *PlatformCaptureSource) EnableBackgroundCapture(sessionID string, enabled bool) {
+	_ = s
+	_ = sessionID
+	_ = enabled
+}
+
 type platformPlaybackSink struct{}
 
 func NewPlatformPlaybackSink(b *bus.Bus, sampleRate, channels int, encoding string) (*platformPlaybackSink, error) {

@@ -3,16 +3,23 @@ package runtime
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"norma/internal/metrics"
 	"norma/internal/runtime/bus"
+	"norma/internal/runtime/state"
 )
 
 // AttachLatencyObserver records and logs ASR/LLM/TTS latency metrics.
 func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker, quality *QualityController) {
+	var bargeMarks sync.Map
 	rt.Bus.Subscribe("audio.vad.start", func(evt bus.Event) {
 		tracker.RecordValue("audio.vad.start", 1)
+		if rt.State.Get() == state.Speaking {
+			bargeMarks.Store(evt.SessionID+"|"+evt.TraceID, time.Now())
+			log.Printf("[barge] vad.start session=%s trace=%s", evt.SessionID, evt.TraceID)
+		}
 		if quality != nil {
 			quality.ObservePressure(tracker.Snapshot().ActiveTraces)
 		}
@@ -46,12 +53,44 @@ func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker, quality *Quali
 		tracker.RecordValue("error", 1)
 		tracker.AddAlert(fmt.Sprintf("runtime error session=%s trace=%s", evt.SessionID, evt.TraceID))
 	})
+	rt.Bus.Subscribe("interrupt", func(evt bus.Event) {
+		if start, ok := bargeMarks.Load(evt.SessionID + "|" + evt.TraceID); ok {
+			elapsed := time.Since(start.(time.Time)).Milliseconds()
+			tracker.RecordValue("barge.interrupt_ms", elapsed)
+			log.Printf("[barge] interrupt session=%s trace=%s elapsed_ms=%d", evt.SessionID, evt.TraceID, elapsed)
+		}
+	})
+	rt.Bus.Subscribe("audio.play.flush", func(evt bus.Event) {
+		if start, ok := bargeMarks.Load(evt.SessionID + "|" + evt.TraceID); ok {
+			elapsed := time.Since(start.(time.Time)).Milliseconds()
+			tracker.RecordValue("barge.flush_ms", elapsed)
+			log.Printf("[barge] play.flush session=%s trace=%s elapsed_ms=%d payload=%v", evt.SessionID, evt.TraceID, elapsed, evt.Payload)
+		}
+	})
+	rt.Bus.Subscribe("audio.play.end", func(evt bus.Event) {
+		if start, ok := bargeMarks.Load(evt.SessionID + "|" + evt.TraceID); ok {
+			elapsed := time.Since(start.(time.Time)).Milliseconds()
+			tracker.RecordValue("barge.end_ms", elapsed)
+			log.Printf("[barge] play.end session=%s trace=%s elapsed_ms=%d payload=%v", evt.SessionID, evt.TraceID, elapsed, evt.Payload)
+			bargeMarks.Delete(evt.SessionID + "|" + evt.TraceID)
+		}
+	})
+	rt.Bus.Subscribe("audio.play.wait.complete", func(evt bus.Event) {
+		tracker.RecordValue("audio.play.wait.complete", toInt64Map(evt.Payload, "elapsed_ms"))
+	})
 	rt.Bus.Subscribe("llm.done", func(evt bus.Event) {
 		if lat, ok := tracker.SnapshotAndClear(evt.SessionID, evt.TraceID); ok {
 			log.Printf("[metric] summary session=%s trace=%s asr_to_llm_first_ms=%d asr_to_tts_first_ms=%d",
 				evt.SessionID, evt.TraceID, lat.ASRToLLMFirstTokenMs, lat.ASRToTTSFirstChunkMs)
 		}
 	})
+}
+
+func toInt64Map(v any, key string) int64 {
+	if payload, ok := v.(map[string]any); ok {
+		return toInt64(payload[key])
+	}
+	return 0
 }
 
 func toInt64(v any) int64 {

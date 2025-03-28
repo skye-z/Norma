@@ -96,6 +96,8 @@ type XTTSStreamer struct {
 	stopped bool
 }
 
+func (t *XTTSStreamer) SupportsProsodyHints() bool { return true }
+
 func (t *XTTSStreamer) SampleRate() int { return 24000 }
 
 func (t *XTTSStreamer) Channels() int { return 1 }

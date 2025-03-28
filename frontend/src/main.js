@@ -422,6 +422,7 @@ async function initCompanion() {
     mediaContext: null,
     mediaProcessor: null,
     captureMode: '',
+    sessionMode: '',
     playbackContext: null,
     playbackQueue: Promise.resolve(),
     audioFormat: { sampleRate: 22050, channels: 1, encoding: 'pcm_s16le' },
@@ -934,22 +935,24 @@ async function initCompanion() {
           state.speechRecognition.stop();
         }
         state.captureMode = '';
+        state.sessionMode = '';
         state.sessionID = '';
         state.traceID = '';
       } else {
-        postJSON('/conversation/mic/start').then((started) => {
+        postJSON('/conversation/mic/start', { mode: 'manual' }).then((started) => {
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
           state.captureMode = String(started?.capture || '');
+          state.sessionMode = String(started?.mode || 'manual');
           setMicListening(true);
           if (state.captureMode === 'native') {
             state.useSpeechFallback = false;
-            setStatus('语音输入已启动（桌面原生采集）', 'info');
+            setStatus(state.sessionMode === 'manual' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（桌面原生采集）', 'info');
             return;
           }
           startMediaCapture().then(() => {
             state.useSpeechFallback = false;
-            setStatus('语音输入已启动（真实麦克风）', 'info');
+            setStatus(state.sessionMode === 'manual' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（真实麦克风）', 'info');
           }).catch(async () => {
             if (!state.speechRecognition) throw new Error('native capture unavailable and no browser fallback recognizer');
             state.useSpeechFallback = true;
@@ -959,9 +962,10 @@ async function initCompanion() {
         }).catch(async () => {
           if (!state.speechRecognition) throw new Error('conversation start failed and no browser fallback recognizer');
           state.useSpeechFallback = true;
-          const started = await postJSON('/conversation/mic/start').catch(() => ({}));
+          const started = await postJSON('/conversation/mic/start', { mode: 'manual' }).catch(() => ({}));
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
+          state.sessionMode = String(started?.mode || 'manual');
           state.speechRecognition.start();
         });
       }

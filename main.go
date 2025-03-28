@@ -48,6 +48,8 @@ func main() {
 	if err := providerMgr.EnsureLayout(); err != nil {
 		log.Printf("[providers] ensure layout failed: %v", err)
 	}
+	log.Printf("[build] embedded whisper: %v", audio.EmbeddedWhisperEnabled())
+	log.Printf("[build] embedded sherpa: %v", audio.EmbeddedSherpaEnabled())
 
 	logCloser, err := ops.SetupLogRouting(cfg.App.LogDir)
 	if err != nil {

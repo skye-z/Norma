@@ -123,3 +123,5 @@ func (m *MockTTS) SampleRate() int { return 22050 }
 func (m *MockTTS) Channels() int { return 1 }
 
 func (m *MockTTS) Encoding() string { return "pcm_s16le" }
+
+func (m *MockTTS) SupportsProsodyHints() bool { return false }

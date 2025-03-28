@@ -95,8 +95,14 @@ func (m *Manager) ResolveFile(kind, version, explicit string, candidates ...stri
 }
 
 func (m *Manager) FindFirst(kind string, candidates ...string) string {
+	root := m.currentDir(kind)
 	for _, candidate := range candidates {
-		if p := cleanIfExists(filepath.Join(m.currentDir(kind), candidate)); p != "" {
+		if p := cleanIfExists(filepath.Join(root, candidate)); p != "" {
+			return p
+		}
+		if p := findRecursive(root, func(path string) bool {
+			return strings.EqualFold(filepath.Base(path), candidate)
+		}); p != "" {
 			return p
 		}
 	}
@@ -104,16 +110,23 @@ func (m *Manager) FindFirst(kind string, candidates ...string) string {
 }
 
 func (m *Manager) FindGlob(kind string, patterns ...string) string {
+	root := m.currentDir(kind)
 	for _, pattern := range patterns {
 		pattern = strings.TrimSpace(pattern)
 		if pattern == "" {
 			continue
 		}
-		matches, _ := filepath.Glob(filepath.Join(m.currentDir(kind), pattern))
+		matches, _ := filepath.Glob(filepath.Join(root, pattern))
 		for _, match := range matches {
 			if p := cleanIfExists(match); p != "" {
 				return p
 			}
+		}
+		if p := findRecursive(root, func(path string) bool {
+			ok, _ := filepath.Match(pattern, filepath.Base(path))
+			return ok
+		}); p != "" {
+			return p
 		}
 	}
 	return ""
@@ -193,4 +206,22 @@ func cleanIfExists(path string) string {
 		return ""
 	}
 	return filepath.Clean(path)
+}
+
+func findRecursive(root string, match func(path string) bool) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	var found string
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() || found != "" {
+			return nil
+		}
+		if match(path) {
+			found = cleanIfExists(path)
+		}
+		return nil
+	})
+	return found
 }

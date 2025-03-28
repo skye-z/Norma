@@ -49,6 +49,14 @@ type AudioFormatProvider interface {
 	Encoding() string
 }
 
+type ProsodyHintProvider interface {
+	SupportsProsodyHints() bool
+}
+
+type BackgroundCaptureController interface {
+	EnableBackgroundCapture(sessionID string, enabled bool)
+}
+
 // Pipeline coordinates voice-related components.
 type Pipeline struct {
 	VAD           VAD
@@ -58,6 +66,7 @@ type Pipeline struct {
 	Preprocessors []Preprocessor
 	WakeMode      string
 	SilenceFrames int
+	AllowBargeIn  bool
 }
 
 type UnavailableASR struct {

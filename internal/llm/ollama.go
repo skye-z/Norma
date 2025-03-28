@@ -168,6 +168,7 @@ func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(s
 
 func buildPrompt(req Request) string {
 	var sb strings.Builder
+	sb.WriteString("你是 Norma，一个中文桌面 AI 助手。回答要求：先给结论，再给 2-4 句自然解释；语气像靠谱同伴，不要官腔，不要空话；尽量口语化、简洁、有节奏。必要时用'先说结论'、'具体来说'、'如果你现在就做'这类过渡。\n")
 	if len(req.Context) > 0 {
 		sb.WriteString("你可参考以下本地检索上下文回答。\n")
 		for i, c := range req.Context {

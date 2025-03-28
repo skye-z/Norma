@@ -2,6 +2,7 @@ package companion
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -15,9 +16,26 @@ type EmotionSpec struct {
 }
 
 type ReplyPlan struct {
-	Raw        string   `json:"raw"`
-	Conclusion string   `json:"conclusion"`
-	Segments   []string `json:"segments"`
+	Raw        string         `json:"raw"`
+	Styled     string         `json:"styled"`
+	Conclusion string         `json:"conclusion"`
+	Segments   []string       `json:"segments"`
+	Delivery   []DeliverySpec `json:"delivery,omitempty"`
+}
+
+type DeliverySpec struct {
+	Text      string  `json:"text"`
+	Phase     string  `json:"phase"`
+	PauseMs   int     `json:"pause_ms"`
+	Emphasis  string  `json:"emphasis"`
+	Energy    float64 `json:"energy"`
+	Emotion   string  `json:"emotion"`
+	StyleHint string  `json:"style_hint"`
+}
+
+type PersonaRuntimeConfig struct {
+	KeepMicCaptureAlive bool `json:"keep_mic_capture_alive"`
+	NeedRealAECNS       bool `json:"need_real_aec_ns"`
 }
 
 type VisemeFrame struct {
@@ -45,7 +63,95 @@ func PlanReply(text string) ReplyPlan {
 	if len(segments) == 0 {
 		segments = []string{cleaned}
 	}
-	return ReplyPlan{Raw: cleaned, Conclusion: segments[0], Segments: segments}
+	return ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: segments[0], Segments: segments}
+}
+
+func RewritePersona(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "先给结论：我现在没有可用内容。"
+	}
+	text = strings.ReplaceAll(text, "首先，", "先给结论，")
+	text = strings.ReplaceAll(text, "总之", "一句话总结")
+	if !containsAny(text, "先给结论", "一句话总结", "直接说结论") {
+		parts := splitRE.Split(text, -1)
+		first := strings.TrimSpace(parts[0])
+		if first != "" {
+			remainder := strings.TrimSpace(strings.TrimPrefix(text, first))
+			remainder = strings.TrimLeft(remainder, "。！？!?；;，, ")
+			text = "先给结论：" + first
+			if remainder != "" {
+				text += "。" + remainder
+			}
+		}
+	}
+	text = strings.ReplaceAll(text, "你可以", "你可以直接")
+	text = strings.ReplaceAll(text, "建议", "我建议")
+	return strings.TrimSpace(text)
+}
+
+func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
+	out := make([]DeliverySpec, 0, len(plan.Segments))
+	for index, segment := range plan.Segments {
+		phase := "supplement"
+		pauseMs := 180
+		emphasis := "medium"
+		energy := emotion.Intensity
+		styleHint := "steady"
+		if index == 0 {
+			phase = "conclusion"
+			pauseMs = 260
+			emphasis = "strong"
+			energy += 0.08
+			styleHint = "lead_with_conclusion"
+		} else if len(segment) > 24 {
+			pauseMs = 220
+			styleHint = "paced"
+		}
+		if containsAny(segment, "注意", "风险", "不要", "必须") {
+			emphasis = "strong"
+			styleHint = "warning"
+		}
+		if energy < 0.22 {
+			energy = 0.22
+		}
+		if energy > 1 {
+			energy = 1
+		}
+		out = append(out, DeliverySpec{Text: segment, Phase: phase, PauseMs: pauseMs, Emphasis: emphasis, Energy: energy, Emotion: emotion.Emotion, StyleHint: styleHint})
+	}
+	return out
+}
+
+func ApplyDeliveryStyle(text string, spec DeliverySpec, supportsProsody bool) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return text
+	}
+	if !supportsProsody {
+		return text
+	}
+	prefix := ""
+	suffix := ""
+	if spec.Emphasis == "strong" {
+		prefix += "<emphasis level=\"strong\">"
+		suffix = "</emphasis>" + suffix
+	}
+	if spec.PauseMs > 0 {
+		suffix += "<break time=\"" + strconv.Itoa(spec.PauseMs) + "ms\"/>"
+	}
+	return prefix + text + suffix
+}
+
+func BuildPersonaRuntimeConfig(delivery []DeliverySpec, interruptDuringSpeak bool) PersonaRuntimeConfig {
+	keepAlive := interruptDuringSpeak
+	needAECNS := false
+	for _, item := range delivery {
+		if item.Emphasis == "strong" || item.StyleHint == "warning" {
+			needAECNS = true
+		}
+	}
+	return PersonaRuntimeConfig{KeepMicCaptureAlive: keepAlive, NeedRealAECNS: needAECNS}
 }
 
 func AnalyzeEmotion(text string) EmotionSpec {

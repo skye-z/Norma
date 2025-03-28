@@ -75,3 +75,10 @@ func (r *RoutedTTS) selected() TTS {
 	}
 	return r.Fallback
 }
+
+func (r *RoutedTTS) SupportsProsodyHints() bool {
+	if provider, ok := r.selected().(ProsodyHintProvider); ok {
+		return provider.SupportsProsodyHints()
+	}
+	return false
+}

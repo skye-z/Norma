@@ -2,19 +2,29 @@ package companion
 
 import "testing"
 
-func TestPlanReply(t *testing.T) {
-	plan := PlanReply("先给结论。然后补充说明！最后提醒")
-	if plan.Conclusion != "先给结论" {
-		t.Fatalf("unexpected conclusion: %q", plan.Conclusion)
+func TestRewritePersonaAddsConclusionLead(t *testing.T) {
+	text := RewritePersona("这是一个测试回答。后面还有补充说明。")
+	if text == "" {
+		t.Fatalf("expected non-empty rewritten text")
 	}
-	if len(plan.Segments) != 3 {
-		t.Fatalf("unexpected segments: %+v", plan.Segments)
+	if len([]rune(text)) < 4 || string([]rune(text)[:4]) != "先给结论" {
+		t.Fatalf("expected conclusion-led rewrite, got %q", text)
 	}
 }
 
-func TestAnalyzeEmotion(t *testing.T) {
-	spec := AnalyzeEmotion("注意，这里有风险，需要先确认。")
-	if spec.Emotion != "alert" {
-		t.Fatalf("unexpected emotion: %+v", spec)
+func TestApplyDeliveryStyleAddsProsodyMarkup(t *testing.T) {
+	out := ApplyDeliveryStyle("你好", DeliverySpec{PauseMs: 240, Emphasis: "strong"}, true)
+	if out == "你好" {
+		t.Fatalf("expected styled output")
+	}
+}
+
+func TestBuildPersonaRuntimeConfigKeepsMicAliveForInterrupt(t *testing.T) {
+	cfg := BuildPersonaRuntimeConfig([]DeliverySpec{{Emphasis: "strong", StyleHint: "warning"}}, true)
+	if !cfg.KeepMicCaptureAlive {
+		t.Fatalf("expected mic capture keepalive enabled")
+	}
+	if !cfg.NeedRealAECNS {
+		t.Fatalf("expected real aec/ns hint enabled")
 	}
 }

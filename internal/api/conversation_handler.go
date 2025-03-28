@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ type ConversationHandler struct {
 	streams    map[string]*audio.PushFrameSource
 	sources    map[string]audio.FrameSource
 	capture    map[string]string
+	modes      map[string]string
 
 	mu     sync.RWMutex
 	active bool
@@ -38,6 +40,7 @@ type conversationReq struct {
 	SessionID string `json:"session_id"`
 	TraceID   string `json:"trace_id"`
 	Reason    string `json:"reason"`
+	Mode      string `json:"mode"`
 }
 
 type conversationState struct {
@@ -46,12 +49,13 @@ type conversationState struct {
 	TraceID   string `json:"trace_id"`
 	State     string `json:"state,omitempty"`
 	Capture   string `json:"capture,omitempty"`
+	Mode      string `json:"mode,omitempty"`
 }
 
 var conversationSeq uint64
 
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
-	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string)}
+	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string), modes: make(map[string]string)}
 }
 
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
@@ -101,18 +105,30 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 		delete(h.sources, sid)
 	}
 	delete(h.capture, sid)
+	delete(h.modes, sid)
 	ctx, cancel := context.WithCancel(context.Background())
 	var source audio.FrameSource
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = "manual"
+	}
 	captureMode := "native"
-	platformSource, sourceErr := audio.NewPlatformCaptureSource(cfg.Audio.MicSampleRate, cfg.Audio.MicChannelCount)
-	if sourceErr != nil {
-		h.bus.Publish(bus.Event{Name: "error", SessionID: sid, TraceID: tid, Payload: map[string]string{"code": "mic_capture_unavailable", "message": sourceErr.Error()}})
+	if strings.EqualFold(mode, "manual") {
 		stream := audio.NewPushFrameSource(64)
 		h.streams[sid] = stream
 		source = stream
 		captureMode = "push"
 	} else {
-		source = platformSource
+		platformSource, sourceErr := audio.NewPlatformCaptureSource(cfg.Audio.MicSampleRate, cfg.Audio.MicChannelCount)
+		if sourceErr != nil {
+			h.bus.Publish(bus.Event{Name: "error", SessionID: sid, TraceID: tid, Payload: map[string]string{"code": "mic_capture_unavailable", "message": sourceErr.Error()}})
+			stream := audio.NewPushFrameSource(64)
+			h.streams[sid] = stream
+			source = stream
+			captureMode = "push"
+		} else {
+			source = platformSource
+		}
 	}
 	h.active = true
 	h.sid = sid
@@ -120,11 +136,14 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	h.cancel = cancel
 	h.sources[sid] = source
 	h.capture[sid] = captureMode
+	h.modes[sid] = mode
 	h.mu.Unlock()
 
-	go h.runMicPipeline(ctx, sid, tid, source)
+	go h.runMicPipeline(ctx, sid, tid, source, mode)
+	log.Printf("[conversation] mic start session=%s trace=%s mode=%s capture=%s", sid, tid, mode, captureMode)
 	state := h.snapshot()
 	state.Capture = captureMode
+	state.Mode = mode
 	writeJSON(w, http.StatusOK, state)
 }
 
@@ -156,6 +175,7 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 		delete(h.sources, sid)
 	}
 	delete(h.capture, sid)
+	delete(h.modes, sid)
 	h.active = false
 	h.mu.Unlock()
 
@@ -177,6 +197,7 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 		reason = "mic_interrupt"
 	}
 	h.bus.Publish(bus.Event{Name: "interrupt", SessionID: sid, TraceID: tid, Payload: reason})
+	log.Printf("[conversation] mic interrupt session=%s trace=%s reason=%s capture=%s mode=%s", sid, tid, reason, h.capture[sid], h.modes[sid])
 
 	h.mu.Lock()
 	if h.cancel != nil {
@@ -195,6 +216,7 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	if h.capture[sid] == "push" {
 		delete(h.capture, sid)
 	}
+	delete(h.modes, sid)
 	h.active = false
 	h.mu.Unlock()
 
@@ -290,6 +312,7 @@ func (h *ConversationHandler) snapshot() conversationState {
 	state := conversationState{Active: h.active, SessionID: h.sid, TraceID: h.tid}
 	if h.sid != "" {
 		state.Capture = h.capture[h.sid]
+		state.Mode = h.modes[h.sid]
 	}
 	h.mu.RUnlock()
 	if h.inspector != nil {
@@ -323,7 +346,7 @@ func (h *ConversationHandler) newID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixMilli(), seq)
 }
 
-func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, traceID string, source audio.FrameSource) {
+func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, traceID string, source audio.FrameSource, mode string) {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "config_load_failed", "message": err.Error()}})
@@ -335,7 +358,11 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		providerMgr = providers.NewManager(cfg.Providers.Root)
 		_ = providerMgr.EnsureLayout()
 	}
-	pipe := bootstrap.BuildVoicePipeline(cfg, providerMgr)
+	pipeMode := ""
+	if strings.EqualFold(strings.TrimSpace(mode), "manual") {
+		pipeMode = audio.WakeModeVADOnly
+	}
+	pipe := bootstrap.BuildVoicePipelineForMode(cfg, providerMgr, pipeMode)
 	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)
 	if wakeStatus.Enabled && !wakeStatus.Ready {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "wake_word_unavailable", "message": wakeStatus.Reason}})
@@ -376,6 +403,7 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		delete(h.streams, sessionID)
 		delete(h.sources, sessionID)
 		delete(h.capture, sessionID)
+		delete(h.modes, sessionID)
 	}
 	h.mu.Unlock()
 

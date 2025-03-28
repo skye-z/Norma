@@ -26,6 +26,8 @@ func (p *PiperTTS) Channels() int { return 1 }
 
 func (p *PiperTTS) Encoding() string { return "pcm_s16le" }
 
+func (p *PiperTTS) SupportsProsodyHints() bool { return false }
+
 func NewPiperTTS(binaryPath, modelPath, speaker string) *PiperTTS {
 	return &PiperTTS{
 		BinaryPath: strings.TrimSpace(binaryPath),

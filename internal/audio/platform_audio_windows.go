@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"norma/internal/runtime/bus"
@@ -80,6 +81,8 @@ type PlatformCaptureSource struct {
 	sampleRate  int
 	channels    int
 	frameLength int
+	bgCapture   atomic.Bool
+	bgWindow    atomic.Int64
 }
 
 type platformPlaybackSink struct {
@@ -98,6 +101,7 @@ type platformPlaybackSink struct {
 	ended      bool
 	done       chan struct{}
 	buffers    map[*waveHdr][]byte
+	flushStart time.Time
 }
 
 func NewPlatformCaptureSource(sampleRate, channels int) (*PlatformCaptureSource, error) {
@@ -107,9 +111,9 @@ func NewPlatformCaptureSource(sampleRate, channels int) (*PlatformCaptureSource,
 	if channels <= 0 {
 		channels = 1
 	}
-	frameLength := sampleRate / 25
+	frameLength := sampleRate / 50
 	if frameLength <= 0 {
-		frameLength = 640
+		frameLength = 320
 	}
 	s := &PlatformCaptureSource{
 		id:          nativeSeq.Add(1),
@@ -119,6 +123,7 @@ func NewPlatformCaptureSource(sampleRate, channels int) (*PlatformCaptureSource,
 		channels:    channels,
 		frameLength: frameLength,
 	}
+	s.bgWindow.Store(700)
 	format := waveFormatEx{
 		FormatTag:      waveFormatPCM,
 		Channels:       uint16(channels),
@@ -168,6 +173,16 @@ func (s *PlatformCaptureSource) Next(ctx context.Context) ([]float32, error) {
 	}
 }
 
+func (s *PlatformCaptureSource) EnableBackgroundCapture(sessionID string, enabled bool) {
+	_ = sessionID
+	s.bgCapture.Store(enabled)
+	if enabled {
+		s.bgWindow.Store(time.Now().Add(700 * time.Millisecond).UnixMilli())
+	} else {
+		s.bgWindow.Store(0)
+	}
+}
+
 func (s *PlatformCaptureSource) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.done)
@@ -200,6 +215,12 @@ func captureWaveCallback(_ uintptr, msg uint32, instance, param1, _ uintptr) uin
 		return 0
 	}
 	frame := pcmBytesToFloat32(unsafe.Slice(hdr.Data, int(hdr.BytesRecorded)), s.channels)
+	if s.bgCapture.Load() {
+		if until := s.bgWindow.Load(); until > 0 && time.Now().UnixMilli() > until {
+			s.bgCapture.Store(false)
+			s.bgWindow.Store(0)
+		}
+	}
 	select {
 	case <-s.done:
 		return 0
@@ -220,6 +241,9 @@ func NewPlatformPlaybackSink(b *bus.Bus, sampleRate, channels int, encoding stri
 	}
 	if encoding == "" {
 		encoding = "pcm_s16le"
+	}
+	if sampleRate > 24000 {
+		sampleRate = 24000
 	}
 	s := &platformPlaybackSink{
 		id:         nativeSeq.Add(1),
@@ -264,6 +288,10 @@ func (s *platformPlaybackSink) Queue(sessionID, traceID string, chunk []byte) er
 			s.bus.Publish(bus.Event{Name: "audio.play.start", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "waveOut", "sample_rate": s.sampleRate, "channels": s.channels, "encoding": s.encoding}})
 		}
 	}
+	s.flushStart = time.Now()
+	if len(chunk) > 4096 {
+		chunk = chunk[:4096]
+	}
 	data := make([]byte, len(chunk))
 	copy(data, chunk)
 	hdr := &waveHdr{Data: &data[0], BufferLength: uint32(len(data)), User: uintptr(len(data))}
@@ -304,6 +332,9 @@ func (s *platformPlaybackSink) Stop(sessionID, traceID, reason string) {
 	}
 	s.pending = 0
 	s.complete = true
+	if s.bus != nil {
+		s.bus.Publish(bus.Event{Name: "audio.play.flush", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "waveOut", "reason": reason, "elapsed_ms": time.Since(s.flushStart).Milliseconds()}})
+	}
 	s.finishLocked(traceID, reason)
 }
 
@@ -374,7 +405,7 @@ func (s *platformPlaybackSink) finishLocked(traceID, reason string) {
 	}
 	s.ended = true
 	if s.bus != nil {
-		s.bus.Publish(bus.Event{Name: "audio.play.end", SessionID: s.sessionID, TraceID: traceID, Payload: map[string]any{"source": "waveOut", "reason": reason}})
+		s.bus.Publish(bus.Event{Name: "audio.play.end", SessionID: s.sessionID, TraceID: traceID, Payload: map[string]any{"source": "waveOut", "reason": reason, "pending": s.pending}})
 	}
 	close(s.done)
 }

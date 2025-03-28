@@ -1,7 +1,9 @@
 param(
   [string]$Version = "dev",
   [string]$OutDir = "dist",
-  [string[]]$Targets = @("windows/amd64")
+  [string[]]$Targets = @("windows/amd64"),
+  [switch]$Embedded = $false,
+  [string]$EmbeddedTags = "whisper_embedded,sherpa_embedded"
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +47,11 @@ foreach ($t in $resolvedTargets) {
   Write-Host "Building $($t.GOOS)-$($t.GOARCH) ..."
 
 	if ($t.GOOS -eq 'windows') {
+		if ($Embedded) {
+			$env:CGO_ENABLED = "1"
+			$env:GOFLAGS = "-tags=$EmbeddedTags"
+			Write-Host "Embedded Wails build tags: $EmbeddedTags"
+		}
 		& wails build -clean -m -nopackage -trimpath -platform windows/amd64 -ldflags $ldflags -o Norma
 		if ($LASTEXITCODE -ne 0) { throw "wails build failed for windows-amd64" }
 		$wailsBinary = if (Test-Path 'build/bin/Norma.exe') { 'build/bin/Norma.exe' } else { 'build/bin/Norma' }
@@ -84,6 +91,8 @@ foreach ($t in $resolvedTargets) {
 }
 Remove-Item Env:GOOS -ErrorAction SilentlyContinue
 Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+Remove-Item Env:GOFLAGS -ErrorAction SilentlyContinue
+Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
 Write-Host "Build complete. Output => $OutDir"
 powershell -ExecutionPolicy Bypass -File scripts/write-release-manifest.ps1 -OutDir $OutDir -Version $Version
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

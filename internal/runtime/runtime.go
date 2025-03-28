@@ -26,6 +26,7 @@ func New() *Runtime {
 
 	rt.Bus.Subscribe("audio.vad.start", func(evt bus.Event) {
 		if rt.State.Get() == state.Speaking {
+			log.Printf("[runtime] barge-in trigger while speaking session=%s trace=%s", evt.SessionID, evt.TraceID)
 			rt.Bus.Publish(bus.Event{Name: "interrupt", SessionID: evt.SessionID, TraceID: evt.TraceID, Payload: "barge_in"})
 		}
 		rt.State.Set(state.Listening)

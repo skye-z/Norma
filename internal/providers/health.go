@@ -1,6 +1,10 @@
 package providers
 
-import "strings"
+import (
+	"strings"
+
+	"norma/internal/audio"
+)
 
 type Health struct {
 	Status   string            `json:"status"`
@@ -19,9 +23,7 @@ func BuildHealth(mgr *Manager) map[string]Health {
 			"tokens":   mgr.FindFirst("wake", "tokens.txt"),
 			"keywords": mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt"),
 		}),
-		"asr": classifyHealth([]string{"model"}, map[string]string{
-			"model": mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"),
-		}),
+		"asr": classifyHealth(asrRequired(mgr), asrFound(mgr)),
 		"tts": classifyHealth([]string{"binary", "voice_model", "voice_config"}, map[string]string{
 			"binary":       mgr.FindFirst("tts", "piper.exe", "piper"),
 			"voice_model":  mgr.FindGlob("tts", "*.onnx"),
@@ -33,6 +35,25 @@ func BuildHealth(mgr *Manager) map[string]Health {
 		"embedding": classifyHealth([]string{"ollama"}, map[string]string{
 			"ollama": mgr.FindFirst("llm", "ollama.exe", "ollama"),
 		}),
+	}
+}
+
+func asrRequired(mgr *Manager) []string {
+	_ = mgr
+	return []string{"model", "runtime"}
+}
+
+func asrFound(mgr *Manager) map[string]string {
+	model := mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
+	runtimePath := mgr.FindFirst("asr", "whisper-cli.exe", "main.exe", "whisper-cli", "main")
+	if runtimePath == "" && strings.TrimSpace(model) != "" {
+		if _, err := audio.NewWhisperEmbeddedASR(model, "zh", 4); err == nil {
+			runtimePath = "embedded:whisper"
+		}
+	}
+	return map[string]string{
+		"model":   model,
+		"runtime": runtimePath,
 	}
 }
 

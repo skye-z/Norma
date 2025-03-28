@@ -99,8 +99,11 @@ func TestProviderStatusHealthGrading(t *testing.T) {
 	if err := json.Unmarshal(statusRec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if out.Health["asr"].Status != "ready" {
-		t.Fatalf("expected asr ready, got %+v", out.Health["asr"])
+	if out.Health["asr"].Status != "partial" {
+		t.Fatalf("expected asr partial without runtime, got %+v", out.Health["asr"])
+	}
+	if !contains(out.Health["asr"].Missing, "runtime") {
+		t.Fatalf("expected asr runtime missing, got %+v", out.Health["asr"])
 	}
 	if out.Health["tts"].Status != "partial" {
 		t.Fatalf("expected tts partial, got %+v", out.Health["tts"])

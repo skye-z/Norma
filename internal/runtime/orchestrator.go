@@ -70,6 +70,11 @@ func NewOrchestratorWithPlayback(
 		cancels:   make(map[string]context.CancelFunc),
 	}
 	o.bind()
+	o.rt.Bus.Subscribe("assistant.runtime.hints", func(evt bus.Event) {
+		if payload, ok := evt.Payload.(companion.PersonaRuntimeConfig); ok && payload.KeepMicCaptureAlive {
+			log.Printf("[orchestrator] keep mic capture alive requested session=%s trace=%s", evt.SessionID, evt.TraceID)
+		}
+	})
 	return o
 }
 
@@ -139,13 +144,18 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	if answer == "" {
 		answer = "抱歉，我现在没有可用回答。"
 	}
+	answer = companion.RewritePersona(answer)
 
 	plan := companion.PlanReply(answer)
 	if len(plan.Segments) == 0 {
 		plan = companion.PlanReply("先给结论：当前没有可播报内容。")
 	}
 	emotion := companion.AnalyzeEmotion(answer)
+	plan.Delivery = companion.BuildDeliveryPlan(plan, emotion)
+	plan.Styled = answer
+	runtimeHints := companion.BuildPersonaRuntimeConfig(plan.Delivery, true)
 	o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.plan", SessionID: sessionID, TraceID: traceID, Payload: plan})
+	o.rt.Bus.Publish(bus.Event{Name: "assistant.runtime.hints", SessionID: sessionID, TraceID: traceID, Payload: runtimeHints})
 	o.rt.Bus.Publish(bus.Event{Name: "live2d.emotion", SessionID: sessionID, TraceID: traceID, Payload: emotion})
 
 	for index, segment := range plan.Segments {
@@ -156,13 +166,20 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		if index == 0 {
 			phase = "conclusion"
 		}
+		delivery := companion.DeliverySpec{Text: segment, Phase: phase, PauseMs: 180, Emphasis: "medium", Energy: emotion.Intensity, Emotion: emotion.Emotion, StyleHint: "steady"}
+		if index < len(plan.Delivery) {
+			delivery = plan.Delivery[index]
+		}
+		styledSegment := companion.ApplyDeliveryStyle(segment, delivery, supportsProsodyHints(o.tts))
 		o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.segment", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
-			"index": index,
-			"phase": phase,
-			"text":  segment,
+			"index":       index,
+			"phase":       phase,
+			"text":        segment,
+			"styled_text": styledSegment,
+			"delivery":    delivery,
 		}})
 		o.emitVisemes(ctx, sessionID, traceID, segment)
-		if err := o.tts.Stream(ctx, segment, func(chunk []byte) {
+		if err := o.tts.Stream(ctx, styledSegment, func(chunk []byte) {
 			if o.playback != nil {
 				if err := o.playback.Queue(sessionID, traceID, chunk); err != nil {
 					log.Printf("[orchestrator] playback queue error: %v", err)
@@ -183,6 +200,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 				"sample_rate":   sampleRate,
 				"channels":      channels,
 				"encoding":      encoding,
+				"delivery":      delivery,
 			}})
 		}); err != nil {
 			log.Printf("[orchestrator] tts stream error: %v", err)
@@ -191,10 +209,12 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		}
 	}
 	if o.playback != nil {
+		start := time.Now()
 		o.playback.Complete(sessionID, traceID)
 		if err := o.playback.Wait(ctx, sessionID); err != nil && err != context.Canceled {
 			log.Printf("[orchestrator] playback wait error: %v", err)
 		}
+		o.rt.Bus.Publish(bus.Event{Name: "audio.play.wait.complete", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"elapsed_ms": time.Since(start).Milliseconds()}})
 	}
 	o.rt.Bus.Publish(bus.Event{Name: "tts.stream.done", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "orchestrator", "reason": "done"}})
 	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
@@ -261,4 +281,11 @@ func encodeBase64(data []byte) string {
 		return ""
 	}
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+func supportsProsodyHints(tts audio.TTS) bool {
+	if provider, ok := tts.(audio.ProsodyHintProvider); ok {
+		return provider.SupportsProsodyHints()
+	}
+	return false
 }
