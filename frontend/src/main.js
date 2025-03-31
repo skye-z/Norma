@@ -3,10 +3,31 @@ import * as PIXI from 'pixi.js';
 
 window.PIXI = PIXI;
 
-const apiBase = window.location.origin && window.location.origin.startsWith('http')
+let apiBase = window.location.origin && window.location.origin.startsWith('http')
   ? window.location.origin
   : 'http://127.0.0.1:8090';
+const fallbackApiBase = 'http://127.0.0.1:8090';
+
+async function detectAPIBase() {
+  const candidates = [apiBase, fallbackApiBase].filter((value, index, arr) => value && arr.indexOf(value) === index);
+  for (const candidate of candidates) {
+    try {
+      const resp = await fetch(`${candidate}/healthz`, { cache: 'no-store' });
+      if (!resp.ok) continue;
+      const ctype = String(resp.headers.get('content-type') || '').toLowerCase();
+      if (!ctype.includes('application/json')) continue;
+      const data = await resp.json().catch(() => null);
+      if (data && typeof data === 'object') return candidate;
+    } catch (_) {}
+  }
+  return fallbackApiBase;
+}
 async function resolveModelMeta() {
+  let localPreferred = '';
+  try {
+    localPreferred = String(localStorage.getItem('norma.debug.model_url') || '').trim();
+  } catch (_) {}
+
   const resp = await fetch(`${apiBase}/runtime/model/resolve`, { cache: 'no-store' });
   if (!resp.ok) {
     throw new Error(`/runtime/model/resolve -> ${resp.status}`);
@@ -15,14 +36,39 @@ async function resolveModelMeta() {
   if (!data?.ok || typeof data.model_url !== 'string' || !data.model_url.trim()) {
     throw new Error('runtime/model/resolve 返回了无效模型路径');
   }
-  if (typeof data.core_url !== 'string' || !data.core_url.trim()) {
-    throw new Error('runtime/model/resolve 未返回 Cubism Core 路径');
+  const modelURL = localPreferred || `${apiBase}${data.model_url}`;
+  let coreURL = typeof data.core_url === 'string' && data.core_url.trim()
+    ? `${apiBase}${data.core_url}`
+    : '';
+
+  if (!coreURL) {
+    const modelPath = String(data.model_url || '');
+    const normalized = modelPath.replace(/\\/g, '/');
+    const baseDir = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : normalized;
+    coreURL = `${apiBase}${baseDir}/live2dcubismcore.min.js`;
   }
+
   return {
-    modelURL: `${apiBase}${data.model_url}`,
-    coreURL: `${apiBase}${data.core_url}`,
+    modelURL,
+    coreURL,
     modelName: String(data.model_name || '')
   };
+}
+
+function normalizeModelURL(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (raw.startsWith('/')) return `${apiBase}${raw}`;
+  return `${apiBase}/${raw}`;
+}
+
+function siblingCoreURL(modelURL) {
+  const url = normalizeModelURL(modelURL);
+  if (!url) return '';
+  const idx = url.lastIndexOf('/');
+  if (idx <= 0) return '';
+  return `${url.slice(0, idx)}/live2dcubismcore.min.js`;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -639,12 +685,13 @@ async function initCompanion() {
       if (Number.isFinite(y)) state.targetY = clamp(y, -1, 1);
     }));
 
-    state.eventSources.push(createRuntimeEventSource('live2d.reload', async () => {
-      await reload();
+    state.eventSources.push(createRuntimeEventSource('live2d.reload', async (payload) => {
+      const preferredURL = normalizeModelURL(payload?.model_url || payload?.url || '');
+      await reload(preferredURL);
     }));
   }
 
-  async function loadModel() {
+  async function loadModel(preferredModelURL = '') {
     setStatus('正在检查 API 服务...', 'info');
     const apiReady = await waitForApiReady(4000);
     if (!apiReady) throw new Error('api server is not ready');
@@ -659,9 +706,11 @@ async function initCompanion() {
     }
     setStatus('API 已就绪，正在解析模型目录...', 'info');
     const modelMeta = await resolveModelMeta();
+    const modelURL = normalizeModelURL(preferredModelURL) || modelMeta.modelURL;
+    const coreURL = modelMeta.coreURL || siblingCoreURL(modelURL);
 
     setStatus(`API 已就绪，开始加载模型（${modelMeta.modelName || '默认'}）...`, 'info');
-    await ensureCore(modelMeta.coreURL);
+    await ensureCore(coreURL);
     if (!state.Live2DModel) {
       const mod = await import('pixi-live2d-display/cubism4');
       state.Live2DModel = mod.Live2DModel;
@@ -679,7 +728,7 @@ async function initCompanion() {
     });
     stage.appendChild(state.app.view);
 
-    state.model = await state.Live2DModel.from(modelMeta.modelURL, { autoInteract: false });
+    state.model = await state.Live2DModel.from(modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
     installGazeBridge();
 
@@ -731,10 +780,10 @@ async function initCompanion() {
     });
   }
 
-  async function reload() {
+  async function reload(preferredModelURL = '') {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
-        await loadModel();
+        await loadModel(preferredModelURL);
         return;
       } catch (err) {
         console.error(`[live2d] init failed (${attempt}/3)`, err);
@@ -753,8 +802,9 @@ async function initCompanion() {
 }
 
 async function boot() {
+  apiBase = await detectAPIBase();
   if (mode === 'debug') {
-    window.location.replace('http://127.0.0.1:8090/static/debug/index.html');
+    window.location.replace(`${apiBase}/static/debug/index.html`);
     return;
   }
   if (mode === 'settings') {

@@ -1,6 +1,22 @@
-const api = window.location.origin && window.location.origin.startsWith('http')
+let api = window.location.origin && window.location.origin.startsWith('http')
   ? window.location.origin
   : 'http://127.0.0.1:8090';
+const fallbackApi = 'http://127.0.0.1:8090';
+
+async function detectAPIBase() {
+  const candidates = [api, fallbackApi].filter((value, index, arr) => value && arr.indexOf(value) === index);
+  for (const candidate of candidates) {
+    try {
+      const resp = await fetch(`${candidate}/healthz`, { cache: 'no-store' });
+      if (!resp.ok) continue;
+      const ctype = String(resp.headers.get('content-type') || '').toLowerCase();
+      if (!ctype.includes('application/json')) continue;
+      const data = await resp.json().catch(() => null);
+      if (data && typeof data === 'object') return candidate;
+    } catch (_) {}
+  }
+  return fallbackApi;
+}
 
 const detailTitleEl = document.getElementById('detail-title');
 const detailStatusEl = document.getElementById('detail-status');
@@ -35,14 +51,7 @@ const textTtsEl = document.getElementById('text-tts');
 const textPerfEl = document.getElementById('text-perf');
 
 const modelStorageKey = 'norma.debug.model_url';
-const modelCatalog = [
-  { label: 'Hiyori Pro T11', url: `${api}/static/model/runtime/hiyori_pro_t11.model3.json` },
-  { label: 'Hiyori', url: `${api}/static/model/hiyori/runtime/hiyori_pro_t11.model3.json` },
-  { label: 'Ren', url: `${api}/static/model/ren/runtime/ren.model3.json` },
-  { label: 'Shizuku', url: `${api}/static/model/shizuku/runtime/shizuku.model3.json` },
-  { label: 'Wanko', url: `${api}/static/model/wanko/runtime/wanko_touch.model3.json` },
-  { label: 'Koharu', url: `${api}/static/model/koharu/runtime/haruto.model3.json` }
-];
+let modelCatalog = [];
 
 const componentCatalog = [
   { key: 'ollama', name: 'Ollama', desc: '用于大模型和向量嵌入' },
@@ -226,7 +235,8 @@ function ensureDebugDraft() {
     draftSettings.debug = {};
   }
   if (!draftSettings.debug.model_url) {
-    draftSettings.debug.model_url = localStorage.getItem(modelStorageKey) || modelCatalog[0].url;
+    const stored = localStorage.getItem(modelStorageKey) || '';
+    draftSettings.debug.model_url = stored || (modelCatalog[0]?.url || '');
   }
   if (!draftSettings.debug.motion_group) draftSettings.debug.motion_group = 'Idle';
   if (typeof draftSettings.debug.motion_index !== 'number') draftSettings.debug.motion_index = 0;
@@ -337,7 +347,7 @@ function renderSidebarText(settings, providerStatus) {
     wake_word_vad: '唤醒词+端点检测',
     vad: '仅端点检测'
   };
-  const activeURL = getValueByPath(draftSettings, 'debug.model_url') || modelCatalog[0].url;
+  const activeURL = getValueByPath(draftSettings, 'debug.model_url') || (modelCatalog[0]?.url || '');
   const hit = modelCatalog.find((item) => item.url === activeURL);
   if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
   if (textInputEl) textInputEl.textContent = `${wakeModeMap[settings?.audio?.wake_mode] || '输入策略'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
@@ -349,6 +359,10 @@ function renderSidebarText(settings, providerStatus) {
 }
 
 async function loadMotionGroups(modelURL) {
+  if (!String(modelURL || '').trim()) {
+    modelMotionGroups = ['Idle'];
+    return;
+  }
   try {
     const resp = await fetch(modelURL, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`读取模型文件失败: ${resp.status}`);
@@ -367,10 +381,21 @@ async function loadMotionGroups(modelURL) {
 
 function optionListHTML(options, currentValue) {
   return options.map((opt) => {
-    const value = typeof opt === 'object' ? opt.value : opt;
-    const label = typeof opt === 'object' ? opt.label : opt;
+    const value = typeof opt === 'object' ? (opt.value ?? opt.url ?? '') : opt;
+    const label = typeof opt === 'object' ? (opt.label ?? opt.name ?? String(value)) : opt;
     return `<option value="${escapeHtml(value)}" ${String(currentValue) === String(value) ? 'selected' : ''}>${escapeHtml(label)}</option>`;
   }).join('');
+}
+
+function inferModelNameFromURL(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const marker = '/static/model/';
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return '';
+  const rest = raw.slice(idx + marker.length);
+  const parts = rest.split('/').filter(Boolean);
+  return parts.length ? parts[0] : '';
 }
 
 function renderProviderManageList() {
@@ -442,7 +467,7 @@ function renderDetailPanel() {
   }).join('');
 
   const modelActions = selectedModule === 'model'
-    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button><button data-model-action="motion" type="button">发送动作</button><button data-model-action="pose" type="button">发送姿态</button><button data-model-action="mouth" type="button">发送口型</button></div>`
+    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button><button data-model-action="pose" type="button">发送姿态</button><button data-model-action="mouth" type="button">发送口型</button></div><div class="event-detail">动作组下拉切换后会自动发送动作</div>`
     : '';
 
   detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderProviderManageList()}`;
@@ -519,7 +544,7 @@ async function publishRuntimeEvent(name, payload) {
 }
 
 async function runModelAction(kind) {
-  const modelURL = String(getValueByPath(draftSettings, 'debug.model_url') || modelCatalog[0].url).trim();
+  const modelURL = String(getValueByPath(draftSettings, 'debug.model_url') || (modelCatalog[0]?.url || '')).trim();
   const motion = String(getValueByPath(draftSettings, 'debug.motion_group') || 'Idle').trim();
   const motionIndex = Number(getValueByPath(draftSettings, 'debug.motion_index') || 0);
   const eyeX = Number(getValueByPath(draftSettings, 'debug.eye_x') || 0);
@@ -527,6 +552,7 @@ async function runModelAction(kind) {
   const mouth = Number(getValueByPath(draftSettings, 'debug.mouth_level') || 0.6);
 
   if (kind === 'reload') {
+    if (!modelURL) throw new Error('当前没有可用模型文件，请先在“模型文件”里选择有效项');
     localStorage.setItem(modelStorageKey, modelURL);
     await publishRuntimeEvent('live2d.reload', { source: 'debug-console', model_url: modelURL });
     log(`已触发模型重载: ${modelURL}`);
@@ -596,6 +622,21 @@ function bindDetailEditor() {
     if (path === 'debug.model_url') {
       localStorage.setItem(modelStorageKey, nextValue);
       await loadMotionGroups(nextValue);
+      const selected = modelCatalog.find((item) => String(item.url) === String(nextValue));
+      const modelName = selected?.name || inferModelNameFromURL(nextValue);
+      if (modelName) {
+        if (!draftSettings.app || typeof draftSettings.app !== 'object') {
+          draftSettings.app = {};
+        }
+        draftSettings.app.model_name = modelName;
+        currentSettings = deepClone(draftSettings);
+        await saveSettings(deepClone(draftSettings), `已切换模型目录：${modelName}`);
+      } else {
+        log('未能从模型路径推导 model_name，重启后可能不会保持该模型');
+      }
+    }
+    if (path === 'debug.motion_group') {
+      runModelAction('motion').catch((error) => log(String(error)));
     }
     if (!path.startsWith('debug.')) setDirty(true);
     renderSidebarText(currentSettings, currentProviderStatus);
@@ -639,6 +680,24 @@ async function loadDiscoverOnly() {
   }
 }
 
+async function loadModelCatalog() {
+  try {
+    const resp = await fetch(`${api}/runtime/model/list`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`model list failed: ${resp.status}`);
+    const data = await resp.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    modelCatalog = items
+      .filter((item) => item && typeof item.model_url === 'string' && item.model_url.trim() !== '')
+      .map((item) => ({
+        name: String(item.name || ''),
+        label: String(item.label || item.name || '未命名模型'),
+        url: `${api}${String(item.model_url).trim()}`
+      }));
+  } catch (_) {
+    modelCatalog = [];
+  }
+}
+
 async function loadAll(appendLog = true) {
   const [settingsResp, providerResp] = await Promise.all([
     fetch(`${api}/settings/runtime`),
@@ -649,6 +708,7 @@ async function loadAll(appendLog = true) {
 
   const settings = await settingsResp.json();
   currentProviderStatus = await providerResp.json();
+  await loadModelCatalog();
   await loadDiscoverOnly();
 
   if (!detailDirty || !currentSettings) {
@@ -673,7 +733,12 @@ document.getElementById('refresh')?.addEventListener('click', () => {
 bindSidebarModuleNav();
 bindDetailEditor();
 selectModule(selectedModule);
-loadAll().catch((error) => log(String(error)));
+detectAPIBase()
+  .then((base) => {
+    api = base;
+    return loadAll();
+  })
+  .catch((error) => log(String(error)));
 setInterval(() => {
   loadAll(false).catch((error) => log(String(error)));
 }, 5000);
