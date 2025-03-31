@@ -13,8 +13,7 @@ import (
 
 func TestEventChainE2E(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6, quality)
+	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
 
 	done := make(chan struct{}, 1)
 	_ = rt.Bus.Subscribe("llm.done", func(evt bus.Event) {
@@ -40,8 +39,7 @@ func TestEventChainE2E(t *testing.T) {
 
 func TestOrchestratorCancelByInterrupt(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6, quality)
+	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "s-int", TraceID: "t-int", Payload: "hello"})
 	time.Sleep(100 * time.Millisecond)

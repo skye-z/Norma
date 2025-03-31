@@ -121,26 +121,8 @@ rag:
   embed_provider: ollama
 ```
 
-### 5.3 高负载自动降级配置
-用于降低 TTFA 和资源占用：
-
-```yaml
-perf:
-  auto_degrade: true
-  llm_first_token_threshold_ms: 1200
-  degraded_rag_top_k: 4
-  degraded_ef_search: 24
-  degraded_retriever_extra_factor: 1
-  degraded_retriever_fuse_factor: 2
-  degraded_audio_chunk_size: 4096
-  degraded_llm_model: qwen2.5:3b
-  degraded_tts_voice: zh_CN-huayan-x_low
-```
-
-说明：
-- `degraded_llm_model`：高负载时切换到更轻的 Ollama 模型
-- `degraded_tts_voice`：高负载时切换到更轻的 Kokoro 声线
-- `degraded_ef_search / degraded_rag_top_k`：降低检索成本，优先保住首答速度
+### 5.3 高负载策略
+当前版本移除了自动降级配置，默认依赖固定策略与日志观测。
 
 ## 6. 启动方式
 
@@ -216,10 +198,8 @@ powershell -ExecutionPolicy Bypass -File scripts/detect-audio-devices.ps1
 ```
 
 ### 9.3 首包过慢
-1. 打开自动降级。
-2. 配置 `degraded_llm_model`。
-3. 将 `degraded_tts_voice` 改为 `zh_CN-huayan-x_low`。
-4. 降低 `degraded_rag_top_k` 和 `degraded_ef_search`。
+1. 优先降低模型负载或缩短回答长度。
+2. 确认 RAG 文档规模与索引查询是否过大。
 
 ### 9.4 外放场景回声重
 1. 设置 `audio.scene=speaker`

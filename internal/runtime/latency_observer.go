@@ -12,7 +12,7 @@ import (
 )
 
 // AttachLatencyObserver records and logs ASR/LLM/TTS latency metrics.
-func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker, quality *QualityController) {
+func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker) {
 	var bargeMarks sync.Map
 	rt.Bus.Subscribe("audio.vad.start", func(evt bus.Event) {
 		tracker.RecordValue("audio.vad.start", 1)
@@ -20,9 +20,7 @@ func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker, quality *Quali
 			bargeMarks.Store(evt.SessionID+"|"+evt.TraceID, time.Now())
 			log.Printf("[barge] vad.start session=%s trace=%s", evt.SessionID, evt.TraceID)
 		}
-		if quality != nil {
-			quality.ObservePressure(tracker.Snapshot().ActiveTraces)
-		}
+		// auto-degrade removed
 	})
 	rt.Bus.Subscribe("audio.play.start", func(evt bus.Event) { tracker.RecordValue("audio.play.start", 1) })
 	rt.Bus.Subscribe("audio.play.end", func(evt bus.Event) { tracker.RecordValue("audio.play.end", 1) })
@@ -35,12 +33,6 @@ func AttachLatencyObserver(rt *Runtime, tracker *metrics.Tracker, quality *Quali
 	rt.Bus.Subscribe("llm.token", func(evt bus.Event) {
 		if ms, ok := tracker.MarkLLMFirstToken(evt.SessionID, evt.TraceID, time.Now()); ok {
 			log.Printf("[metric] llm_first_token_ms=%d session=%s trace=%s", ms, evt.SessionID, evt.TraceID)
-			if quality != nil {
-				quality.ObserveLLMFirstToken(ms)
-				if quality.IsDegraded() {
-					log.Printf("[quality] degraded mode enabled")
-				}
-			}
 		}
 	})
 	rt.Bus.Subscribe("tts.chunk.ready", func(evt bus.Event) {

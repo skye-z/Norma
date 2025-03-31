@@ -119,33 +119,6 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.Memory.STMTokenBudget <= 0 {
 		cfg.Memory.STMTokenBudget = 2048
 	}
-	if cfg.Perf.LLMFirstTokenThresholdMs <= 0 {
-		cfg.Perf.LLMFirstTokenThresholdMs = 1200
-	}
-	if cfg.Perf.DegradedRAGTopK <= 0 {
-		cfg.Perf.DegradedRAGTopK = 4
-	}
-	if cfg.Perf.DegradedEFSearch <= 0 {
-		cfg.Perf.DegradedEFSearch = 24
-	}
-	if cfg.Perf.DegradedRetrieverExtra <= 0 {
-		cfg.Perf.DegradedRetrieverExtra = 1
-	}
-	if cfg.Perf.DegradedRetrieverFuse <= 0 {
-		cfg.Perf.DegradedRetrieverFuse = 2
-	}
-	if cfg.Perf.DegradedAudioChunkSize <= 0 {
-		cfg.Perf.DegradedAudioChunkSize = 4096
-	}
-	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" || strings.HasPrefix(strings.TrimSpace(cfg.Perf.DegradedTTSVoice), "zh_CN-") {
-		cfg.Perf.DegradedTTSVoice = "zf_xiaobei"
-	}
-	if cfg.Perf.AlertLLMFirstTokenMs <= 0 {
-		cfg.Perf.AlertLLMFirstTokenMs = 1500
-	}
-	if cfg.Perf.AlertTTSFirstChunkMs <= 0 {
-		cfg.Perf.AlertTTSFirstChunkMs = 1200
-	}
 	if strings.TrimSpace(cfg.Providers.Root) == "" {
 		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
 	}
@@ -218,10 +191,6 @@ func normalizeTTSToSherpa(cfg *config.Config) bool {
 	}
 	if strings.TrimSpace(cfg.TTS.Voice) == "" {
 		cfg.TTS.Voice = "zf_xiaobei"
-		changed = true
-	}
-	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" || strings.HasPrefix(strings.TrimSpace(cfg.Perf.DegradedTTSVoice), "zh_CN-") {
-		cfg.Perf.DegradedTTSVoice = "zf_xiaobei"
 		changed = true
 	}
 	if strings.TrimSpace(cfg.Providers.Root) == "" {

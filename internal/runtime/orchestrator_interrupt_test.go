@@ -44,9 +44,8 @@ func (n noopTTS) Stop(sessionID string) error { _ = sessionID; return nil }
 
 func TestInterruptCancelsInFlightSession(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	l := &slowLLM{}
-	_ = NewOrchestrator(rt, index.MockRetriever{}, l, noopTTS{}, 4, quality)
+	_ = NewOrchestrator(rt, index.MockRetriever{}, l, noopTTS{}, 4)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "s1", TraceID: "t1", Payload: "hi"})
 	time.Sleep(120 * time.Millisecond)

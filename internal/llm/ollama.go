@@ -18,16 +18,41 @@ type OllamaStreamer struct {
 	client   *http.Client
 }
 
-type ollamaGenerateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+type openAIChatRequest struct {
+	Model    string          `json:"model"`
+	Messages []openAIMessage `json:"messages"`
+	Stream   bool            `json:"stream"`
 }
 
-type ollamaGenerateChunk struct {
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
-	Error    string `json:"error"`
+type openAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIChatChunk struct {
+	Choices []openAIChatChoice `json:"choices"`
+	Error   *openAIError       `json:"error"`
+}
+
+type openAIChatChoice struct {
+	Delta        openAIChatDelta `json:"delta"`
+	FinishReason string          `json:"finish_reason"`
+}
+
+type openAIChatDelta struct {
+	Content string `json:"content"`
+}
+
+type openAIError struct {
+	Message string `json:"message"`
+}
+
+type openAIModelsResponse struct {
+	Data []openAIModel `json:"data"`
+}
+
+type openAIModel struct {
+	ID string `json:"id"`
 }
 
 type ollamaTagsResponse struct {
@@ -40,13 +65,13 @@ type ollamaModel struct {
 
 func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStreamer {
 	if strings.TrimSpace(endpoint) == "" {
-		endpoint = "http://127.0.0.1:11434"
+		endpoint = "http://127.0.0.1:11434/v1"
 	}
 	if timeout <= 0 {
 		timeout = 45 * time.Second
 	}
 	return &OllamaStreamer{
-		endpoint: strings.TrimRight(endpoint, "/"),
+		endpoint: normalizeOpenAIEndpoint(endpoint),
 		model:    model,
 		client:   &http.Client{Timeout: timeout},
 	}
@@ -74,16 +99,16 @@ func DiscoverFirstLLMModel(endpoint string, timeout time.Duration) (string, erro
 }
 
 func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
-	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	endpoint = normalizeOpenAIEndpoint(endpoint)
 	if endpoint == "" {
-		endpoint = "http://127.0.0.1:11434"
+		endpoint = "http://127.0.0.1:11434/v1"
 	}
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
 
 	client := &http.Client{Timeout: timeout}
-	req, err := http.NewRequest(http.MethodGet, endpoint+"/api/tags", nil)
+	req, err := http.NewRequest(http.MethodGet, endpoint+"/models", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +123,18 @@ func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
 		return nil, fmt.Errorf("status=%d", resp.StatusCode)
 	}
 
-	var out ollamaTagsResponse
+	var out openAIModelsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode tags: %w", err)
+		return nil, fmt.Errorf("decode models: %w", err)
 	}
-	return out.Models, nil
+	models := make([]ollamaModel, 0, len(out.Data))
+	for _, m := range out.Data {
+		if strings.TrimSpace(m.ID) == "" {
+			continue
+		}
+		models = append(models, ollamaModel{Name: m.ID})
+	}
+	return models, nil
 }
 
 func isLikelyLLM(name string) bool {
@@ -118,12 +150,12 @@ func isLikelyLLM(name string) bool {
 
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	prompt := buildPrompt(req)
-	body, err := json.Marshal(ollamaGenerateRequest{Model: o.model, Prompt: prompt, Stream: true})
+	body, err := json.Marshal(openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true})
 	if err != nil {
 		return fmt.Errorf("marshal ollama request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.endpoint+"/api/generate", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.endpoint+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("new ollama request: %w", err)
 	}
@@ -146,24 +178,40 @@ func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(s
 		if line == "" {
 			continue
 		}
-		var chunk ollamaGenerateChunk
+		if strings.HasPrefix(line, "data:") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		}
+		if line == "[DONE]" {
+			return nil
+		}
+		var chunk openAIChatChunk
 		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
 			return fmt.Errorf("decode ollama stream: %w", err)
 		}
-		if chunk.Error != "" {
-			return fmt.Errorf("ollama stream error: %s", chunk.Error)
+		if chunk.Error != nil && strings.TrimSpace(chunk.Error.Message) != "" {
+			return fmt.Errorf("ollama stream error: %s", strings.TrimSpace(chunk.Error.Message))
 		}
-		if chunk.Response != "" {
-			onToken(chunk.Response)
-		}
-		if chunk.Done {
-			return nil
+		for _, choice := range chunk.Choices {
+			if choice.Delta.Content != "" {
+				onToken(choice.Delta.Content)
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read ollama stream: %w", err)
 	}
 	return nil
+}
+
+func normalizeOpenAIEndpoint(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint == "" {
+		return endpoint
+	}
+	if !strings.HasSuffix(endpoint, "/v1") {
+		endpoint = endpoint + "/v1"
+	}
+	return endpoint
 }
 
 func buildPrompt(req Request) string {

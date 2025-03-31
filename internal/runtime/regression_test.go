@@ -114,10 +114,9 @@ func (l *cancellableLLM) Stream(ctx context.Context, req llm.Request, onToken fu
 
 func TestRegressionVoiceQAFlow(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	tts := newSpyTTS()
 	llmSpy := captureLLM{ctxs: make(chan []string, 1)}
-	_ = NewOrchestrator(rt, fixedRetriever{}, llmSpy, tts, 6, quality)
+	_ = NewOrchestrator(rt, fixedRetriever{}, llmSpy, tts, 6)
 
 	done := make(chan struct{}, 1)
 	_ = rt.Bus.Subscribe("llm.done", func(evt bus.Event) {
@@ -146,10 +145,9 @@ func TestRegressionVoiceQAFlow(t *testing.T) {
 
 func TestRegressionVoiceInterrupt(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	llmSlow := &cancellableLLM{started: make(chan struct{}, 1)}
 	tts := newSpyTTS()
-	_ = NewOrchestrator(rt, fixedRetriever{}, llmSlow, tts, 6, quality)
+	_ = NewOrchestrator(rt, fixedRetriever{}, llmSlow, tts, 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "int-s", TraceID: "int-t", Payload: "请开始长回答"})
 
@@ -178,7 +176,6 @@ func TestRegressionVoiceInterrupt(t *testing.T) {
 
 func TestRegressionDocumentQAUsesRetrievedContext(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	llmSpy := captureLLM{ctxs: make(chan []string, 1)}
 	_ = NewOrchestrator(
 		rt,
@@ -186,7 +183,6 @@ func TestRegressionDocumentQAUsesRetrievedContext(t *testing.T) {
 		llmSpy,
 		audio.NewMockTTS(),
 		6,
-		quality,
 	)
 
 	done := make(chan struct{}, 1)

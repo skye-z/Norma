@@ -24,7 +24,6 @@ import (
 type Stack struct {
 	Runtime         *runtime.Runtime
 	Tracker         *metrics.Tracker
-	Quality         *runtime.QualityController
 	ProviderManager *providers.Manager
 	Retriever       index.Retriever
 	LLM             llm.Streamer
@@ -59,31 +58,20 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	log.Printf("[build] embedded sherpa: %v", audio.EmbeddedSherpaEnabled())
 
 	rt := runtime.New()
-	quality := runtime.NewQualityController(
-		cfg.Perf.AutoDegrade,
-		cfg.Perf.LLMFirstTokenThresholdMs,
-		cfg.Perf.DegradedRAGTopK,
-	)
-	quality.SetDegradedAudioChunkSize(cfg.Perf.DegradedAudioChunkSize)
-	quality.SetDegradedEFSearch(cfg.Perf.DegradedEFSearch)
-	quality.SetDegradedRetrieverFactors(cfg.Perf.DegradedRetrieverExtra, cfg.Perf.DegradedRetrieverFuse)
-	quality.SetDegradedLLMModel(cfg.Perf.DegradedLLMModel)
-	quality.SetDegradedTTSVoice(cfg.Perf.DegradedTTSVoice)
 	tracker := metrics.NewTracker()
-	runtime.AttachLatencyObserver(rt, tracker, quality)
+	runtime.AttachLatencyObserver(rt, tracker)
 
 	_ = live2d.NewBridge(rt.Bus)
 
-	tts := chooseTTS(cfg, providerMgr, quality)
+	tts := chooseTTS(cfg, providerMgr)
 	playback := choosePlayback(rt.Bus, tts)
-	streamer := chooseLLMStreamer(cfg, quality)
+	streamer := chooseLLMStreamer(cfg)
 	retriever := chooseRetriever(cfg, engine, providerMgr)
-	_ = runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, cfg.RAG.TopK, quality, playback)
+	_ = runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, cfg.RAG.TopK, playback)
 
 	return &Stack{
 		Runtime:         rt,
 		Tracker:         tracker,
-		Quality:         quality,
 		ProviderManager: providerMgr,
 		Retriever:       retriever,
 		LLM:             streamer,
@@ -319,7 +307,7 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 	}
 }
 
-func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.QualityController) audio.TTS {
+func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 	fallback := &audio.UnavailableTTS{Reason: "tts unavailable"}
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
 	case "http", "xtts":
@@ -349,13 +337,9 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.Qual
 	}
 }
 
-func chooseLLMStreamer(cfg *config.Config, quality *runtime.QualityController) llm.Streamer {
+func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	fallback := llm.UnavailableStreamer{Reason: "llm unavailable"}
 	if cfg.LLM.Provider != "ollama" {
-		return fallback
-	}
-	if err := llm.PingOllama(cfg.LLM.Endpoint, 2*time.Second); err != nil {
-		log.Printf("[llm] ollama unavailable")
 		return fallback
 	}
 
@@ -369,19 +353,14 @@ func chooseLLMStreamer(cfg *config.Config, quality *runtime.QualityController) l
 		model = discovered
 	}
 	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond)
-	degradedModel := strings.TrimSpace(cfg.Perf.DegradedLLMModel)
-	if degradedModel == "" || degradedModel == model || quality == nil {
+	degradedModel := ""
+	if degradedModel == "" || degradedModel == model {
 		log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
 		return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 	}
 
 	log.Printf("[llm] use ollama provider endpoint=%s primary=%s degraded=%s", cfg.LLM.Endpoint, model, degradedModel)
-	return llm.RoutedStreamer{
-		Primary:     primary,
-		Degraded:    llm.NewOllamaStreamer(cfg.LLM.Endpoint, degradedModel, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond),
-		Fallback:    fallback,
-		UseDegraded: quality.IsDegraded,
-	}
+	return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 }
 
 func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) index.Retriever {

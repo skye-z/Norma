@@ -117,7 +117,7 @@ func main() {
 	if *demo {
 		runDemoInputPipeline(cfg, rt, providerMgr)
 		time.Sleep(6 * time.Second)
-		log.Printf("[demo] final state=%s degraded=%v", rt.State.Get(), stack.Quality.IsDegraded())
+		log.Printf("[demo] final state=%s alerts=%d", rt.State.Get(), len(stack.Tracker.Snapshot().Alerts))
 		return
 	}
 

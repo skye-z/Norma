@@ -53,10 +53,9 @@ func (t *blockingTTS) Stop(sessionID string) error {
 
 func TestCancelPropagationRetriever(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	retriever := &blockingRetriever{}
 	tts := &blockingTTS{}
-	_ = NewOrchestrator(rt, retriever, instantLLM{}, tts, 6, quality)
+	_ = NewOrchestrator(rt, retriever, instantLLM{}, tts, 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "c1", TraceID: "tc1", Payload: "hello"})
 	time.Sleep(100 * time.Millisecond)
@@ -74,9 +73,8 @@ func TestCancelPropagationRetriever(t *testing.T) {
 
 func TestCancelPropagationTTS(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	tts := &blockingTTS{}
-	_ = NewOrchestrator(rt, index.MockRetriever{}, instantLLM{}, tts, 6, quality)
+	_ = NewOrchestrator(rt, index.MockRetriever{}, instantLLM{}, tts, 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "c2", TraceID: "tc2", Payload: "hello"})
 	time.Sleep(120 * time.Millisecond)

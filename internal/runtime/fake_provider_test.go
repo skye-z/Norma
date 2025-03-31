@@ -11,7 +11,6 @@ import (
 
 func TestOrchestratorWithFakeProviders(t *testing.T) {
 	rt := New()
-	quality := NewQualityController(true, 1200, 4)
 	tts := &testdouble.FakeTTS{Chunks: [][]byte{[]byte("a"), []byte("b")}}
 	_ = NewOrchestrator(
 		rt,
@@ -19,7 +18,6 @@ func TestOrchestratorWithFakeProviders(t *testing.T) {
 		testdouble.FakeLLM{Tokens: []string{"o", "k"}},
 		tts,
 		4,
-		quality,
 	)
 
 	done := make(chan struct{}, 1)
@@ -50,7 +48,7 @@ func TestOrchestratorWithFakeProviders(t *testing.T) {
 func TestOrchestratorInterruptStopsFakeTTS(t *testing.T) {
 	rt := New()
 	tts := &testdouble.FakeTTS{}
-	_ = NewOrchestrator(rt, testdouble.FakeRetriever{}, testdouble.FakeLLM{}, tts, 4, nil)
+	_ = NewOrchestrator(rt, testdouble.FakeRetriever{}, testdouble.FakeLLM{}, tts, 4)
 
 	rt.Bus.Publish(bus.Event{Name: "interrupt", SessionID: "s-stop", TraceID: "t-stop", Payload: "barge_in"})
 	if tts.StopHits != 1 {

@@ -805,18 +805,6 @@ func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Requ
 	}
 	cfg.TTS.SentenceFirstEnabled = true
 	cfg.RAG.EmbedProvider = "ollama"
-	if cfg.Perf.DegradedEFSearch <= 0 {
-		cfg.Perf.DegradedEFSearch = 24
-	}
-	if cfg.Perf.DegradedRetrieverExtra <= 0 {
-		cfg.Perf.DegradedRetrieverExtra = 1
-	}
-	if cfg.Perf.DegradedRetrieverFuse <= 0 {
-		cfg.Perf.DegradedRetrieverFuse = 2
-	}
-	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" {
-		cfg.Perf.DegradedTTSVoice = "zh_CN-huayan-x_low"
-	}
 	cfg.RAG.EmbedProvider = "ollama"
 	if cfg.RAG.TopK <= 0 {
 		cfg.RAG.TopK = 6

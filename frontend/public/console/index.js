@@ -34,7 +34,6 @@ const statusAsrEl = document.getElementById('status-asr');
 const statusRagEl = document.getElementById('status-rag');
 const statusLlmEl = document.getElementById('status-llm');
 const statusTtsEl = document.getElementById('status-tts');
-const statusPerfEl = document.getElementById('status-perf');
 
 const statusTextModelEl = document.getElementById('status-text-model');
 const statusTextInputEl = document.getElementById('status-text-input');
@@ -42,7 +41,6 @@ const statusTextAsrEl = document.getElementById('status-text-asr');
 const statusTextRagEl = document.getElementById('status-text-rag');
 const statusTextLlmEl = document.getElementById('status-text-llm');
 const statusTextTtsEl = document.getElementById('status-text-tts');
-const statusTextPerfEl = document.getElementById('status-text-perf');
 
 const textModelEl = document.getElementById('text-model');
 const textInputEl = document.getElementById('text-input');
@@ -50,20 +48,13 @@ const textAsrEl = document.getElementById('text-asr');
 const textRagEl = document.getElementById('text-rag');
 const textLlmEl = document.getElementById('text-llm');
 const textTtsEl = document.getElementById('text-tts');
-const textPerfEl = document.getElementById('text-perf');
 
 const modelStorageKey = 'norma.debug.model_url';
 let modelCatalog = [];
 
-const componentCatalog = [
-  { key: 'ollama', name: 'Ollama', desc: '用于大模型和向量嵌入' },
-  { key: 'sherpa-onnx-tts', name: 'Sherpa ONNX TTS', desc: '用于离线 TTS（Kokoro）' }
-];
+const componentCatalog = [];
 
-const providerInstallPlan = {
-  ollama: ['llm-ollama-windows-x64'],
-  'sherpa-onnx-tts': ['tts-sherpa-kokoro-multi-lang-v1_1']
-};
+const providerInstallPlan = {};
 
 const moduleSchemas = {
   model: {
@@ -177,22 +168,7 @@ const moduleSchemas = {
       { path: 'tts.sentence_first_enabled', label: '启用短句优先', type: 'boolean' }
     ]
   },
-  perf: {
-    title: '自动降级',
-    summary: '超时阈值和降级策略。',
-    fields: [
-      { path: 'perf.auto_degrade', label: '启用自动降级', type: 'boolean' },
-      { path: 'perf.llm_first_token_threshold_ms', label: '首 Token 阈值(毫秒)', type: 'number' },
-      { path: 'perf.degraded_rag_top_k', label: '降级后召回条数', type: 'number' },
-      { path: 'perf.degraded_llm_model', label: '降级后模型', type: 'text' },
-      { path: 'perf.degraded_tts_voice', label: '降级后声线', type: 'text' }
-    ]
-  },
-  providers: {
-    title: '模块管理',
-    summary: '固定组件的发现、安装、更新、卸载和配置。',
-    fields: []
-  }
+  
 };
 
 let currentSettings = null;
@@ -205,10 +181,7 @@ let saving = false;
 let modelMotionGroups = ['Idle'];
 let micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
 let endpointModelCache = new Map();
-const modelDownloadState = {
-  asr_model: { job: null, last: null },
-  wake_model: { job: null, last: null }
-};
+const modelDownloadState = {};
 
 const logHistory = [];
 const logScope = 'console';
@@ -358,20 +331,7 @@ function normalizeRuntimeSettings(raw) {
     summary_auto_write: pick(memoryRaw, 'summary_auto_write', 'SummaryAutoWrite'),
     governance_compact_hours: pick(memoryRaw, 'governance_compact_hours', 'GovernanceCompactHours')
   };
-  const perf = {
-    auto_degrade: pick(perfRaw, 'auto_degrade', 'AutoDegrade'),
-    llm_first_token_threshold_ms: pick(perfRaw, 'llm_first_token_threshold_ms', 'LLMFirstTokenThresholdMs'),
-    degraded_rag_top_k: pick(perfRaw, 'degraded_rag_top_k', 'DegradedRAGTopK'),
-    degraded_ef_search: pick(perfRaw, 'degraded_ef_search', 'DegradedEFSearch'),
-    degraded_retriever_extra_factor: pick(perfRaw, 'degraded_retriever_extra_factor', 'DegradedRetrieverExtra'),
-    degraded_retriever_fuse_factor: pick(perfRaw, 'degraded_retriever_fuse_factor', 'DegradedRetrieverFuse'),
-    degraded_audio_chunk_size: pick(perfRaw, 'degraded_audio_chunk_size', 'DegradedAudioChunkSize'),
-    degraded_llm_model: pick(perfRaw, 'degraded_llm_model', 'DegradedLLMModel'),
-    degraded_tts_voice: pick(perfRaw, 'degraded_tts_voice', 'DegradedTTSVoice'),
-    alert_llm_first_token_ms: pick(perfRaw, 'alert_llm_first_token_ms', 'AlertLLMFirstTokenMs'),
-    alert_tts_first_chunk_ms: pick(perfRaw, 'alert_tts_first_chunk_ms', 'AlertTTSFirstChunkMs'),
-    baseline_file: pick(perfRaw, 'baseline_file', 'BaselineFile')
-  };
+  const perf = {};
   const security = {
     allow_remote_providers: pick(securityRaw, 'allow_remote_providers', 'AllowRemoteProviders'),
     allowed_remote_hosts: pick(securityRaw, 'allowed_remote_hosts', 'AllowedRemoteHosts'),
@@ -560,10 +520,6 @@ function moduleIndicatorColor(moduleKey) {
       if (st === 'missing') return 'gray';
       return 'yellow';
     }
-    case 'perf': {
-      if (currentSettings.perf?.auto_degrade === undefined) return 'gray';
-      return currentSettings.perf.auto_degrade ? 'green' : 'red';
-    }
     default:
       return 'gray';
   }
@@ -591,7 +547,6 @@ function renderSidebarIndicators() {
   applyIndicator(statusRagEl, statusTextRagEl, moduleIndicatorColor('rag'), '检索状态');
   applyIndicator(statusLlmEl, statusTextLlmEl, moduleIndicatorColor('llm'), '对话状态');
   applyIndicator(statusTtsEl, statusTextTtsEl, moduleIndicatorColor('tts'), '输出状态');
-  applyIndicator(statusPerfEl, statusTextPerfEl, moduleIndicatorColor('perf'), '自动降级状态');
 }
 
 function renderSidebarText(settings, providerStatus) {
@@ -606,7 +561,7 @@ function renderSidebarText(settings, providerStatus) {
   const ttsProvider = settings?.tts?.provider ? String(settings.tts.provider) : (stack.tts || '-');
   const ttsVoice = settings?.tts?.voice || '默认声线';
   if (textTtsEl) textTtsEl.textContent = `${ttsProvider} / ${ttsVoice}`;
-  if (textPerfEl) textPerfEl.textContent = `${settings?.perf?.auto_degrade ? '已启用' : '未启用'} / 阈值 ${settings?.perf?.llm_first_token_threshold_ms ?? '-'}`;
+  // perf removed
 }
 
 async function loadMotionGroups(modelURL) {
@@ -704,37 +659,7 @@ function inferModelNameFromURL(url) {
 }
 
 function renderProviderManageList() {
-  if (selectedModule !== 'providers') return '';
-  const merged = componentCatalog.map((base) => {
-    const found = discoverItems.find((item) => item.key === base.key);
-    return {
-      ...base,
-      installed: !!found?.installed,
-      paths: found?.paths || [],
-      hint: found?.hint || base.desc
-    };
-  });
-
-  return `
-    <div class="provider-manage-grid">
-      ${merged.map((item) => `
-        <div class="provider-item">
-          <div class="provider-head">
-            <strong>${escapeHtml(item.name)}</strong>
-            <span>${item.installed ? '已安装' : '未安装'}</span>
-          </div>
-          <div class="event-detail">${escapeHtml(item.hint)}</div>
-          <div class="event-detail">${escapeHtml(item.paths[0] || '未检测到可执行文件')}</div>
-          <div class="provider-actions">
-            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="install" type="button" ${item.installed ? 'disabled' : ''}>安装</button>
-            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="update" type="button" ${item.installed ? '' : 'disabled'}>更新</button>
-            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="uninstall" type="button" ${item.installed ? '' : 'disabled'}>卸载</button>
-          </div>
-        </div>
-      `).join('')}
-      <button data-provider-action="discover" type="button">重新发现已安装组件</button>
-    </div>
-  `;
+  return '';
 }
 
 function renderDownloadCard(module, title, desc, manualPath, state, detected = null) {
@@ -773,13 +698,7 @@ function renderDownloadCard(module, title, desc, manualPath, state, detected = n
 }
 
 function renderEmbeddedDownloadCards() {
-  if (selectedModule !== 'input' && selectedModule !== 'asr') return '';
-  if (selectedModule === 'input') {
-    if (currentProviderStatus?.health?.wake?.status === 'ready') return '';
-    return renderDownloadCard('wake_model', '唤醒模型下载', '下载 Sherpa 唤醒模型与关键词文件（内嵌模式仅需模型资产）', 'resource/runtime/providers/wake/current', modelDownloadState.wake_model, currentProviderStatus?.health?.wake || null);
-  }
-  if (currentProviderStatus?.health?.asr?.status === 'ready') return '';
-  return renderDownloadCard('asr_model', '识别模型下载', '下载 Whisper 基础模型（内嵌模式仅需模型文件）', 'resource/runtime/providers/asr/current', modelDownloadState.asr_model, currentProviderStatus?.health?.asr || null);
+  return '';
 }
 
 function renderDetailPanel() {
@@ -792,7 +711,7 @@ function renderDetailPanel() {
   detailStatusEl.className = statusClass(status);
   detailStatusEl.textContent = statusLabel(status);
 
-  const hideDraftButtons = selectedModule === 'model' || selectedModule === 'providers';
+  const hideDraftButtons = selectedModule === 'model';
   if (detailApplyEl) detailApplyEl.style.display = hideDraftButtons ? 'none' : '';
   if (detailRevertEl) detailRevertEl.style.display = hideDraftButtons ? 'none' : '';
   if (detailDirtyEl) detailDirtyEl.style.display = hideDraftButtons ? 'none' : '';
@@ -847,7 +766,7 @@ function renderDetailPanel() {
     ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button></div>${motionButtons}`
     : '';
 
-  detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderEmbeddedDownloadCards()}${renderProviderManageList()}`;
+  detailConfigEl.innerHTML = `${formHTML}${modelActions}`;
 }
 
 function setDirty(nextDirty) {
@@ -930,20 +849,7 @@ function sanitizeSettingsForSave(cfg) {
       SummaryAutoWrite: clean.memory?.summary_auto_write,
       GovernanceCompactHours: clean.memory?.governance_compact_hours
     },
-    Perf: {
-      AutoDegrade: clean.perf?.auto_degrade,
-      LLMFirstTokenThresholdMs: clean.perf?.llm_first_token_threshold_ms,
-      DegradedRAGTopK: clean.perf?.degraded_rag_top_k,
-      DegradedEFSearch: clean.perf?.degraded_ef_search,
-      DegradedRetrieverExtra: clean.perf?.degraded_retriever_extra_factor,
-      DegradedRetrieverFuse: clean.perf?.degraded_retriever_fuse_factor,
-      DegradedAudioChunkSize: clean.perf?.degraded_audio_chunk_size,
-      DegradedLLMModel: clean.perf?.degraded_llm_model,
-      DegradedTTSVoice: clean.perf?.degraded_tts_voice,
-      AlertLLMFirstTokenMs: clean.perf?.alert_llm_first_token_ms,
-      AlertTTSFirstChunkMs: clean.perf?.alert_tts_first_chunk_ms,
-      BaselineFile: clean.perf?.baseline_file
-    },
+    Perf: {},
     Security: {
       AllowRemoteProviders: clean.security?.allow_remote_providers,
       AllowedRemoteHosts: clean.security?.allowed_remote_hosts,
@@ -1042,72 +948,6 @@ async function runModelAction(kind) {
   if (kind === 'pose' || kind === 'mouth') return;
 }
 
-async function runProviderAction(action, key) {
-  if (action === 'discover') {
-    await loadDiscoverOnly();
-    renderDetailPanel();
-    return;
-  }
-  if (action === 'configure') {
-    const resp = await fetch(`${api}/providers/apply-managed`, { method: 'POST' });
-    if (!resp.ok) throw new Error('应用固定配置失败');
-    await loadAll(false);
-    return;
-  }
-
-  const ids = providerInstallPlan[key] || [key];
-  const endpoint = action === 'uninstall' ? '/providers/uninstall' : '/providers/install';
-  const queue = action === 'uninstall' ? [...ids].reverse() : ids;
-  for (const id of queue) {
-    const resp = await fetch(`${api}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`${action} 失败: ${id}${body ? ` -> ${body}` : ''}`);
-    }
-  }
-  await loadAll(false);
-}
-
-async function startModelDownload(module) {
-  const resp = await fetch(`${api}/providers/model-download/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ module })
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || !data?.ok) {
-    throw new Error(data?.error?.message || `启动下载失败: ${resp.status}`);
-  }
-  modelDownloadState[module] = { job: data.job || null, last: Date.now() };
-}
-
-async function refreshModelDownload(module) {
-  const state = modelDownloadState[module];
-  const jobID = state?.job?.id;
-  if (!jobID) return;
-  const resp = await fetch(`${api}/providers/model-download/status?job_id=${encodeURIComponent(jobID)}`);
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || !data?.ok) {
-    throw new Error(data?.error?.message || `刷新下载进度失败: ${resp.status}`);
-  }
-  modelDownloadState[module] = { job: data.job || null, last: Date.now() };
-}
-
-async function openModelTargetDir(module) {
-  const resp = await fetch(`${api}/providers/model-download/open-dir`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ module })
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || !data?.ok) {
-    throw new Error(data?.error?.message || `打开目录失败: ${resp.status}`);
-  }
-}
 
 async function bindDetailFieldChange(event) {
     if (!draftSettings) return;
@@ -1191,33 +1031,10 @@ function bindDetailEditor() {
       return;
     }
     if (target?.dataset?.providerAction) {
-      runProviderAction(target.dataset.providerAction, target.dataset.providerKey).catch((error) => logError('Provider 操作失败', error));
       return;
     }
     if (target?.dataset?.downloadAction) {
-      const module = String(target.dataset.downloadModule || '').trim();
-      if (!module) return;
-      if (target.dataset.downloadAction === 'start') {
-        startModelDownload(module)
-          .then(() => {
-            renderDetailPanel();
-            log(`已启动下载任务: ${module}`);
-          })
-          .catch((error) => logError('启动下载任务失败', error));
-        return;
-      }
-      if (target.dataset.downloadAction === 'refresh') {
-        refreshModelDownload(module)
-          .then(() => renderDetailPanel())
-          .catch((error) => logError('刷新下载进度失败', error));
-        return;
-      }
-      if (target.dataset.downloadAction === 'open-dir') {
-        openModelTargetDir(module)
-          .then(() => log(`已打开目录: ${module}`))
-          .catch((error) => logError('打开目录失败', error));
-        return;
-      }
+      return;
     }
   });
 
@@ -1237,15 +1054,7 @@ function bindDetailEditor() {
 }
 
 async function loadDiscoverOnly() {
-  try {
-    const resp = await fetch(`${api}/providers/discover`);
-    if (!resp.ok) throw new Error('discover failed');
-    const data = await resp.json();
-    discoverItems = Array.isArray(data?.items) ? data.items : [];
-  } catch (_) {
-    logError('重新发现 Provider 失败', _);
-    discoverItems = [];
-  }
+  discoverItems = [];
 }
 
 async function loadModelCatalog() {

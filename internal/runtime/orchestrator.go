@@ -22,7 +22,6 @@ type Orchestrator struct {
 	llm       llm.Streamer
 	tts       audio.TTS
 	ragTopK   int
-	quality   *QualityController
 	playback  playbackSink
 
 	mu      sync.Mutex
@@ -42,9 +41,8 @@ func NewOrchestrator(
 	llm llm.Streamer,
 	tts audio.TTS,
 	ragTopK int,
-	quality *QualityController,
 ) *Orchestrator {
-	return NewOrchestratorWithPlayback(rt, retriever, llm, tts, ragTopK, quality, nil)
+	return NewOrchestratorWithPlayback(rt, retriever, llm, tts, ragTopK, nil)
 }
 
 func NewOrchestratorWithPlayback(
@@ -53,7 +51,6 @@ func NewOrchestratorWithPlayback(
 	llm llm.Streamer,
 	tts audio.TTS,
 	ragTopK int,
-	quality *QualityController,
 	playback playbackSink,
 ) *Orchestrator {
 	if ragTopK <= 0 {
@@ -65,7 +62,6 @@ func NewOrchestratorWithPlayback(
 		llm:       llm,
 		tts:       tts,
 		ragTopK:   ragTopK,
-		quality:   quality,
 		playback:  playback,
 		cancels:   make(map[string]context.CancelFunc),
 	}
@@ -106,17 +102,10 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	}()
 
 	topK := o.ragTopK
-	if o.quality != nil {
-		topK = o.quality.RAGTopK(topK)
-	}
 
 	var chunks []index.Chunk
 	var err error
-	if tuned, ok := o.retriever.(index.TunedRetriever); ok && o.quality != nil {
-		chunks, err = tuned.SearchTuned(ctx, text, topK, o.quality.SearchTuning(topK))
-	} else {
-		chunks, err = o.retriever.Search(ctx, text, topK)
-	}
+	chunks, err = o.retriever.Search(ctx, text, topK)
 	if err != nil {
 		log.Printf("[orchestrator] retriever error: %v", err)
 		o.publishError(sessionID, traceID, "retriever_failed", err)

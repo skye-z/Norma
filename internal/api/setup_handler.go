@@ -180,7 +180,6 @@ func buildFallbackModes(health map[string]providers.Health) []string {
 	modes := []string{
 		"兼容模式 1：将 wake_mode 切到 vad_only，先绕过唤醒词链路。",
 		"兼容模式 2：将 audio.scene 设为 headset，并关闭 AEC/NS 逐项回归。",
-		"兼容模式 3：将 perf.degraded_tts_voice 设为 zh_CN-huayan-x_low，优先保首包。",
 	}
 	if health["wake"].Status != "ready" {
 		modes = append(modes, "当前 Wake 不就绪，建议首启先关闭唤醒词，仅保留 VAD 免唤醒模式。")
