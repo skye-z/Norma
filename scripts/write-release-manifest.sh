@@ -46,7 +46,7 @@ Each package directory uses this layout:
 - `Norma.exe` or `Norma`
 - `config.example.yaml`
 - `config.yaml`
-- `debug/`
+- `console/`
 - `resource/model/`
 - `resource/data/`
 - `resource/logs/`

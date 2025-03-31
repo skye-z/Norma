@@ -159,9 +159,9 @@ function createRuntimeEventSource(name, onPayload, onError) {
 
 function navTabs(active) {
   const tabs = [
-    ['http://127.0.0.1:8090/static/debug/index.html', '控制台', 'home'],
+    ['http://127.0.0.1:8090/static/console/index.html', '控制台', 'home'],
     ['?settings=1', '设置', 'settings'],
-    ['http://127.0.0.1:8090/static/debug/index.html', '控制台首页', 'external']
+    ['http://127.0.0.1:8090/static/console/index.html', '控制台首页', 'external']
   ];
   return tabs.map(([href, label, key]) => `<a class="${key === active ? 'active' : ''}" href="${href}">${label}</a>`).join('');
 }
@@ -1297,7 +1297,7 @@ async function initCompanion() {
 async function boot() {
   apiBase = await detectAPIBase();
   if (mode === 'debug') {
-    window.location.replace(`${apiBase}/static/debug/index.html`);
+    window.location.replace(`${apiBase}/static/console/index.html`);
     return;
   }
   if (mode === 'settings') {

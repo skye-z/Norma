@@ -126,10 +126,12 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	for _, c := range chunks {
 		contextTexts = append(contextTexts, c.Content)
 	}
+	log.Printf("[rag] ready session=%s trace=%s chunks=%d", sessionID, traceID, len(chunks))
 	o.rt.Bus.Publish(bus.Event{Name: "rag.ready", SessionID: sessionID, TraceID: traceID, Payload: len(chunks)})
 
 	var sb strings.Builder
 	req := llm.Request{SessionID: sessionID, Prompt: text, Context: contextTexts}
+	log.Printf("[llm] start session=%s trace=%s prompt=%q context_chunks=%d", sessionID, traceID, text, len(contextTexts))
 	if err := o.llm.Stream(ctx, req, func(token string) {
 		sb.WriteString(token)
 		o.rt.Bus.Publish(bus.Event{Name: "llm.token", SessionID: sessionID, TraceID: traceID, Payload: token})
@@ -145,6 +147,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		answer = "抱歉，我现在没有可用回答。"
 	}
 	answer = companion.RewritePersona(answer)
+	log.Printf("[llm] done session=%s trace=%s answer=%q", sessionID, traceID, answer)
 
 	plan := companion.PlanReply(answer)
 	if len(plan.Segments) == 0 {
@@ -171,6 +174,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 			delivery = plan.Delivery[index]
 		}
 		styledSegment := companion.ApplyDeliveryStyle(segment, delivery, supportsProsodyHints(o.tts))
+		log.Printf("[tts] segment start session=%s trace=%s index=%d phase=%s text=%q styled=%q", sessionID, traceID, index, phase, segment, styledSegment)
 		o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.segment", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
 			"index":       index,
 			"phase":       phase,
@@ -207,6 +211,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 			o.publishError(sessionID, traceID, "tts_stream_failed", err)
 			break
 		}
+		log.Printf("[tts] segment done session=%s trace=%s index=%d", sessionID, traceID, index)
 	}
 	if o.playback != nil {
 		start := time.Now()
@@ -217,6 +222,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 		o.rt.Bus.Publish(bus.Event{Name: "audio.play.wait.complete", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"elapsed_ms": time.Since(start).Milliseconds()}})
 	}
 	o.rt.Bus.Publish(bus.Event{Name: "tts.stream.done", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "orchestrator", "reason": "done"}})
+	log.Printf("[tts] stream done session=%s trace=%s", sessionID, traceID)
 	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
 }
 

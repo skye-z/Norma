@@ -5,6 +5,7 @@ package audio
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	whisper "github.com/ggerganov/whisper.cpp/bindings/go/pkg/whisper"
@@ -45,23 +46,33 @@ func (w *WhisperEmbeddedASR) TranscribeFrames(ctx context.Context, frames [][]fl
 	if onPartial != nil {
 		onPartial("正在识别...")
 	}
+	log.Printf("[asr] whisper transcribe start frames=%d samples=%d model=%s", len(frames), len(flattenFloatFrames(frames)), w.ModelPath)
 
 	model, err := whisper.New(w.ModelPath)
 	if err != nil {
+		log.Printf("[asr] whisper load model failed: %v", err)
 		return fmt.Errorf("load embedded whisper model: %w", err)
 	}
 	defer model.Close()
 
 	whisperCtx, err := model.NewContext()
 	if err != nil {
+		log.Printf("[asr] whisper create context failed: %v", err)
 		return fmt.Errorf("create embedded whisper context: %w", err)
 	}
+	if err := whisperCtx.SetLanguage(w.Language); err != nil {
+		log.Printf("[asr] whisper set language failed: %v", err)
+		return fmt.Errorf("set embedded whisper language: %w", err)
+	}
+	whisperCtx.SetTranslate(false)
 
 	samples := flattenFloatFrames(frames)
 	if len(samples) == 0 {
+		log.Printf("[asr] whisper empty audio")
 		return fmt.Errorf("embedded whisper empty audio")
 	}
 	if err := whisperCtx.Process(samples, nil, nil, nil); err != nil {
+		log.Printf("[asr] whisper process failed: %v", err)
 		return fmt.Errorf("embedded whisper process failed: %w", err)
 	}
 
@@ -78,8 +89,10 @@ func (w *WhisperEmbeddedASR) TranscribeFrames(ctx context.Context, frames [][]fl
 	}
 	finalText := strings.TrimSpace(strings.Join(segments, " "))
 	if finalText == "" {
+		log.Printf("[asr] whisper final text empty")
 		return fmt.Errorf("embedded whisper returned empty text")
 	}
+	log.Printf("[asr] whisper final text=%q", finalText)
 	if onFinal != nil {
 		onFinal(finalText)
 	}

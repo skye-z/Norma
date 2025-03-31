@@ -35,6 +35,9 @@ func New() *Runtime {
 	})
 
 	rt.Bus.Subscribe("asr.partial", func(evt bus.Event) {
+		if text, ok := evt.Payload.(string); ok {
+			log.Printf("[runtime] asr.partial session=%s trace=%s text=%q", evt.SessionID, evt.TraceID, text)
+		}
 		_ = evt
 		rt.State.Set(state.Listening)
 		inspector.SetState(string(rt.State.Get()))
@@ -43,10 +46,13 @@ func New() *Runtime {
 	rt.Bus.Subscribe("asr.final", func(evt bus.Event) {
 		rt.State.Set(state.Thinking)
 		inspector.SetState(string(rt.State.Get()))
-		log.Printf("[runtime] asr.final -> Thinking session=%s trace=%s", evt.SessionID, evt.TraceID)
+		log.Printf("[runtime] asr.final -> Thinking session=%s trace=%s text=%v", evt.SessionID, evt.TraceID, evt.Payload)
 	})
 
 	rt.Bus.Subscribe("llm.token", func(evt bus.Event) {
+		if text, ok := evt.Payload.(string); ok {
+			log.Printf("[runtime] llm.token session=%s trace=%s token=%q", evt.SessionID, evt.TraceID, text)
+		}
 		_ = evt
 		rt.State.Set(state.Speaking)
 		inspector.SetState(string(rt.State.Get()))

@@ -146,14 +146,14 @@ func (a *App) openExternalURL(url string) {
 }
 
 func debugURL() string {
-	return "http://127.0.0.1:8090/static/debug/"
+	return "http://127.0.0.1:8090/static/console/"
 }
 
 func settingsURL() string {
 	if os.Getenv("devserver") != "" {
 		return "http://localhost:34115/?settings=1"
 	}
-	return "http://127.0.0.1:8090/static/debug/settings.html"
+	return "http://127.0.0.1:8090/static/console/index.html?settings=1"
 }
 
 func loadTrayIcon() []byte {

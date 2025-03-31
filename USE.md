@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
 
 ### 4.1 通过设置页安装
 1. 启动桌面应用，应用会自动拉起本地 API 服务。
-2. 打开 [frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)。
+2. 打开 [frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1)。
 3. 在“Provider 面板”中依次安装：
    - `wake-sherpa-onnx-windows-x64-shared`
    - `wake-sherpa-kws-zh-en-model`
@@ -168,14 +168,14 @@ go run . -config config.yaml -demo
 ```
 
 ## 7. 首次启动推荐流程
-1. 打开 [frontend/public/debug/home.html](D:/Project/AI/Norma/frontend/public/debug/home.html)。
+1. 打开 [frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)。
 2. 在控制台先检查以下项目是否就绪：
    - Wake / ASR / TTS Provider
    - Live2D 模型
    - 配置文件
    - 数据目录
    - 设备探测矩阵脚本
-3. 如果有缺失，先到 [frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html) 安装并应用受管 Provider。
+3. 如果有缺失，先到 [frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1) 安装并应用受管 Provider。
 4. 回到控制台确认状态，再启动主程序。
 
 ## 8. 如何使用
@@ -197,9 +197,9 @@ go run . -config config.yaml -demo
 - 冲突事实会被标记为待确认，可在记忆管理页查看。
 
 ### 8.4 调试页面
-- 控制台：[frontend/public/debug/home.html](D:/Project/AI/Norma/frontend/public/debug/home.html)
-- 诊断：[frontend/public/debug/index.html](D:/Project/AI/Norma/frontend/public/debug/index.html)
-- 设置：[frontend/public/debug/settings.html](D:/Project/AI/Norma/frontend/public/debug/settings.html)
+- 控制台：[frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)
+- 诊断：[frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)
+- 设置：[frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1)
 
 ## 9. 常见排障
 

@@ -163,8 +163,8 @@ func registerStaticDebug(mux *http.ServeMux, debugDir string) {
 		return
 	}
 	fs := http.FileServer(http.Dir(absDir))
-	mux.Handle("/static/debug/", http.StripPrefix("/static/debug/", fs))
-	log.Printf("static debug route: /static/debug/ -> %s", absDir)
+	mux.Handle("/static/console/", http.StripPrefix("/static/console/", fs))
+	log.Printf("static console route: /static/console/ -> %s", absDir)
 }
 
 func registerLive2DCore(mux *http.ServeMux, debugDir, modelDir string) {

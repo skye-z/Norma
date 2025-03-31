@@ -8,9 +8,9 @@ import (
 const (
 	ConfigFileName        = "config.yaml"
 	ConfigExampleFileName = "config.example.yaml"
-	DebugSourceDir        = "frontend/public/debug"
-	DebugDistDir          = "frontend/dist/debug"
-	DebugReleaseDir       = "debug"
+	DebugSourceDir        = "frontend/public/console"
+	DebugDistDir          = "frontend/dist/console"
+	DebugReleaseDir       = "console"
 	ResourceDir           = "resource"
 	ModelDir              = "resource/model"
 	DataDir               = "resource/data"

@@ -15,6 +15,7 @@ async function detectAPIBase() {
       if (data && typeof data === 'object') return candidate;
     } catch (_) {}
   }
+  log('API 健康检查全部失败，回退默认地址', { fallbackApi });
   return fallbackApi;
 }
 
@@ -25,6 +26,7 @@ const detailConfigEl = document.getElementById('detail-config');
 const detailApplyEl = document.getElementById('detail-apply');
 const detailRevertEl = document.getElementById('detail-revert');
 const detailDirtyEl = document.getElementById('detail-dirty');
+const consoleLogEl = document.getElementById('console-log');
 
 const statusModelEl = document.getElementById('status-model');
 const statusInputEl = document.getElementById('status-input');
@@ -77,7 +79,6 @@ const moduleSchemas = {
     summary: '麦克风、唤醒词和前置音频策略（唤醒已内嵌）。',
     fields: [
       { path: 'audio.enable_wake_word', label: '启用唤醒词', type: 'boolean' },
-      { path: 'audio.wake_mode', label: '唤醒模式', type: 'select', options: [{ value: 'wake_word_vad', label: '唤醒词+语音端点检测' }, { value: 'vad', label: '仅语音端点检测' }] },
       { path: 'audio.wake_keyword', label: '唤醒词', type: 'text' },
       { path: 'audio.mic_device_id', label: '麦克风设备', type: 'mic_device_select' }
     ]
@@ -150,19 +151,198 @@ let detailDirty = false;
 let saving = false;
 let modelMotionGroups = ['Idle'];
 let micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
-let endpointModelOptions = [];
-let endpointModelError = '';
+let endpointModelCache = new Map();
 const modelDownloadState = {
   asr_model: { job: null, last: null },
   wake_model: { job: null, last: null }
 };
 
-function log(message) {
-  console.log(`[debug-console] ${message}`);
+const logHistory = [];
+const logScope = 'console';
+
+function formatLogMessage(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function writeConsoleLog(line) {
+  if (!consoleLogEl) return;
+  logHistory.unshift(line);
+  if (logHistory.length > 200) logHistory.length = 200;
+  consoleLogEl.textContent = logHistory.join('\n');
+}
+
+function log(message, context = null) {
+  const time = new Date().toLocaleTimeString();
+  const base = `[${time}] ${formatLogMessage(message)}`;
+  const detail = context ? ` ${formatLogMessage(context)}` : '';
+  const line = `${base}${detail}`;
+  console.log(`[${logScope}] ${line}`);
+  writeConsoleLog(line);
+}
+
+function logError(message, error) {
+  const detail = error instanceof Error
+    ? { message: error.message, stack: error.stack }
+    : error;
+  log(message, detail);
 }
 
 function deepClone(value) {
   return structuredClone(value);
+}
+
+function mergeWithFallback(base, override) {
+  if (!base || typeof base !== 'object') return deepClone(override);
+  if (!override || typeof override !== 'object') return deepClone(base);
+  if (Array.isArray(base) || Array.isArray(override)) {
+    return deepClone(override ?? base);
+  }
+  const output = { ...base };
+  Object.keys(override).forEach((key) => {
+    const value = override[key];
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      output[key] = mergeWithFallback(base[key], value);
+      return;
+    }
+    output[key] = value;
+  });
+  return output;
+}
+
+function normalizeRuntimeSettings(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const compact = (value) => value && typeof value === 'object' ? value : {};
+  const pick = (obj, snakeKey, pascalKey) => {
+    if (!obj || typeof obj !== 'object') return undefined;
+    if (Object.prototype.hasOwnProperty.call(obj, snakeKey)) return obj[snakeKey];
+    if (Object.prototype.hasOwnProperty.call(obj, pascalKey)) return obj[pascalKey];
+    return undefined;
+  };
+  const appRaw = compact(src.app ?? src.App);
+  const databaseRaw = compact(src.database ?? src.Database);
+  const audioRaw = compact(src.audio ?? src.Audio);
+  const asrRaw = compact(src.asr ?? src.ASR);
+  const llmRaw = compact(src.llm ?? src.LLM);
+  const ttsRaw = compact(src.tts ?? src.TTS);
+  const ragRaw = compact(src.rag ?? src.RAG);
+  const memoryRaw = compact(src.memory ?? src.Memory);
+  const perfRaw = compact(src.perf ?? src.Perf);
+  const securityRaw = compact(src.security ?? src.Security);
+  const providersRaw = compact(src.providers ?? src.Providers);
+
+  const app = {
+    name: pick(appRaw, 'name', 'Name'),
+    model_name: pick(appRaw, 'model_name', 'ModelName'),
+    env: pick(appRaw, 'env', 'Env'),
+    log_level: pick(appRaw, 'log_level', 'LogLevel'),
+    log_dir: pick(appRaw, 'log_dir', 'LogDir')
+  };
+  const database = {
+    path: pick(databaseRaw, 'path', 'Path')
+  };
+  const audio = {
+    enable_wake_word: pick(audioRaw, 'enable_wake_word', 'EnableWakeWord'),
+    mic_device_id: pick(audioRaw, 'mic_device_id', 'MicDeviceID'),
+    mic_sample_rate: pick(audioRaw, 'mic_sample_rate', 'MicSampleRate'),
+    mic_channel_count: pick(audioRaw, 'mic_channel_count', 'MicChannelCount'),
+    wake_mode: pick(audioRaw, 'wake_mode', 'WakeMode'),
+    wake_provider: pick(audioRaw, 'wake_provider', 'WakeProvider'),
+    wake_binary_path: pick(audioRaw, 'wake_binary_path', 'WakeBinaryPath'),
+    wake_model_path: pick(audioRaw, 'wake_model_path', 'WakeModelPath'),
+    wake_keywords_file_path: pick(audioRaw, 'wake_keywords_file_path', 'WakeKeywordsFilePath'),
+    wake_keyword: pick(audioRaw, 'wake_keyword', 'WakeKeyword'),
+    wake_window_ms: pick(audioRaw, 'wake_window_ms', 'WakeWindowMs'),
+    wake_detect_interval_ms: pick(audioRaw, 'wake_detect_interval_ms', 'WakeDetectIntervalMs'),
+    endpoint_silence_frames: pick(audioRaw, 'endpoint_silence_frames', 'EndpointSilenceFrames'),
+    interrupt_during_speaking: pick(audioRaw, 'interrupt_during_speaking', 'InterruptDuringSpeak'),
+    aec_enabled: pick(audioRaw, 'aec_enabled', 'AECEnabled'),
+    ns_enabled: pick(audioRaw, 'ns_enabled', 'NSEnabled'),
+    scene: pick(audioRaw, 'scene', 'Scene')
+  };
+  const asr = {
+    provider: pick(asrRaw, 'provider', 'Provider'),
+    endpoint: pick(asrRaw, 'endpoint', 'Endpoint'),
+    stream_endpoint: pick(asrRaw, 'stream_endpoint', 'StreamEndpoint'),
+    request_timeout_ms: pick(asrRaw, 'request_timeout_ms', 'RequestTimeoutMs'),
+    binary_path: pick(asrRaw, 'binary_path', 'BinaryPath'),
+    model_path: pick(asrRaw, 'model_path', 'ModelPath'),
+    language: pick(asrRaw, 'language', 'Language'),
+    threads: pick(asrRaw, 'threads', 'Threads')
+  };
+  const llm = {
+    provider: pick(llmRaw, 'provider', 'Provider'),
+    model: pick(llmRaw, 'model', 'Model'),
+    endpoint: pick(llmRaw, 'endpoint', 'Endpoint'),
+    request_timeout_ms: pick(llmRaw, 'request_timeout_ms', 'RequestTimeoutMs')
+  };
+  const tts = {
+    provider: pick(ttsRaw, 'provider', 'Provider'),
+    voice: pick(ttsRaw, 'voice', 'Voice'),
+    endpoint: pick(ttsRaw, 'endpoint', 'Endpoint'),
+    request_timeout_ms: pick(ttsRaw, 'request_timeout_ms', 'RequestTimeoutMs'),
+    binary_path: pick(ttsRaw, 'binary_path', 'BinaryPath'),
+    model_path: pick(ttsRaw, 'model_path', 'ModelPath'),
+    sentence_first_enabled: pick(ttsRaw, 'sentence_first_enabled', 'SentenceFirstEnabled')
+  };
+  const rag = {
+    top_k: pick(ragRaw, 'top_k', 'TopK'),
+    vector_index_path: pick(ragRaw, 'vector_index_path', 'VectorIndexPath'),
+    embed_provider: pick(ragRaw, 'embed_provider', 'EmbedProvider'),
+    embed_endpoint: pick(ragRaw, 'embed_endpoint', 'EmbedEndpoint'),
+    embed_model: pick(ragRaw, 'embed_model', 'EmbedModel')
+  };
+  const memory = {
+    stm_token_budget: pick(memoryRaw, 'stm_token_budget', 'STMTokenBudget'),
+    stm_reserve_important: pick(memoryRaw, 'stm_reserve_important', 'STMReserveImportant'),
+    summary_auto_write: pick(memoryRaw, 'summary_auto_write', 'SummaryAutoWrite'),
+    governance_compact_hours: pick(memoryRaw, 'governance_compact_hours', 'GovernanceCompactHours')
+  };
+  const perf = {
+    auto_degrade: pick(perfRaw, 'auto_degrade', 'AutoDegrade'),
+    llm_first_token_threshold_ms: pick(perfRaw, 'llm_first_token_threshold_ms', 'LLMFirstTokenThresholdMs'),
+    degraded_rag_top_k: pick(perfRaw, 'degraded_rag_top_k', 'DegradedRAGTopK'),
+    degraded_ef_search: pick(perfRaw, 'degraded_ef_search', 'DegradedEFSearch'),
+    degraded_retriever_extra_factor: pick(perfRaw, 'degraded_retriever_extra_factor', 'DegradedRetrieverExtra'),
+    degraded_retriever_fuse_factor: pick(perfRaw, 'degraded_retriever_fuse_factor', 'DegradedRetrieverFuse'),
+    degraded_audio_chunk_size: pick(perfRaw, 'degraded_audio_chunk_size', 'DegradedAudioChunkSize'),
+    degraded_llm_model: pick(perfRaw, 'degraded_llm_model', 'DegradedLLMModel'),
+    degraded_tts_voice: pick(perfRaw, 'degraded_tts_voice', 'DegradedTTSVoice'),
+    alert_llm_first_token_ms: pick(perfRaw, 'alert_llm_first_token_ms', 'AlertLLMFirstTokenMs'),
+    alert_tts_first_chunk_ms: pick(perfRaw, 'alert_tts_first_chunk_ms', 'AlertTTSFirstChunkMs'),
+    baseline_file: pick(perfRaw, 'baseline_file', 'BaselineFile')
+  };
+  const security = {
+    allow_remote_providers: pick(securityRaw, 'allow_remote_providers', 'AllowRemoteProviders'),
+    allowed_remote_hosts: pick(securityRaw, 'allowed_remote_hosts', 'AllowedRemoteHosts'),
+    tool_whitelist: pick(securityRaw, 'tool_whitelist', 'ToolWhitelist'),
+    high_risk_confirm: pick(securityRaw, 'high_risk_confirm', 'HighRiskConfirm'),
+    purge_proof_dir: pick(securityRaw, 'purge_proof_dir', 'PurgeProofDir')
+  };
+  const providers = {
+    root: pick(providersRaw, 'root', 'Root')
+  };
+
+  return {
+    app: deepClone(app),
+    database: deepClone(database),
+    audio: deepClone(audio),
+    asr: deepClone(asr),
+    llm: deepClone(llm),
+    tts: deepClone(tts),
+    rag: deepClone(rag),
+    memory: deepClone(memory),
+    perf: deepClone(perf),
+    security: deepClone(security),
+    providers: deepClone(providers)
+  };
 }
 
 function escapeHtml(value) {
@@ -293,19 +473,23 @@ function moduleIndicatorColor(moduleKey) {
       if (!currentSettings.rag?.embed_provider) return 'gray';
       if (Number(currentSettings.rag?.top_k ?? 0) <= 0) return 'red';
       if (currentSettings.rag.embed_provider === 'hash') return 'green';
-      const st = providerHealthStatus(stack.llm || currentSettings.llm?.provider);
-      if (st === 'ready') return 'green';
-      if (st === 'partial') return 'yellow';
-      if (st === 'missing') return 'gray';
+      const endpoint = String(currentSettings.rag?.embed_endpoint || '').trim();
+      const model = String(currentSettings.rag?.embed_model || '').trim();
+      console.log('[debug-console] status:rag', { endpoint, model, provider: currentSettings.rag?.embed_provider, topK: currentSettings.rag?.top_k });
+      if (!endpoint) return 'red';
+      if (!model) return 'yellow';
+      if (String(currentSettings.rag?.embed_provider || '').trim().toLowerCase() === 'ollama') return 'green';
       return 'yellow';
     }
     case 'llm': {
       if (!currentSettings.llm?.provider) return 'gray';
       if (currentSettings.llm.provider === 'mock') return 'red';
-      const st = providerHealthStatus(stack.llm || currentSettings.llm.provider);
-      if (st === 'ready') return 'green';
-      if (st === 'partial') return 'yellow';
-      if (st === 'missing') return 'gray';
+      const endpoint = String(currentSettings.llm?.endpoint || '').trim();
+      const model = String(currentSettings.llm?.model || '').trim();
+      console.log('[debug-console] status:llm', { endpoint, model, provider: currentSettings.llm?.provider });
+      if (!endpoint) return 'red';
+      if (!model) return 'yellow';
+      if (String(currentSettings.llm.provider || '').trim().toLowerCase() === 'ollama') return 'green';
       return 'yellow';
     }
     case 'tts': {
@@ -353,14 +537,10 @@ function renderSidebarIndicators() {
 
 function renderSidebarText(settings, providerStatus) {
   const stack = providerStatus?.stack || {};
-  const wakeModeMap = {
-    wake_word_vad: '唤醒词+端点检测',
-    vad: '仅端点检测'
-  };
   const activeURL = getValueByPath(draftSettings, 'debug.model_url') || (modelCatalog[0]?.url || '');
   const hit = modelCatalog.find((item) => item.url === activeURL);
   if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
-  if (textInputEl) textInputEl.textContent = `${wakeModeMap[settings?.audio?.wake_mode] || '输入策略'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
+  if (textInputEl) textInputEl.textContent = `${settings?.audio?.enable_wake_word ? '唤醒词' : '持续监听'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
   if (textAsrEl) textAsrEl.textContent = `内嵌 Whisper / ${settings?.asr?.language || 'zh'}`;
   if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
   if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
@@ -385,10 +565,10 @@ async function loadMotionGroups(modelURL) {
       setValueByPath(draftSettings, 'debug.motion_group', modelMotionGroups[0]);
     }
   } catch (_) {
+    logError('读取模型动作组失败', _);
     modelMotionGroups = ['Idle'];
   }
 }
-
 
 function optionListHTML(options, currentValue) {
   return options.map((opt) => {
@@ -412,6 +592,7 @@ async function loadMicDeviceOptions() {
     }));
     micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }, ...opts];
   } catch (_) {
+    logError('读取麦克风设备失败', _);
     micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
   }
 }
@@ -419,24 +600,35 @@ async function loadMicDeviceOptions() {
 async function loadEndpointModels(endpoint) {
   const base = String(endpoint || '').trim().replace(/\/+$/, '');
   if (!base) {
-    endpointModelOptions = [];
-    endpointModelError = '模型接口地址为空';
-    return;
+    return { options: [], error: '模型接口地址为空' };
   }
+  if (endpointModelCache.has(base)) return endpointModelCache.get(base);
   try {
     const modelsURL = /\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
     const resp = await fetch(modelsURL, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`接口返回 ${resp.status}`);
     const data = await resp.json();
     const list = Array.isArray(data?.data) ? data.data : [];
-    endpointModelOptions = list
+    const result = {
+      options: list
       .map((item) => ({ value: String(item?.id || '').trim(), label: String(item?.id || '').trim() }))
-      .filter((item) => item.value);
-    endpointModelError = endpointModelOptions.length ? '' : '模型接口可达，但返回空模型列表';
+      .filter((item) => item.value),
+      error: ''
+    };
+    result.error = result.options.length ? '' : '模型接口可达，但返回空模型列表';
+    endpointModelCache.set(base, result);
+    return result;
   } catch (_) {
-    endpointModelOptions = [];
-    endpointModelError = '模型接口不可达，请检查地址和服务状态';
+    logError('读取模型列表失败', { endpoint: base, error: _ });
+    const result = { options: [], error: '模型接口不可达，请检查地址和服务状态' };
+    endpointModelCache.set(base, result);
+    return result;
   }
+}
+
+function endpointForField(path) {
+  if (path === 'rag.embed_model') return String(getValueByPath(draftSettings, 'rag.embed_endpoint') || '').trim();
+  return String(getValueByPath(draftSettings, 'llm.endpoint') || '').trim();
 }
 
 function inferModelNameFromURL(url) {
@@ -562,16 +754,24 @@ function renderDetailPanel() {
       return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><select data-path="${escapeHtml(field.path)}">${optionListHTML(micDeviceOptions, value || 'default')}</select></div>`;
     }
     if (field.type === 'shared_endpoint') {
-      const endpoint = String(getValueByPath(draftSettings, 'llm.endpoint') || '');
-      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="llm.endpoint" type="text" value="${escapeHtml(endpoint)}" /></div>`;
+      const endpoint = String(value || '');
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="text" value="${escapeHtml(endpoint)}" /></div>`;
     }
     if (field.type === 'model_name_select') {
       const current = String(value || '');
-      const options = endpointModelOptions.length
-        ? endpointModelOptions
-        : (current ? [{ value: current, label: `${current} (当前)` }] : []);
-      const hint = endpointModelError ? `<div class="field-hint-error">${escapeHtml(endpointModelError)}</div>` : '';
-      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><div><div class="inline-actions"><select data-path="${escapeHtml(field.path)}">${optionListHTML(options, current)}</select><button data-model-action="refresh-models" type="button">刷新模型</button></div>${hint}</div></div>`;
+      const endpoint = endpointForField(field.path);
+      const endpointState = endpointModelCache.get(endpoint) || { options: [], error: endpoint ? '模型列表未加载' : '模型接口地址为空' };
+      let options = endpointState.options.length
+        ? [...endpointState.options]
+        : [];
+      if (!current) {
+        options = [{ value: '', label: '未选择模型' }, ...options];
+      }
+      if (current && !options.some((item) => String(item.value) === current)) {
+        options = [{ value: current, label: `${current} (当前)` }, ...options];
+      }
+      const hint = endpointState.error ? `<div class="field-hint-error">${escapeHtml(endpointState.error)}</div>` : '';
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><div><div class="inline-actions"><select data-path="${escapeHtml(field.path)}">${optionListHTML(options, current)}</select><button data-model-action="refresh-models" data-model-path="${escapeHtml(field.path)}" type="button">刷新模型</button></div>${hint}</div></div>`;
     }
     const inputType = field.type === 'number' ? 'number' : 'text';
     return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="${inputType}" value="${escapeHtml(value ?? '')}" /></div>`;
@@ -591,6 +791,7 @@ function renderDetailPanel() {
 
 function setDirty(nextDirty) {
   detailDirty = !!nextDirty;
+  console.log('[debug-console] setDirty', { detailDirty, saving, selectedModule });
   if (detailDirtyEl) detailDirtyEl.textContent = detailDirty ? '有未保存改动' : '未修改';
   if (detailApplyEl) detailApplyEl.disabled = !detailDirty || saving;
   if (detailRevertEl) detailRevertEl.disabled = !detailDirty || saving;
@@ -599,16 +800,113 @@ function setDirty(nextDirty) {
 function sanitizeSettingsForSave(cfg) {
   const clean = deepClone(cfg);
   if (clean.debug) delete clean.debug;
-  return clean;
+  const base = sanitizeSettingsForSave.base || {};
+  const payload = {
+    App: {
+      Name: clean.app?.name,
+      ModelName: clean.app?.model_name,
+      Env: clean.app?.env,
+      LogLevel: clean.app?.log_level,
+      LogDir: clean.app?.log_dir
+    },
+    Database: {
+      Path: clean.database?.path
+    },
+    Audio: {
+      EnableWakeWord: clean.audio?.enable_wake_word,
+      MicDeviceID: clean.audio?.mic_device_id,
+      MicSampleRate: clean.audio?.mic_sample_rate,
+      MicChannelCount: clean.audio?.mic_channel_count,
+      WakeMode: clean.audio?.wake_mode,
+      WakeProvider: clean.audio?.wake_provider,
+      WakeBinaryPath: clean.audio?.wake_binary_path,
+      WakeModelPath: clean.audio?.wake_model_path,
+      WakeKeywordsFilePath: clean.audio?.wake_keywords_file_path,
+      WakeKeyword: clean.audio?.wake_keyword,
+      WakeWindowMs: clean.audio?.wake_window_ms,
+      WakeDetectIntervalMs: clean.audio?.wake_detect_interval_ms,
+      EndpointSilenceFrames: clean.audio?.endpoint_silence_frames,
+      InterruptDuringSpeak: clean.audio?.interrupt_during_speaking,
+      AECEnabled: clean.audio?.aec_enabled,
+      NSEnabled: clean.audio?.ns_enabled,
+      Scene: clean.audio?.scene
+    },
+    ASR: {
+      Provider: clean.asr?.provider,
+      Endpoint: clean.asr?.endpoint,
+      StreamEndpoint: clean.asr?.stream_endpoint,
+      RequestTimeoutMs: clean.asr?.request_timeout_ms,
+      BinaryPath: clean.asr?.binary_path,
+      ModelPath: clean.asr?.model_path,
+      Language: clean.asr?.language,
+      Threads: clean.asr?.threads
+    },
+    LLM: {
+      Provider: clean.llm?.provider,
+      Model: clean.llm?.model,
+      Endpoint: clean.llm?.endpoint,
+      RequestTimeoutMs: clean.llm?.request_timeout_ms
+    },
+    TTS: {
+      Provider: clean.tts?.provider,
+      Voice: clean.tts?.voice,
+      Endpoint: clean.tts?.endpoint,
+      RequestTimeoutMs: clean.tts?.request_timeout_ms,
+      BinaryPath: clean.tts?.binary_path,
+      ModelPath: clean.tts?.model_path,
+      SentenceFirstEnabled: clean.tts?.sentence_first_enabled
+    },
+    RAG: {
+      TopK: clean.rag?.top_k,
+      VectorIndexPath: clean.rag?.vector_index_path,
+      EmbedProvider: clean.rag?.embed_provider,
+      EmbedEndpoint: clean.rag?.embed_endpoint,
+      EmbedModel: clean.rag?.embed_model
+    },
+    Memory: {
+      STMTokenBudget: clean.memory?.stm_token_budget,
+      STMReserveImportant: clean.memory?.stm_reserve_important,
+      SummaryAutoWrite: clean.memory?.summary_auto_write,
+      GovernanceCompactHours: clean.memory?.governance_compact_hours
+    },
+    Perf: {
+      AutoDegrade: clean.perf?.auto_degrade,
+      LLMFirstTokenThresholdMs: clean.perf?.llm_first_token_threshold_ms,
+      DegradedRAGTopK: clean.perf?.degraded_rag_top_k,
+      DegradedEFSearch: clean.perf?.degraded_ef_search,
+      DegradedRetrieverExtra: clean.perf?.degraded_retriever_extra_factor,
+      DegradedRetrieverFuse: clean.perf?.degraded_retriever_fuse_factor,
+      DegradedAudioChunkSize: clean.perf?.degraded_audio_chunk_size,
+      DegradedLLMModel: clean.perf?.degraded_llm_model,
+      DegradedTTSVoice: clean.perf?.degraded_tts_voice,
+      AlertLLMFirstTokenMs: clean.perf?.alert_llm_first_token_ms,
+      AlertTTSFirstChunkMs: clean.perf?.alert_tts_first_chunk_ms,
+      BaselineFile: clean.perf?.baseline_file
+    },
+    Security: {
+      AllowRemoteProviders: clean.security?.allow_remote_providers,
+      AllowedRemoteHosts: clean.security?.allowed_remote_hosts,
+      ToolWhitelist: clean.security?.tool_whitelist,
+      HighRiskConfirm: clean.security?.high_risk_confirm,
+      PurgeProofDir: clean.security?.purge_proof_dir
+    },
+    Providers: {
+      Root: clean.providers?.root
+    }
+  };
+  return mergeWithFallback(base, payload);
 }
 
 async function saveSettings(nextDraft, successMessage) {
   if (saving) return;
+  sanitizeSettingsForSave.base = sanitizeSettingsForSave.base || sanitizeSettingsForSave(draftSettings);
+  const payload = sanitizeSettingsForSave(nextDraft);
+  console.log('[debug-console] saveSettings:start', { selectedModule, detailDirty, rag: payload.RAG, llm: payload.LLM });
+  log('保存配置开始', { module: selectedModule });
   saving = true;
   if (detailApplyEl) detailApplyEl.disabled = true;
   if (detailRevertEl) detailRevertEl.disabled = true;
   try {
-    const payload = sanitizeSettingsForSave(nextDraft);
     const resp = await fetch(`${api}/settings/runtime`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -618,16 +916,17 @@ async function saveSettings(nextDraft, successMessage) {
     if (!resp.ok || data?.ok !== true) {
       throw new Error(data?.error?.message || `保存配置失败: ${resp.status}`);
     }
-    currentSettings = deepClone(payload);
-    currentSettings.debug = deepClone(nextDraft.debug || {});
+    currentSettings = deepClone(nextDraft);
     draftSettings = deepClone(currentSettings);
     setDirty(false);
     log(successMessage);
     await loadAll(false);
   } catch (error) {
-    log(String(error));
+    logError('保存配置失败', error);
   } finally {
     saving = false;
+    console.log('[debug-console] saveSettings:end', { selectedModule, detailDirty, saving });
+    log('保存配置结束', { module: selectedModule });
     setDirty(detailDirty);
   }
 }
@@ -656,7 +955,10 @@ async function publishRuntimeEvent(name, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, session_id: 'debug-console', trace_id: 'debug-console', payload })
   });
-  if (!resp.ok) throw new Error(`发送事件失败: ${name}`);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`发送事件失败: ${name}${body ? ` -> ${body}` : ''}`);
+  }
 }
 
 async function runModelAction(kind) {
@@ -746,8 +1048,7 @@ async function openModelTargetDir(module) {
   }
 }
 
-function bindDetailEditor() {
-  detailConfigEl?.addEventListener('change', async (event) => {
+async function bindDetailFieldChange(event) {
     if (!draftSettings) return;
     const target = event.target;
     if (!target || !target.dataset?.path) return;
@@ -769,7 +1070,14 @@ function bindDetailEditor() {
 
     setValueByPath(draftSettings, path, nextValue);
     if (path === 'llm.endpoint') {
-      setValueByPath(draftSettings, 'rag.embed_endpoint', String(nextValue || '').trim());
+      const currentRAGEndpoint = String(getValueByPath(draftSettings, 'rag.embed_endpoint') || '').trim();
+      const currentLLMEndpoint = String(getValueByPath(currentSettings, 'llm.endpoint') || '').trim();
+      if (!currentRAGEndpoint || currentRAGEndpoint === currentLLMEndpoint) {
+        setValueByPath(draftSettings, 'rag.embed_endpoint', String(nextValue || '').trim());
+      }
+      await loadEndpointModels(String(nextValue || '').trim());
+    }
+    if (path === 'rag.embed_endpoint') {
       await loadEndpointModels(String(nextValue || '').trim());
     }
     if (path === 'debug.model_url') {
@@ -783,41 +1091,46 @@ function bindDetailEditor() {
         }
         draftSettings.app.model_name = modelName;
         currentSettings = deepClone(draftSettings);
-        await saveSettings(deepClone(draftSettings), `已切换模型目录：${modelName}`);
-      } else {
-        log('未能从模型路径推导 model_name，重启后可能不会保持该模型');
-      }
+      await saveSettings(deepClone(draftSettings), `已切换模型目录：${modelName}`);
+    } else {
+      log('未能从模型路径推导 model_name，重启后可能不会保持该模型', { path: nextValue });
+    }
     }
     if (!path.startsWith('debug.')) setDirty(true);
     renderSidebarText(currentSettings, currentProviderStatus);
     renderSidebarIndicators();
     renderDetailPanel();
-  });
+}
+
+function bindDetailEditor() {
+  detailConfigEl?.addEventListener('change', bindDetailFieldChange);
+  detailConfigEl?.addEventListener('input', bindDetailFieldChange);
 
   detailConfigEl?.addEventListener('click', (event) => {
     const target = event.target;
     if (target?.dataset?.motionGroup) {
       setValueByPath(draftSettings, 'debug.motion_group', String(target.dataset.motionGroup));
       renderDetailPanel();
-      runModelAction('motion').catch((error) => log(String(error)));
+      runModelAction('motion').catch((error) => logError('触发模型动作失败', error));
       return;
     }
     if (target?.dataset?.modelAction === 'refresh-models') {
-      const endpoint = String(getValueByPath(draftSettings, 'llm.endpoint') || '').trim();
+      const endpoint = endpointForField(String(target.dataset.modelPath || 'llm.model'));
+      endpointModelCache.delete(endpoint);
       loadEndpointModels(endpoint)
         .then(() => {
           renderDetailPanel();
           log(`已刷新模型列表: ${endpoint || '-'}`);
         })
-        .catch((error) => log(String(error)));
+        .catch((error) => logError('刷新模型列表失败', error));
       return;
     }
     if (target?.dataset?.modelAction) {
-      runModelAction(target.dataset.modelAction).catch((error) => log(String(error)));
+      runModelAction(target.dataset.modelAction).catch((error) => logError('模型动作执行失败', error));
       return;
     }
     if (target?.dataset?.providerAction) {
-      runProviderAction(target.dataset.providerAction, target.dataset.providerKey).catch((error) => log(String(error)));
+      runProviderAction(target.dataset.providerAction, target.dataset.providerKey).catch((error) => logError('Provider 操作失败', error));
       return;
     }
     if (target?.dataset?.downloadAction) {
@@ -829,25 +1142,26 @@ function bindDetailEditor() {
             renderDetailPanel();
             log(`已启动下载任务: ${module}`);
           })
-          .catch((error) => log(String(error)));
+          .catch((error) => logError('启动下载任务失败', error));
         return;
       }
       if (target.dataset.downloadAction === 'refresh') {
         refreshModelDownload(module)
           .then(() => renderDetailPanel())
-          .catch((error) => log(String(error)));
+          .catch((error) => logError('刷新下载进度失败', error));
         return;
       }
       if (target.dataset.downloadAction === 'open-dir') {
         openModelTargetDir(module)
           .then(() => log(`已打开目录: ${module}`))
-          .catch((error) => log(String(error)));
+          .catch((error) => logError('打开目录失败', error));
         return;
       }
     }
   });
 
   detailApplyEl?.addEventListener('click', async () => {
+    console.log('[debug-console] detailApply:click', { selectedModule, detailDirty, hasDraft: !!draftSettings });
     if (!detailDirty || !draftSettings) return;
     await saveSettings(deepClone(draftSettings), `已应用 ${moduleSchemas[selectedModule]?.title || '模块'} 配置改动`);
   });
@@ -868,6 +1182,7 @@ async function loadDiscoverOnly() {
     const data = await resp.json();
     discoverItems = Array.isArray(data?.items) ? data.items : [];
   } catch (_) {
+    logError('重新发现 Provider 失败', _);
     discoverItems = [];
   }
 }
@@ -886,6 +1201,7 @@ async function loadModelCatalog() {
         url: `${api}${String(item.model_url).trim()}`
       }));
   } catch (_) {
+    logError('读取模型列表失败', _);
     modelCatalog = [];
   }
 }
@@ -898,20 +1214,30 @@ async function resolveRuntimeModelURL() {
     if (!data?.ok || typeof data.model_url !== 'string' || !data.model_url.trim()) return '';
     return `${api}${String(data.model_url).trim()}`;
   } catch (_) {
+    logError('解析运行时模型路径失败', _);
     return '';
   }
 }
 
 async function loadAll(appendLog = true) {
-  const [settingsResp, providerResp] = await Promise.all([
-    fetch(`${api}/settings/runtime`),
-    fetch(`${api}/providers/status`)
-  ]);
+  let settingsResp;
+  let providerResp;
+  try {
+    [settingsResp, providerResp] = await Promise.all([
+      fetch(`${api}/settings/runtime`),
+      fetch(`${api}/providers/status`)
+    ]);
+  } catch (error) {
+    logError('拉取运行时配置或 Provider 状态失败', error);
+    throw error;
+  }
   if (!settingsResp.ok) throw new Error(`读取配置失败: ${settingsResp.status}`);
   if (!providerResp.ok) throw new Error(`读取 Provider 状态失败: ${providerResp.status}`);
 
-  const settings = await settingsResp.json();
+  const settings = normalizeRuntimeSettings(await settingsResp.json());
+  sanitizeSettingsForSave.base = sanitizeSettingsForSave(settings);
   currentProviderStatus = await providerResp.json();
+  console.log('[debug-console] loadAll:settings', { rag: settings?.rag, llm: settings?.llm });
   await loadModelCatalog();
   await loadDiscoverOnly();
 
@@ -921,9 +1247,14 @@ async function loadAll(appendLog = true) {
     ensureDebugDraft();
     setDirty(false);
   }
+  sanitizeSettingsForSave.base = sanitizeSettingsForSave(settings);
 
   await loadMicDeviceOptions();
-  await loadEndpointModels(getValueByPath(draftSettings, 'llm.endpoint'));
+  endpointModelCache = new Map();
+  await Promise.all([
+    loadEndpointModels(getValueByPath(draftSettings, 'llm.endpoint')),
+    loadEndpointModels(getValueByPath(draftSettings, 'rag.embed_endpoint'))
+  ]);
 
   const resolvedModelURL = await resolveRuntimeModelURL();
   if (resolvedModelURL) {
@@ -938,11 +1269,11 @@ async function loadAll(appendLog = true) {
   renderSidebarIndicators();
   renderDetailPanel();
 
-  if (appendLog) log('控制台状态已刷新');
+  if (appendLog) log('控制台状态已刷新', { api });
 }
 
 document.getElementById('refresh')?.addEventListener('click', () => {
-  loadAll().catch((error) => log(String(error)));
+  loadAll().catch((error) => logError('刷新控制台失败', error));
 });
 
 bindSidebarModuleNav();
@@ -953,7 +1284,4 @@ detectAPIBase()
     api = base;
     return loadAll();
   })
-  .catch((error) => log(String(error)));
-setInterval(() => {
-  loadAll(false).catch((error) => log(String(error)));
-}, 5000);
+  .catch((error) => logError('控制台初始化失败', error));
