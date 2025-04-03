@@ -25,6 +25,11 @@ func (p *Pipeline) Run(
 	}
 	detector := NewEndpointDetector(silenceFrames)
 	utterance := make([][]float32, 0, 16)
+	wakeBufferFrames := p.WakeBufferFrames
+	if wakeBufferFrames <= 0 {
+		wakeBufferFrames = 1
+	}
+	wakeBuffer := make([][]float32, 0, wakeBufferFrames)
 	wakeMode := p.WakeMode
 	if wakeMode == "" {
 		wakeMode = WakeModeVADOnly
@@ -50,6 +55,11 @@ func (p *Pipeline) Run(
 		}
 
 		if !armed && p.WakeWord != nil {
+			buffered := cloneFrame(processed)
+			wakeBuffer = append(wakeBuffer, buffered)
+			if len(wakeBuffer) > wakeBufferFrames {
+				wakeBuffer = append([][]float32(nil), wakeBuffer[len(wakeBuffer)-wakeBufferFrames:]...)
+			}
 			pcm := floatToPCM16(processed)
 			matched, err := p.WakeWord.Detect(pcm)
 			if err != nil {
@@ -57,8 +67,15 @@ func (p *Pipeline) Run(
 				return err
 			}
 			if matched {
-				log.Printf("[pipeline] wake detected")
+				log.Printf("[pipeline] wake detected buffered_frames=%d", len(wakeBuffer))
 				armed = true
+				utterance = append(utterance[:0], cloneFrames(wakeBuffer)...)
+				wakeBuffer = wakeBuffer[:0]
+				if onSpeechStart != nil {
+					log.Printf("[pipeline] speech start from wake utterance_frames=%d", len(utterance))
+					onSpeechStart()
+				}
+				_, _ = detector.Update(true)
 			}
 			continue
 		}
@@ -70,9 +87,7 @@ func (p *Pipeline) Run(
 		}
 
 		if isSpeech {
-			copied := make([]float32, len(processed))
-			copy(copied, processed)
-			utterance = append(utterance, copied)
+			utterance = append(utterance, cloneFrame(processed))
 		}
 
 		start, end := detector.Update(isSpeech)
@@ -106,6 +121,8 @@ func (p *Pipeline) Run(
 			utterance = utterance[:0]
 			if wakeMode == WakeModeWakeWordVAD && p.WakeWord != nil {
 				armed = false
+				wakeBuffer = wakeBuffer[:0]
+				detector = NewEndpointDetector(silenceFrames)
 			}
 		}
 	}
@@ -121,6 +138,20 @@ func floatToPCM16(frame []float32) []int16 {
 			sample = -1
 		}
 		out[i] = int16(sample * 32767)
+	}
+	return out
+}
+
+func cloneFrame(frame []float32) []float32 {
+	copied := make([]float32, len(frame))
+	copy(copied, frame)
+	return copied
+}
+
+func cloneFrames(frames [][]float32) [][]float32 {
+	out := make([][]float32, 0, len(frames))
+	for _, frame := range frames {
+		out = append(out, cloneFrame(frame))
 	}
 	return out
 }

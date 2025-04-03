@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	sherpa "github.com/k2-fsa/sherpa-onnx-go-windows"
 )
@@ -48,14 +50,56 @@ func (s *SherpaKokoroTTS) Encoding() string { return "pcm_s16le" }
 
 func (s *SherpaKokoroTTS) SupportsProsodyHints() bool { return false }
 
+func sanitizeKokoroInput(text string) string {
+	cleaned := strings.TrimSpace(text)
+	if cleaned == "" {
+		return ""
+	}
+	cleaned = strings.NewReplacer(
+		"\u2019", "'",
+		"\u2018", "'",
+		"\u201c", "\"",
+		"\u201d", "\"",
+		"\u2014", "-",
+		"\u2013", "-",
+		"\u2026", "...",
+		"\u00a0", " ",
+		"\ufffd", "",
+	).Replace(cleaned)
+
+	var b strings.Builder
+	b.Grow(len(cleaned))
+	for _, r := range cleaned {
+		switch {
+		case r == '\u025a':
+			continue
+		case r == '\ufffd':
+			continue
+		case unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r':
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	cleaned = strings.TrimSpace(b.String())
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	if utf8.RuneCountInString(cleaned) == 0 {
+		return ""
+	}
+	return cleaned
+}
+
 func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {
 	ensureSherpaDLLPath()
 	if s.ModelDir == "" {
 		return fmt.Errorf("kokoro model dir empty")
 	}
-	trimmed := strings.TrimSpace(text)
+	trimmed := sanitizeKokoroInput(text)
 	if trimmed == "" {
 		return nil
+	}
+	if trimmed != strings.TrimSpace(text) {
+		log.Printf("[tts] kokoro sanitized input raw=%q sanitized=%q", text, trimmed)
 	}
 
 	streamCtx, cancel := context.WithCancel(ctx)

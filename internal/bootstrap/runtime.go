@@ -93,13 +93,21 @@ func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overr
 	if strings.TrimSpace(overrideMode) != "" {
 		effectiveMode = strings.TrimSpace(overrideMode)
 	}
+	wakeBufferFrames := cfg.Audio.WakeWindowMs / 20
+	if cfg.Audio.WakeWindowMs%20 != 0 {
+		wakeBufferFrames++
+	}
+	if wakeBufferFrames <= 0 {
+		wakeBufferFrames = 1
+	}
 	pipe := audio.Pipeline{
-		VAD:           audio.NewEnergyVAD(0.02),
-		WakeWord:      chooseWakeWord(cfg, mgr),
-		ASR:           chooseASR(cfg, mgr),
-		WakeMode:      effectiveMode,
-		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
-		AllowBargeIn:  cfg.Audio.InterruptDuringSpeak,
+		VAD:              audio.NewEnergyVAD(0.02),
+		WakeWord:         chooseWakeWord(cfg, mgr),
+		ASR:              chooseASR(cfg, mgr),
+		WakeMode:         effectiveMode,
+		WakeBufferFrames: wakeBufferFrames,
+		SilenceFrames:    cfg.Audio.EndpointSilenceFrames,
+		AllowBargeIn:     cfg.Audio.InterruptDuringSpeak,
 	}
 	if effectiveMode != audio.WakeModeWakeWordVAD || !wakeStatus.Enabled || !wakeStatus.Ready {
 		pipe.WakeWord = nil
@@ -294,10 +302,13 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		return asr
 	case "whisper", "whispercpp":
 		log.Printf("[asr] embedded whisper enabled=%v", audio.EmbeddedWhisperEnabled())
-		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
+		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-large-v3.bin", "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin")
 		if model == "" {
 			log.Printf("[asr] whisper model not configured")
 			return audio.UnavailableASR{Reason: "whisper model missing"}
+		}
+		if strings.EqualFold(strings.TrimSpace(cfg.ASR.Language), "zh") && strings.Contains(strings.ToLower(filepath.Base(model)), "ggml-base") {
+			log.Printf("[asr] using base whisper model for zh; recommend ggml-small.bin or ggml-medium.bin for better accuracy")
 		}
 		if embedded, err := audio.NewWhisperEmbeddedASR(model, cfg.ASR.Language, cfg.ASR.Threads); err == nil {
 			log.Printf("[asr] use embedded whisper model=%s", model)

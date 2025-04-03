@@ -17,7 +17,7 @@ audio:
   wake_keyword: 诺玛
   wake_window_ms: 2000
   wake_detect_interval_ms: 400
-  endpoint_silence_frames: 4
+  endpoint_silence_frames: 20
   interrupt_during_speaking: true
   aec_enabled: false
   ns_enabled: false

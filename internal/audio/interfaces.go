@@ -59,14 +59,15 @@ type BackgroundCaptureController interface {
 
 // Pipeline coordinates voice-related components.
 type Pipeline struct {
-	VAD           VAD
-	WakeWord      WakeWord
-	ASR           ASR
-	TTS           TTS
-	Preprocessors []Preprocessor
-	WakeMode      string
-	SilenceFrames int
-	AllowBargeIn  bool
+	VAD              VAD
+	WakeWord         WakeWord
+	ASR              ASR
+	TTS              TTS
+	Preprocessors    []Preprocessor
+	WakeMode         string
+	WakeBufferFrames int
+	SilenceFrames    int
+	AllowBargeIn     bool
 }
 
 type UnavailableASR struct {

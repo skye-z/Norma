@@ -15,6 +15,9 @@ import (
 	"github.com/getlantern/systray"
 	"github.com/pkg/browser"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"norma/internal/audio"
+	"norma/internal/config"
+	"norma/pkg/layout"
 )
 
 var trayQuitOnce sync.Once
@@ -39,7 +42,7 @@ func (a *App) initTrayMenu() {
 
 	menuConsole := systray.AddMenuItem("打开控制台", "在浏览器打开开发工具控制台")
 	menuToggle := systray.AddMenuItem("开启完全穿透", "切换完全穿透模式")
-	menuNotify := systray.AddMenuItem("通知策略：重要", "切换通知策略")
+	menuWakeMode := systray.AddMenuItem("唤醒模式：自动", "切换自动唤醒或手动唤醒")
 
 	systray.AddSeparator()
 	menuShow := systray.AddMenuItem("隐藏伴侣", "显示或隐藏桌面伴侣")
@@ -58,13 +61,10 @@ func (a *App) initTrayMenu() {
 		} else {
 			menuToggle.SetTitle("开启完全穿透")
 		}
-		switch a.NotificationMode() {
-		case "all":
-			menuNotify.SetTitle("通知策略：全部")
-		case "silent":
-			menuNotify.SetTitle("通知策略：静默")
-		default:
-			menuNotify.SetTitle("通知策略：重要")
+		if autoWakeEnabled() {
+			menuWakeMode.SetTitle("唤醒模式：自动")
+		} else {
+			menuWakeMode.SetTitle("唤醒模式：手动")
 		}
 	}
 	refreshMenus()
@@ -85,8 +85,12 @@ func (a *App) initTrayMenu() {
 				case <-menuToggle.ClickedCh:
 					a.ToggleForcePassthrough()
 					refreshMenus()
-				case <-menuNotify.ClickedCh:
-					a.CycleNotificationMode()
+				case <-menuWakeMode.ClickedCh:
+					if err := toggleWakeMode(); err != nil {
+						_ = publishRuntimeEvent("debug.notice", map[string]any{"text": "唤醒模式切换失败: " + err.Error()})
+					} else {
+						_ = publishRuntimeEvent("runtime.config.updated", map[string]any{"path": layout.ConfigFileName, "source": "tray"})
+					}
 					refreshMenus()
 				case <-menuConsole.ClickedCh:
 					go a.openExternalURL(debugURL())
@@ -167,4 +171,33 @@ func loadTrayIcon() []byte {
 		return nil
 	}
 	return data
+}
+
+func autoWakeEnabled() bool {
+	cfg, err := config.Load(layout.ConfigFileName)
+	if err != nil {
+		return true
+	}
+	return cfg.Audio.EnableWakeWord && strings.TrimSpace(cfg.Audio.WakeMode) == audio.WakeModeWakeWordVAD
+}
+
+func toggleWakeMode() error {
+	cfg, err := config.Load(layout.ConfigFileName)
+	if err != nil {
+		return err
+	}
+	if cfg.Audio.EnableWakeWord && strings.TrimSpace(cfg.Audio.WakeMode) == audio.WakeModeWakeWordVAD {
+		cfg.Audio.EnableWakeWord = false
+		cfg.Audio.WakeMode = audio.WakeModeVADOnly
+	} else {
+		cfg.Audio.EnableWakeWord = true
+		cfg.Audio.WakeMode = audio.WakeModeWakeWordVAD
+		if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
+			cfg.Audio.WakeProvider = "sherpa-onnx"
+		}
+		if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
+			cfg.Audio.WakeKeyword = "诺玛"
+		}
+	}
+	return config.Save(layout.ConfigFileName, cfg)
 }

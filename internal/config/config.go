@@ -126,7 +126,7 @@ func defaultConfig() Config {
 			WakeKeyword:           "诺玛",
 			WakeWindowMs:          2000,
 			WakeDetectIntervalMs:  400,
-			EndpointSilenceFrames: 4,
+			EndpointSilenceFrames: 20,
 			InterruptDuringSpeak:  true,
 			AECEnabled:            false,
 			NSEnabled:             false,

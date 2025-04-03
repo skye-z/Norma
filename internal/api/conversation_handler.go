@@ -53,10 +53,27 @@ type conversationState struct {
 	Mode      string `json:"mode,omitempty"`
 }
 
+type conversationPolicy struct {
+	AutoWake      bool                       `json:"auto_wake"`
+	WakeReady     bool                       `json:"wake_ready"`
+	ShowMicButton bool                       `json:"show_mic_button"`
+	WakeStatus    bootstrap.WakeConfigStatus `json:"wake_status"`
+}
+
 var conversationSeq uint64
 
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
-	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string), modes: make(map[string]string), frameSeen: make(map[string]bool)}
+	return &ConversationHandler{
+		configPath: configPath,
+		bus:        b,
+		inspector:  inspector,
+		providers:  providerMgr,
+		streams:    make(map[string]*audio.PushFrameSource),
+		sources:    make(map[string]audio.FrameSource),
+		capture:    make(map[string]string),
+		modes:      make(map[string]string),
+		frameSeen:  make(map[string]bool),
+	}
 }
 
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
@@ -66,6 +83,20 @@ func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/state", h.handleMicState)
 	mux.HandleFunc("/conversation/mic/test", h.handleMicTest)
 	mux.HandleFunc("/conversation/mic/frame", h.handleMicFrame)
+	mux.HandleFunc("/conversation/mic/policy", h.handleMicPolicy)
+}
+
+func (h *ConversationHandler) handleMicPolicy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	cfg, err := config.Load(h.configPath)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "load config failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.resolvePolicy(cfg))
 }
 
 func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Request) {
@@ -84,67 +115,51 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	if strings.TrimSpace(tid) == "" {
 		tid = h.newID("trace")
 	}
-	cfg, err := config.Load(h.configPath)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "load config failed")
-		return
-	}
 
 	h.mu.Lock()
 	if h.cancel != nil {
 		h.cancel()
 		h.cancel = nil
 	}
-	if prev := h.streams[sid]; prev != nil {
-		prev.Close()
-		delete(h.streams, sid)
+	for id, stream := range h.streams {
+		if stream != nil {
+			stream.Close()
+		}
+		delete(h.streams, id)
 	}
-	if prevSource := h.sources[sid]; prevSource != nil {
-		if closable, ok := prevSource.(interface{ Close() error }); ok {
+	for id, src := range h.sources {
+		if closable, ok := src.(interface{ Close() error }); ok {
 			_ = closable.Close()
 		}
-		delete(h.sources, sid)
+		delete(h.sources, id)
 	}
-	delete(h.capture, sid)
-	delete(h.modes, sid)
-	delete(h.frameSeen, sid)
+	for id := range h.capture {
+		delete(h.capture, id)
+	}
+	for id := range h.modes {
+		delete(h.modes, id)
+	}
+	for id := range h.frameSeen {
+		delete(h.frameSeen, id)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	var source audio.FrameSource
-	mode := strings.TrimSpace(req.Mode)
-	if mode == "" {
-		mode = "direct"
-	}
-	captureMode := "native"
-	if strings.EqualFold(mode, "manual") || strings.EqualFold(mode, "direct") || strings.EqualFold(mode, "wake") {
-		stream := audio.NewPushFrameSource(64)
-		h.streams[sid] = stream
-		source = stream
-		captureMode = "push"
-	} else {
-		platformSource, sourceErr := audio.NewPlatformCaptureSource(cfg.Audio.MicSampleRate, cfg.Audio.MicChannelCount)
-		if sourceErr != nil {
-			h.bus.Publish(bus.Event{Name: "error", SessionID: sid, TraceID: tid, Payload: map[string]string{"code": "mic_capture_unavailable", "message": sourceErr.Error()}})
-			stream := audio.NewPushFrameSource(64)
-			h.streams[sid] = stream
-			source = stream
-			captureMode = "push"
-		} else {
-			source = platformSource
-		}
-	}
+	mode := normalizeConversationMode(req.Mode)
+	stream := audio.NewPushFrameSource(64)
+	h.streams[sid] = stream
+	h.sources[sid] = stream
+	h.capture[sid] = "push"
+	h.modes[sid] = mode
 	h.active = true
 	h.sid = sid
 	h.tid = tid
 	h.cancel = cancel
-	h.sources[sid] = source
-	h.capture[sid] = captureMode
-	h.modes[sid] = mode
 	h.mu.Unlock()
 
-	go h.runMicPipeline(ctx, sid, tid, source, mode)
-	log.Printf("[conversation] mic start session=%s trace=%s mode=%s capture=%s", sid, tid, mode, captureMode)
+	go h.runMicPipeline(ctx, sid, tid, stream, mode)
+	log.Printf("[conversation] mic start session=%s trace=%s mode=%s capture=push", sid, tid, mode)
 	state := h.snapshot()
-	state.Capture = captureMode
+	state.Capture = "push"
 	state.Mode = mode
 	writeJSON(w, http.StatusOK, state)
 }
@@ -161,27 +176,7 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 	sid, tid := h.resolveIDs(req.SessionID, req.TraceID)
 	h.bus.Publish(bus.Event{Name: "audio.vad.stop", SessionID: sid, TraceID: tid, Payload: map[string]any{"source": "conversation.mic"}})
 
-	h.mu.Lock()
-	if h.cancel != nil {
-		h.cancel()
-		h.cancel = nil
-	}
-	if stream := h.streams[sid]; stream != nil {
-		stream.Close()
-		delete(h.streams, sid)
-	}
-	if src := h.sources[sid]; src != nil {
-		if closable, ok := src.(interface{ Close() error }); ok {
-			_ = closable.Close()
-		}
-		delete(h.sources, sid)
-	}
-	delete(h.capture, sid)
-	delete(h.modes, sid)
-	delete(h.frameSeen, sid)
-	h.active = false
-	h.mu.Unlock()
-
+	h.clearSession(sid)
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
@@ -202,28 +197,7 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	h.bus.Publish(bus.Event{Name: "interrupt", SessionID: sid, TraceID: tid, Payload: reason})
 	log.Printf("[conversation] mic interrupt session=%s trace=%s reason=%s capture=%s mode=%s", sid, tid, reason, h.capture[sid], h.modes[sid])
 
-	h.mu.Lock()
-	if h.cancel != nil {
-		h.cancel()
-		h.cancel = nil
-	}
-	if stream := h.streams[sid]; stream != nil {
-		stream.Close()
-		delete(h.streams, sid)
-	}
-	if src := h.sources[sid]; src != nil {
-		if bg, ok := src.(audio.BackgroundCaptureController); ok {
-			bg.EnableBackgroundCapture(sid, true)
-		}
-	}
-	if h.capture[sid] == "push" {
-		delete(h.capture, sid)
-	}
-	delete(h.modes, sid)
-	delete(h.frameSeen, sid)
-	h.active = false
-	h.mu.Unlock()
-
+	h.clearSession(sid)
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
@@ -252,7 +226,7 @@ func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Reque
 	for _, frame := range frames {
 		isSpeech, _ := probe.Detect(frame)
 		if isSpeech {
-			detected += 1
+			detected++
 		}
 	}
 	ok := micOK && detected > 0
@@ -288,9 +262,10 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 	sid, tid := h.resolveIDs(req.SessionID, req.TraceID)
 	h.mu.RLock()
 	stream := h.streams[sid]
-	mode := h.capture[sid]
+	captureMode := h.capture[sid]
+	mode := h.modes[sid]
 	h.mu.RUnlock()
-	if mode != "push" {
+	if captureMode != "push" {
 		writeErr(w, http.StatusBadRequest, "conversation stream is not in push capture mode")
 		return
 	}
@@ -307,7 +282,6 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 			if firstFrame {
 				h.frameSeen[sid] = true
 			}
-			mode = h.modes[sid]
 			h.mu.Unlock()
 			if firstFrame {
 				log.Printf("[conversation] mic frame stream active session=%s trace=%s mode=%s frames=%d", sid, tid, mode, len(req.Frames))
@@ -375,7 +349,7 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		_ = providerMgr.EnsureLayout()
 	}
 	pipeMode := ""
-	if strings.EqualFold(mode, "direct") {
+	if strings.EqualFold(mode, "manual") {
 		pipeMode = audio.WakeModeVADOnly
 	}
 	pipe := bootstrap.BuildVoicePipelineForMode(cfg, providerMgr, pipeMode)
@@ -409,7 +383,11 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 			h.bus.Publish(bus.Event{Name: "asr.partial", SessionID: sessionID, TraceID: traceID, Payload: partial})
 		},
 		func(final string) {
-			h.bus.Publish(bus.Event{Name: "asr.final", SessionID: sessionID, TraceID: traceID, Payload: final})
+			normalized := audio.PostProcessASRText(final, cfg.Audio.WakeKeyword)
+			if normalized != final {
+				log.Printf("[asr] postprocess raw=%q normalized=%q", final, normalized)
+			}
+			h.bus.Publish(bus.Event{Name: "asr.final", SessionID: sessionID, TraceID: traceID, Payload: normalized})
 		},
 	)
 
@@ -427,5 +405,62 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 
 	if err != nil && err != context.Canceled {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "mic_pipeline_failed", "message": err.Error()}})
+	}
+}
+
+func (h *ConversationHandler) clearSession(sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.cancel != nil {
+		h.cancel()
+		h.cancel = nil
+	}
+	if stream := h.streams[sessionID]; stream != nil {
+		stream.Close()
+	}
+	if src := h.sources[sessionID]; src != nil {
+		if bg, ok := src.(audio.BackgroundCaptureController); ok {
+			bg.EnableBackgroundCapture(sessionID, true)
+		}
+		if closable, ok := src.(interface{ Close() error }); ok {
+			_ = closable.Close()
+		}
+	}
+	delete(h.streams, sessionID)
+	delete(h.sources, sessionID)
+	delete(h.capture, sessionID)
+	delete(h.modes, sessionID)
+	delete(h.frameSeen, sessionID)
+	if h.sid == sessionID {
+		h.active = false
+		h.sid = ""
+		h.tid = ""
+	}
+}
+
+func (h *ConversationHandler) resolvePolicy(cfg *config.Config) conversationPolicy {
+	providerMgr := h.providers
+	if providerMgr == nil {
+		providerMgr = providers.NewManager(cfg.Providers.Root)
+		_ = providerMgr.EnsureLayout()
+	}
+	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)
+	autoWake := cfg != nil && cfg.Audio.EnableWakeWord && wakeStatus.EffectiveMode == audio.WakeModeWakeWordVAD
+	return conversationPolicy{
+		AutoWake:      autoWake,
+		WakeReady:     wakeStatus.Ready,
+		ShowMicButton: !autoWake || !wakeStatus.Ready,
+		WakeStatus:    wakeStatus,
+	}
+}
+
+func normalizeConversationMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "manual":
+		return "manual"
+	case "wake":
+		return "wake"
+	default:
+		return "manual"
 	}
 }
