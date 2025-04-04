@@ -190,7 +190,6 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		return &audio.UnavailableWakeWord{Reason: "wake provider is empty"}
 	}
 	if provider == "sherpa-onnx" {
-		binary := mgr.ResolveBinary("wake", "", cfg.Audio.WakeBinaryPath, "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter")
 		modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
 		if modelDir == "" {
 			modelDir = filepath.Join(mgr.Root(), "wake", "current")
@@ -200,14 +199,13 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 		joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
 		tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
 		keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
-		if binary == "" || encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
+		if encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
 			log.Printf("[wake] sherpa-onnx assets incomplete")
 			return &audio.UnavailableWakeWord{Reason: "sherpa-onnx assets incomplete"}
 		}
-		wake := audio.NewSherpaWakeWord(binary, encoder, decoder, joiner, tokens, keywords, cfg.Audio.WakeKeyword)
-		wake.WindowFrames = framesFromMs(cfg.Audio.WakeWindowMs)
-		wake.DetectInterval = framesFromMs(cfg.Audio.WakeDetectIntervalMs)
-		log.Printf("[wake] use sherpa-onnx binary=%s keyword=%s keywords=%s", binary, cfg.Audio.WakeKeyword, keywords)
+		wake := audio.NewSherpaEmbeddedWakeWord(encoder, decoder, joiner, tokens, keywords, cfg.Audio.WakeKeyword)
+		_ = framesFromMs(cfg.Audio.WakeDetectIntervalMs)
+		log.Printf("[wake] use embedded sherpa-onnx keyword=%s keywords=%s", cfg.Audio.WakeKeyword, keywords)
 		return wake
 	}
 	log.Printf("[wake] unsupported provider=%s", provider)
@@ -235,13 +233,21 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
 		return asr
 	case "whisper", "whispercpp":
-		binary := mgr.ResolveBinary("asr", "", cfg.ASR.BinaryPath, "whisper-cli.exe", "main.exe", "whisper-cli", "main")
 		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
-		if binary == "" || model == "" {
-			log.Printf("[asr] whispercpp not configured")
-			return audio.UnavailableASR{Reason: "whispercpp binary or model missing"}
+		if model == "" {
+			log.Printf("[asr] whisper model not configured")
+			return audio.UnavailableASR{Reason: "whisper model missing"}
 		}
-		log.Printf("[asr] use whisper.cpp binary=%s model=%s", binary, model)
+		if embedded, err := audio.NewWhisperEmbeddedASR(model, cfg.ASR.Language, cfg.ASR.Threads); err == nil {
+			log.Printf("[asr] use embedded whisper model=%s", model)
+			return embedded
+		}
+		binary := mgr.ResolveBinary("asr", "", cfg.ASR.BinaryPath, "whisper-cli.exe", "main.exe", "whisper-cli", "main")
+		if binary == "" {
+			log.Printf("[asr] whisper embedded unavailable and cli binary missing")
+			return audio.UnavailableASR{Reason: "whisper embedded unavailable and cli binary missing"}
+		}
+		log.Printf("[asr] fallback whisper.cpp cli binary=%s model=%s", binary, model)
 		return audio.NewWhisperCPPASR(binary, model, cfg.ASR.Language, cfg.ASR.Threads)
 	default:
 		return audio.UnavailableASR{Reason: "unsupported asr provider: " + strings.TrimSpace(cfg.ASR.Provider)}

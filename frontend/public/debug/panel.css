@@ -347,6 +347,35 @@ body {
   gap: 8px;
 }
 
+.download-card {
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.download-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-wrap {
+  width: 100%;
+  height: 10px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent-primary);
+  width: 0;
+  transition: width 0.25s ease;
+}
+
 .model-action-grid button {
   width: 100%;
 }

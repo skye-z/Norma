@@ -6,7 +6,9 @@ require (
 	github.com/Bithack/go-hnsw v0.0.0-20170629124716-52a932462077
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/getlantern/systray v1.2.2
+	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20260305053642-30c5194c9691
 	github.com/gorilla/websocket v1.5.3
+	github.com/k2-fsa/sherpa-onnx-go-windows v1.12.28
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/spf13/viper v1.21.0
 	github.com/wailsapp/wails/v2 v2.11.0

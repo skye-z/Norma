@@ -11,17 +11,15 @@ type Health struct {
 
 func BuildHealth(mgr *Manager) map[string]Health {
 	return map[string]Health{
-		"wake": classifyHealth([]string{"binary", "encoder", "decoder", "joiner", "tokens", "keywords"}, map[string]string{
-			"binary":   mgr.FindFirst("wake", "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter"),
+		"wake": classifyHealth([]string{"encoder", "decoder", "joiner", "tokens", "keywords"}, map[string]string{
 			"encoder":  mgr.FindGlob("wake", "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx"),
 			"decoder":  mgr.FindGlob("wake", "decoder-epoch-*.onnx", "decoder.int8.onnx", "decoder.onnx"),
 			"joiner":   mgr.FindGlob("wake", "joiner-epoch-*.onnx", "joiner.int8.onnx", "joiner.onnx"),
 			"tokens":   mgr.FindFirst("wake", "tokens.txt"),
 			"keywords": mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt"),
 		}),
-		"asr": classifyHealth([]string{"binary", "model"}, map[string]string{
-			"binary": mgr.FindFirst("asr", "whisper-cli.exe", "main.exe", "whisper-cli", "main"),
-			"model":  mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"),
+		"asr": classifyHealth([]string{"model"}, map[string]string{
+			"model": mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"),
 		}),
 		"tts": classifyHealth([]string{"binary", "voice_model", "voice_config"}, map[string]string{
 			"binary":       mgr.FindFirst("tts", "piper.exe", "piper"),

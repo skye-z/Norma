@@ -55,10 +55,13 @@ let modelCatalog = [];
 
 const componentCatalog = [
   { key: 'ollama', name: 'Ollama', desc: '用于大模型和向量嵌入' },
-  { key: 'piper', name: 'Piper', desc: '用于语音合成' },
-  { key: 'whispercpp', name: 'Whisper.cpp', desc: '用于语音识别' },
-  { key: 'sherpa-onnx', name: 'Sherpa ONNX', desc: '用于唤醒词' }
+  { key: 'piper', name: 'Piper', desc: '用于语音合成' }
 ];
+
+const providerInstallPlan = {
+  ollama: ['llm-ollama-windows-x64'],
+  piper: ['tts-piper-windows-x64', 'tts-piper-voice-zh-cn-huayan-medium']
+};
 
 const moduleSchemas = {
   model: {
@@ -71,22 +74,18 @@ const moduleSchemas = {
   },
   input: {
     title: '输入模块',
-    summary: '麦克风、唤醒词和前置音频策略。',
+    summary: '麦克风、唤醒词和前置音频策略（唤醒已内嵌）。',
     fields: [
       { path: 'audio.enable_wake_word', label: '启用唤醒词', type: 'boolean' },
       { path: 'audio.wake_mode', label: '唤醒模式', type: 'select', options: [{ value: 'wake_word_vad', label: '唤醒词+语音端点检测' }, { value: 'vad', label: '仅语音端点检测' }] },
-      { path: 'audio.wake_provider', label: '唤醒组件', type: 'select', options: [{ value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
       { path: 'audio.wake_keyword', label: '唤醒词', type: 'text' },
       { path: 'audio.mic_device_id', label: '麦克风设备', type: 'mic_device_select' }
     ]
   },
   asr: {
     title: '识别模块',
-    summary: '语音识别配置。',
+    summary: '语音识别配置（whisper 已内嵌）。',
     fields: [
-      { path: 'asr.provider', label: '识别组件', type: 'select', options: [{ value: 'whispercpp', label: 'Whisper.cpp' }] },
-      { path: 'asr.endpoint', label: '识别接口地址', type: 'text' },
-      { path: 'asr.stream_endpoint', label: '流式识别接口', type: 'text' },
       { path: 'asr.language', label: '识别语言', type: 'select', options: [{ value: 'zh', label: '中文 (zh)' }] },
       { path: 'asr.threads', label: '线程数', type: 'number' },
       { path: 'asr.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
@@ -153,6 +152,10 @@ let modelMotionGroups = ['Idle'];
 let micDeviceOptions = [{ value: 'default', label: '系统默认麦克风' }];
 let endpointModelOptions = [];
 let endpointModelError = '';
+const modelDownloadState = {
+  asr_model: { job: null, last: null },
+  wake_model: { job: null, last: null }
+};
 
 function log(message) {
   console.log(`[debug-console] ${message}`);
@@ -220,6 +223,10 @@ function ensureDebugDraft() {
 
   if (!draftSettings.audio.wake_provider) draftSettings.audio.wake_provider = 'sherpa-onnx';
   if (!draftSettings.asr.provider) draftSettings.asr.provider = 'whispercpp';
+  draftSettings.audio.wake_provider = 'sherpa-onnx';
+  draftSettings.asr.provider = 'whispercpp';
+  draftSettings.asr.endpoint = '';
+  draftSettings.asr.stream_endpoint = '';
   if (!draftSettings.tts.provider) draftSettings.tts.provider = 'piper';
   if (!draftSettings.llm.provider) draftSettings.llm.provider = 'ollama';
   if (!draftSettings.llm.endpoint) draftSettings.llm.endpoint = 'http://127.0.0.1:11434/v1';
@@ -263,7 +270,7 @@ function moduleIndicatorColor(moduleKey) {
     case 'input': {
       if (!currentSettings.audio?.wake_provider) return 'gray';
       if (!currentSettings.audio?.enable_wake_word) return 'red';
-      const st = providerHealthStatus(stack.wake || currentSettings.audio.wake_provider);
+      const st = providerHealthStatus(stack.wake || 'sherpa-onnx');
       if (st === 'ready') return 'green';
       if (st === 'partial') return 'yellow';
       if (st === 'missing') return 'gray';
@@ -272,7 +279,7 @@ function moduleIndicatorColor(moduleKey) {
     case 'asr': {
       if (!currentSettings.asr?.provider) return 'gray';
       if (currentSettings.asr.provider === 'mock') return 'red';
-      const st = providerHealthStatus(stack.asr || currentSettings.asr.provider);
+      const st = providerHealthStatus(stack.asr || 'whispercpp');
       if (st === 'ready') return 'green';
       if (st === 'partial') return 'yellow';
       if (st === 'missing') return 'gray';
@@ -350,7 +357,7 @@ function renderSidebarText(settings, providerStatus) {
   const hit = modelCatalog.find((item) => item.url === activeURL);
   if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
   if (textInputEl) textInputEl.textContent = `${wakeModeMap[settings?.audio?.wake_mode] || '输入策略'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
-  if (textAsrEl) textAsrEl.textContent = stack.asr || settings?.asr?.provider || '-';
+  if (textAsrEl) textAsrEl.textContent = `内嵌 Whisper / ${settings?.asr?.language || 'zh'}`;
   if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
   if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
   if (textTtsEl) textTtsEl.textContent = `${stack.tts || settings?.tts?.provider || '-'} / ${settings?.tts?.voice || '默认声线'}`;
@@ -465,13 +472,45 @@ function renderProviderManageList() {
             <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="install" type="button" ${item.installed ? 'disabled' : ''}>安装</button>
             <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="update" type="button" ${item.installed ? '' : 'disabled'}>更新</button>
             <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="uninstall" type="button" ${item.installed ? '' : 'disabled'}>卸载</button>
-            <button data-provider-key="${escapeHtml(item.key)}" data-provider-action="configure" type="button" ${item.installed ? '' : 'disabled'}>应用配置</button>
           </div>
         </div>
       `).join('')}
       <button data-provider-action="discover" type="button">重新发现已安装组件</button>
     </div>
   `;
+}
+
+function renderDownloadCard(module, title, desc, manualPath, state) {
+  const job = state?.job || null;
+  const pct = job && Number.isFinite(job.percent) ? Math.max(0, Math.min(100, Math.round(job.percent))) : 0;
+  const statusText = job ? `${job.status}${job.message ? ` / ${job.message}` : ''}` : '未开始';
+  const err = job?.error ? `<div class="field-hint-error">${escapeHtml(job.error)}</div>` : '';
+  return `
+    <div class="download-card">
+      <div class="download-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(statusText)}</span>
+      </div>
+      <div class="event-detail">${escapeHtml(desc)}</div>
+      <div class="event-detail">手动放置目录: <code>${escapeHtml(manualPath)}</code></div>
+      <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;"></div></div>
+      <div class="event-detail">进度: ${pct}%</div>
+      <div class="provider-actions">
+        <button data-download-module="${escapeHtml(module)}" data-download-action="start" type="button" ${job && job.status === 'running' ? 'disabled' : ''}>开始下载</button>
+        <button data-download-module="${escapeHtml(module)}" data-download-action="refresh" type="button">刷新进度</button>
+        <button data-download-module="${escapeHtml(module)}" data-download-action="open-dir" type="button">打开目录</button>
+      </div>
+      ${err}
+    </div>
+  `;
+}
+
+function renderEmbeddedDownloadCards() {
+  if (selectedModule !== 'input' && selectedModule !== 'asr') return '';
+  if (selectedModule === 'input') {
+    return renderDownloadCard('wake_model', '唤醒模型下载', '下载 Sherpa 唤醒模型与关键词文件（内嵌模式仅需模型资产）', 'resource/runtime/providers/wake/current', modelDownloadState.wake_model);
+  }
+  return renderDownloadCard('asr_model', '识别模型下载', '下载 Whisper 基础模型（内嵌模式仅需模型文件）', 'resource/runtime/providers/asr/current', modelDownloadState.asr_model);
 }
 
 function renderDetailPanel() {
@@ -531,7 +570,7 @@ function renderDetailPanel() {
     ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button></div>${motionButtons}`
     : '';
 
-  detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderProviderManageList()}`;
+  detailConfigEl.innerHTML = `${formHTML}${modelActions}${renderEmbeddedDownloadCards()}${renderProviderManageList()}`;
 }
 
 function setDirty(nextDirty) {
@@ -637,14 +676,58 @@ async function runProviderAction(action, key) {
     return;
   }
 
+  const ids = providerInstallPlan[key] || [key];
   const endpoint = action === 'uninstall' ? '/providers/uninstall' : '/providers/install';
-  const resp = await fetch(`${api}${endpoint}`, {
+  const queue = action === 'uninstall' ? [...ids].reverse() : ids;
+  for (const id of queue) {
+    const resp = await fetch(`${api}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`${action} 失败: ${id}${body ? ` -> ${body}` : ''}`);
+    }
+  }
+  await loadAll(false);
+}
+
+async function startModelDownload(module) {
+  const resp = await fetch(`${api}/providers/model-download/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: key })
+    body: JSON.stringify({ module })
   });
-  if (!resp.ok) throw new Error(`${action} 失败`);
-  await loadAll(false);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok) {
+    throw new Error(data?.error?.message || `启动下载失败: ${resp.status}`);
+  }
+  modelDownloadState[module] = { job: data.job || null, last: Date.now() };
+}
+
+async function refreshModelDownload(module) {
+  const state = modelDownloadState[module];
+  const jobID = state?.job?.id;
+  if (!jobID) return;
+  const resp = await fetch(`${api}/providers/model-download/status?job_id=${encodeURIComponent(jobID)}`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok) {
+    throw new Error(data?.error?.message || `刷新下载进度失败: ${resp.status}`);
+  }
+  modelDownloadState[module] = { job: data.job || null, last: Date.now() };
+}
+
+async function openModelTargetDir(module) {
+  const resp = await fetch(`${api}/providers/model-download/open-dir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ module })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok) {
+    throw new Error(data?.error?.message || `打开目录失败: ${resp.status}`);
+  }
 }
 
 function bindDetailEditor() {
@@ -719,6 +802,32 @@ function bindDetailEditor() {
     }
     if (target?.dataset?.providerAction) {
       runProviderAction(target.dataset.providerAction, target.dataset.providerKey).catch((error) => log(String(error)));
+      return;
+    }
+    if (target?.dataset?.downloadAction) {
+      const module = String(target.dataset.downloadModule || '').trim();
+      if (!module) return;
+      if (target.dataset.downloadAction === 'start') {
+        startModelDownload(module)
+          .then(() => {
+            renderDetailPanel();
+            log(`已启动下载任务: ${module}`);
+          })
+          .catch((error) => log(String(error)));
+        return;
+      }
+      if (target.dataset.downloadAction === 'refresh') {
+        refreshModelDownload(module)
+          .then(() => renderDetailPanel())
+          .catch((error) => log(String(error)));
+        return;
+      }
+      if (target.dataset.downloadAction === 'open-dir') {
+        openModelTargetDir(module)
+          .then(() => log(`已打开目录: ${module}`))
+          .catch((error) => log(String(error)));
+        return;
+      }
     }
   });
 

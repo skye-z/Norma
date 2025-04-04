@@ -68,10 +68,9 @@ func TestProviderStatusHealthGrading(t *testing.T) {
 	mustMkdirAll(t, filepath.Join(providersRoot, "asr", "current"))
 	mustMkdirAll(t, filepath.Join(providersRoot, "tts", "current"))
 	mustMkdirAll(t, filepath.Join(providersRoot, "wake", "current"))
-	mustWriteFile(t, filepath.Join(providersRoot, "asr", "current", "whisper-cli.exe"), "bin")
+	mustWriteFile(t, filepath.Join(providersRoot, "asr", "current", "ggml-base.bin"), "model")
 	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "piper.exe"), "bin")
 	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "zh_CN-huayan-medium.onnx"), "model")
-	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "sherpa-onnx-keyword-spotter.exe"), "bin")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "encoder-epoch-12-avg-2.onnx"), "encoder")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "decoder-epoch-12-avg-2.onnx"), "decoder")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "joiner-epoch-12-avg-2.onnx"), "joiner")
@@ -100,8 +99,8 @@ func TestProviderStatusHealthGrading(t *testing.T) {
 	if err := json.Unmarshal(statusRec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if out.Health["asr"].Status != "partial" {
-		t.Fatalf("expected asr partial, got %+v", out.Health["asr"])
+	if out.Health["asr"].Status != "ready" {
+		t.Fatalf("expected asr ready, got %+v", out.Health["asr"])
 	}
 	if out.Health["tts"].Status != "partial" {
 		t.Fatalf("expected tts partial, got %+v", out.Health["tts"])
