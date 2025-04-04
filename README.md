@@ -6,7 +6,7 @@
 
 1. 轻量本地部署：双击启动，单机运行，无 Redis/ES 等中间件。
 2. 高拟人化体验：Live2D 动作、情绪、口型联动。
-3. 极简架构：Go 核心 + 事件总线 + 可替换 Provider。
+3. 极简架构：Go 核心 + 事件总线 + 可替换能力层。
 
 ## 定版技术基线
 
@@ -14,8 +14,8 @@
 - 配置：Viper
 - 数据层：XORM + SQLite（modernc.org/sqlite）
 - 桌面层：Wails + Live2D
-- Wake：sherpa-onnx
-- ASR：whisper.cpp
+- Wake：Sherpa-onnx（内嵌）
+- ASR：Whisper.cpp（内嵌）
 - TTS：Piper
 - LLM / Embedding：Ollama
 
@@ -27,7 +27,7 @@
 2. 运行时层：状态机、事件总线、会话与取消机制。
 3. 编排层：`asr.final -> rag.ready -> llm.token -> tts.chunk.ready -> audio.play.end`。
 4. 能力层：语音、知识库检索、记忆、诊断与设置。
-5. 基础层：SQLite、本地文件系统、Ollama、本地语音 Provider。
+5. 基础层：SQLite、本地文件系统、Ollama、本地语音能力与模型资产。
 
 ### 2) 关键约束
 
@@ -40,7 +40,7 @@
 
 目标链路：
 
-`mic -> wake(sherpa-onnx) -> vad/endpoint -> asr(whisper.cpp) -> llm(ollama) -> tts(piper) -> audio play -> live2d`
+`mic -> wake(sherpa embedded) -> vad/endpoint -> asr(whisper embedded) -> llm(ollama) -> tts(piper) -> audio play -> live2d`
 
 关键事件：
 
@@ -74,13 +74,13 @@
 
 已具备：
 
-1. mic 会话 API、状态机/事件总线、基础编排模块。
+1. mic 会话 API、状态机/事件总线、基础编排模块，以及内嵌 Whisper / Sherpa 能力实现。
 2. Hybrid RAG（FTS5 + HNSW + RRF）与本地记忆模块。
 3. Live2D 事件驱动桥接（motion/mouth/emotion）。
 
 仍需收口：
 
-1. 桌面主流程中的编排接线闭环。
+1. 桌面主流程中的编排与内嵌语音能力接线闭环。
 2. 真实麦克风采集与真实播放链路稳定化。
 3. 播放期口型同步与稳定 barge-in。
 
