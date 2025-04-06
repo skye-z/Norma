@@ -56,6 +56,7 @@ func (h *SettingsHandler) handleRuntimeGet(w http.ResponseWriter) {
 }
 
 func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Request) {
+	previous, _ := config.Load(h.configPath)
 	var cfg config.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		writeAPIError(w, errs.Invalid("invalid json"))
@@ -73,6 +74,10 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	}
 	if cfg.LLM.RequestTimeoutMs <= 0 {
 		cfg.LLM.RequestTimeoutMs = 45000
+	}
+	cfg.LLM.APIKey = strings.TrimSpace(cfg.LLM.APIKey)
+	if strings.TrimSpace(cfg.LLM.Persona) == "" {
+		cfg.LLM.Persona = config.DefaultLLMPersona
 	}
 	if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
 		cfg.Audio.WakeProvider = "sherpa-onnx"
@@ -157,6 +162,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	}
 	if h.bus != nil {
 		h.bus.Publish(bus.Event{Name: "runtime.config.updated", Payload: map[string]any{"path": h.configPath}})
+		publishWakeModeAnnouncement(h.bus, previous, &cfg, "settings")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -247,4 +253,27 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 	}
 	cfg.Audio.WakeKeywordsFilePath = filepath.ToSlash(keywordsPath)
 	return nil
+}
+
+func autoWakeModeEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.Audio.EnableWakeWord && strings.EqualFold(strings.TrimSpace(cfg.Audio.WakeMode), "wake_word_vad")
+}
+
+func publishWakeModeAnnouncement(b *bus.Bus, previous, current *config.Config, source string) {
+	if b == nil || current == nil {
+		return
+	}
+	prev := autoWakeModeEnabled(previous)
+	next := autoWakeModeEnabled(current)
+	if prev == next {
+		return
+	}
+	text := "我先休息啦，有事按我头上的按钮"
+	if next {
+		text = "我一直都在，有事叫我哦"
+	}
+	b.Publish(bus.Event{Name: "assistant.say", SessionID: "system-wake-mode", TraceID: "system-wake-mode", Payload: map[string]any{"text": text, "interrupt": true, "source": source}})
 }

@@ -86,9 +86,11 @@ func (a *App) initTrayMenu() {
 					a.ToggleForcePassthrough()
 					refreshMenus()
 				case <-menuWakeMode.ClickedCh:
-					if err := toggleWakeMode(); err != nil {
+					nextAutoWake, err := toggleWakeMode()
+					if err != nil {
 						_ = publishRuntimeEvent("debug.notice", map[string]any{"text": "唤醒模式切换失败: " + err.Error()})
 					} else {
+						_ = publishRuntimeEvent("assistant.say", map[string]any{"text": wakeModeAnnouncement(nextAutoWake), "interrupt": true, "source": "tray"})
 						_ = publishRuntimeEvent("runtime.config.updated", map[string]any{"path": layout.ConfigFileName, "source": "tray"})
 					}
 					refreshMenus()
@@ -181,10 +183,17 @@ func autoWakeEnabled() bool {
 	return cfg.Audio.EnableWakeWord && strings.TrimSpace(cfg.Audio.WakeMode) == audio.WakeModeWakeWordVAD
 }
 
-func toggleWakeMode() error {
+func wakeModeAnnouncement(auto bool) string {
+	if auto {
+		return "我一直都在，有事叫我哦"
+	}
+	return "我先休息啦，有事按我头上的按钮"
+}
+
+func toggleWakeMode() (bool, error) {
 	cfg, err := config.Load(layout.ConfigFileName)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if cfg.Audio.EnableWakeWord && strings.TrimSpace(cfg.Audio.WakeMode) == audio.WakeModeWakeWordVAD {
 		cfg.Audio.EnableWakeWord = false
@@ -199,5 +208,8 @@ func toggleWakeMode() error {
 			cfg.Audio.WakeKeyword = "诺玛"
 		}
 	}
-	return config.Save(layout.ConfigFileName, cfg)
+	if err := config.Save(layout.ConfigFileName, cfg); err != nil {
+		return false, err
+	}
+	return cfg.Audio.EnableWakeWord && strings.TrimSpace(cfg.Audio.WakeMode) == audio.WakeModeWakeWordVAD, nil
 }

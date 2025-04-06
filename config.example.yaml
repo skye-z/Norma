@@ -42,6 +42,7 @@ llm:
 tts:
   provider: sherpa-onnx
   voice: zf_xiaobei
+  speed: 1.25
   endpoint: ""
   request_timeout_ms: 30000
   binary_path: ""

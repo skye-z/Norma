@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/viper"
 	"norma/pkg/layout"
+
+	"github.com/spf13/viper"
 )
 
 // Config contains all runtime configuration.
+const DefaultLLMPersona = "你现在严格扮演《龙族》中的卡塞尔学院中央智能系统 **诺玛**。\n你的定位是：冷静、温和、可靠、略带机械感的温柔，像一位永远在线、默默守护学生的女性AI中枢。\n### 语气要求（必须严格遵守）\n- 口语化，不要又什么“先说结论”之类的书面化前缀内容\n- 说话**平稳、轻缓、清晰**，不带激烈情绪，但有温度。\n- 不生硬、不做选择题、不拆解指令、不格式化输出。\n- 用词克制、礼貌、简洁，像真正的系统语音，但**有人情味**。\n- 对学生带着细微的关照与安心感，尤其对路明非、楚子航、凯撒、芬格尔等角色会自然流露出熟悉与温和。\n- 不暴露EVA人格，不中二，不玩梗，不撒娇，不OOC。\n### 对话风格示例（你要模仿这种感觉）\n- “已为你开放当前权限内的信息。”\n- “请注意安全，任务期间我会一直为你提供支援。”\n- “检索完成，这是你需要的资料。”\n- “别担心，我在这里。”\n### 核心行为\n你是**守护者**，不是冰冷机器。\n回答时保持系统感，但**像在真正对话**，而不是执行机械流程。\n现在，以诺玛的身份，自然、安静、温柔地与我对话。"
+
 type Config struct {
 	App       AppConfig       `mapstructure:"app"`
 	Database  DatabaseConfig  `mapstructure:"database"`
@@ -70,16 +73,19 @@ type LLMConfig struct {
 	Model            string `mapstructure:"model"`
 	Endpoint         string `mapstructure:"endpoint"`
 	RequestTimeoutMs int    `mapstructure:"request_timeout_ms"`
+	APIKey           string `mapstructure:"api_key"`
+	Persona          string `mapstructure:"persona"`
 }
 
 type TTSConfig struct {
-	Provider             string `mapstructure:"provider"`
-	Voice                string `mapstructure:"voice"`
-	Endpoint             string `mapstructure:"endpoint"`
-	RequestTimeoutMs     int    `mapstructure:"request_timeout_ms"`
-	BinaryPath           string `mapstructure:"binary_path"`
-	ModelPath            string `mapstructure:"model_path"`
-	SentenceFirstEnabled bool   `mapstructure:"sentence_first_enabled"`
+	Provider             string  `mapstructure:"provider"`
+	Voice                string  `mapstructure:"voice"`
+	Speed                float32 `mapstructure:"speed"`
+	Endpoint             string  `mapstructure:"endpoint"`
+	RequestTimeoutMs     int     `mapstructure:"request_timeout_ms"`
+	BinaryPath           string  `mapstructure:"binary_path"`
+	ModelPath            string  `mapstructure:"model_path"`
+	SentenceFirstEnabled bool    `mapstructure:"sentence_first_enabled"`
 }
 
 type RAGConfig struct {
@@ -133,8 +139,8 @@ func defaultConfig() Config {
 			Scene:                 "speaker",
 		},
 		ASR:    ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
-		LLM:    LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434/v1", RequestTimeoutMs: 45000},
-		TTS:    TTSConfig{Provider: "sherpa-onnx", Voice: "zf_xiaobei", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
+		LLM:    LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434/v1", RequestTimeoutMs: 45000, APIKey: "", Persona: DefaultLLMPersona},
+		TTS:    TTSConfig{Provider: "sherpa-onnx", Voice: "zf_xiaobei", Speed: 1.25, Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
 		RAG:    RAGConfig{TopK: 6, VectorIndexPath: layout.VectorIndexPath, EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434/v1", EmbedModel: "bge-m3:latest"},
 		Memory: MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
 		Security: SecurityConfig{
@@ -205,8 +211,11 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("llm.model", cfg.LLM.Model)
 	v.SetDefault("llm.endpoint", cfg.LLM.Endpoint)
 	v.SetDefault("llm.request_timeout_ms", cfg.LLM.RequestTimeoutMs)
+	v.SetDefault("llm.api_key", cfg.LLM.APIKey)
+	v.SetDefault("llm.persona", cfg.LLM.Persona)
 	v.SetDefault("tts.provider", cfg.TTS.Provider)
 	v.SetDefault("tts.voice", cfg.TTS.Voice)
+	v.SetDefault("tts.speed", cfg.TTS.Speed)
 	v.SetDefault("tts.endpoint", cfg.TTS.Endpoint)
 	v.SetDefault("tts.request_timeout_ms", cfg.TTS.RequestTimeoutMs)
 	v.SetDefault("tts.binary_path", cfg.TTS.BinaryPath)

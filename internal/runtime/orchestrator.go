@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -10,9 +11,11 @@ import (
 
 	"norma/internal/audio"
 	"norma/internal/companion"
+	"norma/internal/config"
 	"norma/internal/index"
 	"norma/internal/llm"
 	"norma/internal/runtime/bus"
+	"norma/pkg/layout"
 )
 
 // Orchestrator wires ASR/RAG/LLM/TTS with event bus.
@@ -91,6 +94,22 @@ func (o *Orchestrator) bind() {
 		}
 		o.rt.Bus.Publish(bus.Event{Name: "audio.play.interrupt", SessionID: evt.SessionID, TraceID: evt.TraceID, Payload: map[string]any{"source": "orchestrator", "reason": "interrupt"}})
 	})
+
+	o.rt.Bus.Subscribe("assistant.say", func(evt bus.Event) {
+		text, interrupt := extractAssistantSay(evt.Payload)
+		if strings.TrimSpace(text) == "" {
+			return
+		}
+		sessionID := strings.TrimSpace(evt.SessionID)
+		if sessionID == "" {
+			sessionID = fmt.Sprintf("assistant-say-%d", time.Now().UnixMilli())
+		}
+		traceID := strings.TrimSpace(evt.TraceID)
+		if traceID == "" {
+			traceID = sessionID
+		}
+		go o.handleAssistantSay(sessionID, traceID, text, interrupt)
+	})
 }
 
 func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
@@ -119,7 +138,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	o.rt.Bus.Publish(bus.Event{Name: "rag.ready", SessionID: sessionID, TraceID: traceID, Payload: len(chunks)})
 
 	var sb strings.Builder
-	req := llm.Request{SessionID: sessionID, Prompt: text, Context: contextTexts}
+	req := llm.Request{SessionID: sessionID, Prompt: text, Context: contextTexts, Persona: o.currentPersona()}
 	log.Printf("[llm] start session=%s trace=%s prompt=%q context_chunks=%d", sessionID, traceID, text, len(contextTexts))
 	if err := o.llm.Stream(ctx, req, func(token string) {
 		sb.WriteString(token)
@@ -137,7 +156,58 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	}
 	answer = companion.RewritePersona(answer)
 	log.Printf("[llm] done session=%s trace=%s answer=%q", sessionID, traceID, answer)
+	if err := o.streamAnswer(ctx, sessionID, traceID, answer); err != nil && err != context.Canceled {
+		log.Printf("[orchestrator] stream answer error: %v", err)
+		o.publishError(sessionID, traceID, "tts_stream_failed", err)
+	}
+	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
+}
 
+func extractAssistantSay(payload any) (string, bool) {
+	data, _ := payload.(map[string]any)
+	text := ""
+	interrupt := false
+	if data != nil {
+		if value, ok := data["text"]; ok {
+			text = strings.TrimSpace(fmt.Sprint(value))
+		}
+		if value, ok := data["interrupt"].(bool); ok {
+			interrupt = value
+		}
+		return text, interrupt
+	}
+	return strings.TrimSpace(fmt.Sprint(payload)), false
+}
+
+func (o *Orchestrator) handleAssistantSay(sessionID, traceID, text string, interrupt bool) {
+	if interrupt {
+		o.stopActiveSessions("assistant_say")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	o.storeCancel(sessionID, cancel)
+	defer func() {
+		cancel()
+		o.deleteCancel(sessionID)
+	}()
+	if err := o.streamAnswer(ctx, sessionID, traceID, strings.TrimSpace(text)); err != nil && err != context.Canceled {
+		log.Printf("[orchestrator] assistant.say stream error: %v", err)
+		o.publishError(sessionID, traceID, "assistant_say_failed", err)
+	}
+}
+
+func (o *Orchestrator) currentPersona() string {
+	cfg, err := config.Load(layout.ConfigFileName)
+	if err != nil || cfg == nil {
+		return config.DefaultLLMPersona
+	}
+	persona := strings.TrimSpace(cfg.LLM.Persona)
+	if persona == "" {
+		return config.DefaultLLMPersona
+	}
+	return persona
+}
+
+func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, answer string) error {
 	plan := companion.PlanReply(answer)
 	if len(plan.Segments) == 0 {
 		plan = companion.PlanReply("先给结论：当前没有可播报内容。")
@@ -152,7 +222,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 
 	for index, segment := range plan.Segments {
 		if err := ctx.Err(); err != nil {
-			return
+			return err
 		}
 		phase := "supplement"
 		if index == 0 {
@@ -196,9 +266,7 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 				"delivery":      delivery,
 			}})
 		}); err != nil {
-			log.Printf("[orchestrator] tts stream error: %v", err)
-			o.publishError(sessionID, traceID, "tts_stream_failed", err)
-			break
+			return err
 		}
 		log.Printf("[tts] segment done session=%s trace=%s index=%d", sessionID, traceID, index)
 	}
@@ -212,7 +280,26 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	}
 	o.rt.Bus.Publish(bus.Event{Name: "tts.stream.done", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "orchestrator", "reason": "done"}})
 	log.Printf("[tts] stream done session=%s trace=%s", sessionID, traceID)
-	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
+	return nil
+}
+
+func (o *Orchestrator) stopActiveSessions(reason string) {
+	o.mu.Lock()
+	active := make(map[string]context.CancelFunc, len(o.cancels))
+	for sessionID, cancel := range o.cancels {
+		active[sessionID] = cancel
+	}
+	o.mu.Unlock()
+	for sessionID, cancel := range active {
+		cancel()
+		if err := o.tts.Stop(sessionID); err != nil {
+			log.Printf("[orchestrator] stop tts failed: %v", err)
+		}
+		if o.playback != nil {
+			o.playback.Stop(sessionID, sessionID, reason)
+		}
+		o.rt.Bus.Publish(bus.Event{Name: "audio.play.interrupt", SessionID: sessionID, TraceID: sessionID, Payload: map[string]any{"source": "orchestrator", "reason": reason}})
+	}
 }
 
 func (o *Orchestrator) emitVisemes(ctx context.Context, sessionID, traceID, text string) {

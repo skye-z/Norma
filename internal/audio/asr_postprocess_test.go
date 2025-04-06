@@ -25,3 +25,19 @@ func TestPostProcessASRTextSupportsTraditionalWakeKeywordPrefix(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestPostProcessASRTextFixesIntroSentenceNearMiss(t *testing.T) {
+	got := PostProcessASRText("谢谢大家收看!", "诺玛")
+	want := "请介绍一下你自己!"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestPostProcessASRTextFixesTruncatedIntroSentence(t *testing.T) {
+	got := PostProcessASRText("诺马请介绍一下", "诺玛")
+	want := "诺玛请介绍一下你自己"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}

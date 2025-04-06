@@ -311,6 +311,9 @@ async function initCompanion() {
     micFrameQueue: [],
     micFlushTimer: null,
     micSendInFlight: false,
+    micSocket: null,
+    micSocketSessionID: '',
+    micSocketTraceID: '',
     captureMode: '',
     sessionMode: '',
     backgroundWakeActive: false,
@@ -602,12 +605,71 @@ async function initCompanion() {
     return out;
   }
 
+  function micWSURL() {
+    const parsed = new URL(apiBase);
+    parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${parsed.origin}/conversation/mic/ws?session_id=${encodeURIComponent(state.sessionID)}&trace_id=${encodeURIComponent(state.traceID || state.sessionID)}`;
+  }
+
+  function closeMicSocket() {
+    if (!state.micSocket) return;
+    try { state.micSocket.close(); } catch (_) {}
+    state.micSocket = null;
+    state.micSocketSessionID = '';
+    state.micSocketTraceID = '';
+  }
+
+  async function ensureMicSocket() {
+    if (!state.sessionID || state.captureMode !== 'push') return null;
+    if (state.micSocket && state.micSocket.readyState === WebSocket.OPEN && state.micSocketSessionID === state.sessionID) {
+      return state.micSocket;
+    }
+    closeMicSocket();
+    return await new Promise((resolve, reject) => {
+      const socket = new WebSocket(micWSURL());
+      let settled = false;
+      socket.onopen = () => {
+        settled = true;
+        state.micSocket = socket;
+        state.micSocketSessionID = state.sessionID;
+        state.micSocketTraceID = state.traceID || state.sessionID;
+        console.info('[audio] mic transport=websocket');
+        resolve(socket);
+      };
+      socket.onerror = (event) => {
+        if (!settled) reject(new Error('mic websocket unavailable'));
+        console.warn('[audio] mic websocket error', event);
+      };
+      socket.onclose = () => {
+        if (state.micSocket === socket) {
+          state.micSocket = null;
+          state.micSocketSessionID = '';
+          state.micSocketTraceID = '';
+        }
+        if (!settled) reject(new Error('mic websocket closed before ready'));
+      };
+    });
+  }
+
   async function sendMicFrame(frame, eof = false) {
     if (!state.sessionID || state.captureMode !== 'push') return;
+    const frames = Array.from(frame || []);
+    try {
+      const socket = await ensureMicSocket();
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          session_id: state.sessionID,
+          trace_id: state.traceID,
+          frames,
+          eof
+        }));
+        return;
+      }
+    } catch (_) {}
     await postJSON('/conversation/mic/frame', {
       session_id: state.sessionID,
       trace_id: state.traceID,
-      frames: Array.from(frame || []),
+      frames,
       eof
     }).catch(() => undefined);
   }
@@ -693,14 +755,18 @@ async function initCompanion() {
 
   async function refreshAudioPolicy() {
     try {
+      const previousAutoWake = state.audioPolicy.autoWake;
       const policy = await fetchJSON('/conversation/mic/policy');
       state.audioPolicy = {
         autoWake: policy?.auto_wake === true,
         wakeReady: policy?.wake_ready === true,
         showMicButton: policy?.show_mic_button !== false,
-        wakeKeyword: String(policy?.wake_status?.keyword || '诺玛')
+        wakeKeyword: String(policy?.wake_status?.keyword || '??')
       };
       setMicFabVisible(state.audioPolicy.showMicButton);
+      if (!state.speechListening && previousAutoWake !== state.audioPolicy.autoWake) {
+        setStatus(state.audioPolicy.autoWake ? '已切换为自动唤醒' : '已切换为手动唤醒', 'info', true);
+      }
       if (state.speechListening) return;
       if (state.audioPolicy.autoWake && state.audioPolicy.wakeReady) {
         await ensureBackgroundWake();
@@ -710,10 +776,18 @@ async function initCompanion() {
         await interruptConversation('audio_policy_changed');
         state.backgroundWakeActive = false;
         state.backgroundWakeStarting = false;
+        await stopMediaCapture(false).catch(() => undefined);
       }
     } catch (error) {
       console.warn('[wake] refresh audio policy failed', error);
       setMicFabVisible(true);
+    }
+  }
+
+  async function waitForMicTransportIdle(timeoutMs = 1200) {
+    const startedAt = Date.now();
+    while (state.micSendInFlight && (Date.now() - startedAt) < timeoutMs) {
+      await sleep(10);
     }
   }
 
@@ -724,9 +798,14 @@ async function initCompanion() {
     }
     if (state.mediaProcessor?.port) {
       try { state.mediaProcessor.port.postMessage({ flush: true }); } catch (_) {}
+      await sleep(40);
     }
-    if (eof && state.micFrameQueue.length > 0) {
-      await flushMicFrames(false).catch(() => undefined);
+    if (eof) {
+      await waitForMicTransportIdle();
+      if (state.micFrameQueue.length > 0) {
+        await flushMicFrames(false).catch(() => undefined);
+      }
+      await waitForMicTransportIdle();
     } else {
       state.micFrameQueue = [];
     }
@@ -757,6 +836,7 @@ async function initCompanion() {
       state.mediaContext = null;
     }
     if (eof) await sendMicFrame([], true);
+    closeMicSocket();
   }
 
   function currentFlushSamples() {
@@ -815,6 +895,9 @@ async function initCompanion() {
   }
 
   async function startMediaCapture() {
+    if (state.captureMode === 'push') {
+      await ensureMicSocket().catch(() => undefined);
+    }
     if (state.mediaStream && state.mediaContext && state.mediaProcessor) {
       if (state.mediaProcessor?.port) {
         state.mediaProcessor.port.postMessage({ targetSampleRate: 16000, flushSamples: currentFlushSamples() });
@@ -830,7 +913,7 @@ async function initCompanion() {
       }
     });
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) throw new Error('??????? Web Audio');
+    if (!AudioCtx) throw new Error('当前环境不支持 Web Audio');
     const audioCtx = new AudioCtx({ latencyHint: state.sessionMode === 'wake' ? 'playback' : 'interactive' });
     state.mediaStream = stream;
     state.mediaContext = audioCtx;

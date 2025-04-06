@@ -37,10 +37,46 @@ func (p *Pipeline) Run(
 	armed := wakeMode == WakeModeVADOnly || p.WakeWord == nil
 	log.Printf("[pipeline] start wake_mode=%s armed=%v allow_barge_in=%v", wakeMode, armed, p.AllowBargeIn)
 
+	flushUtterance := func(reason string) error {
+		if len(utterance) == 0 {
+			return nil
+		}
+		log.Printf("[pipeline] flush utterance reason=%s utterance_frames=%d", reason, len(utterance))
+		if onSpeechEnd != nil {
+			onSpeechEnd()
+		}
+		if fasr, ok := p.ASR.(FrameASR); ok {
+			log.Printf("[pipeline] transcribe via FrameASR frames=%d", len(utterance))
+			if err := fasr.TranscribeFrames(ctx, utterance, onPartial, onFinal); err != nil {
+				log.Printf("[pipeline] frame asr error: %v", err)
+				return err
+			}
+		} else {
+			log.Printf("[pipeline] transcribe via streaming ASR")
+			if err := p.ASR.Stream(ctx, onPartial, onFinal); err != nil {
+				log.Printf("[pipeline] asr stream error: %v", err)
+				return err
+			}
+		}
+		utterance = utterance[:0]
+		if wakeMode == WakeModeWakeWordVAD && p.WakeWord != nil {
+			armed = false
+			wakeBuffer = wakeBuffer[:0]
+			detector = NewEndpointDetector(silenceFrames)
+		}
+		return nil
+	}
+
 	for {
 		frame, err := source.Next(ctx)
 		if err != nil {
-			if errors.Is(err, ErrEndOfStream) || errors.Is(err, context.Canceled) {
+			if errors.Is(err, ErrEndOfStream) {
+				if flushErr := flushUtterance("end_of_stream"); flushErr != nil {
+					return flushErr
+				}
+				return nil
+			}
+			if errors.Is(err, context.Canceled) {
 				return nil
 			}
 			return err
@@ -102,27 +138,8 @@ func (p *Pipeline) Run(
 
 		if end {
 			log.Printf("[pipeline] speech end utterance_frames=%d", len(utterance))
-			if onSpeechEnd != nil {
-				onSpeechEnd()
-			}
-			if fasr, ok := p.ASR.(FrameASR); ok {
-				log.Printf("[pipeline] transcribe via FrameASR frames=%d", len(utterance))
-				if err := fasr.TranscribeFrames(ctx, utterance, onPartial, onFinal); err != nil {
-					log.Printf("[pipeline] frame asr error: %v", err)
-					return err
-				}
-			} else {
-				log.Printf("[pipeline] transcribe via streaming ASR")
-				if err := p.ASR.Stream(ctx, onPartial, onFinal); err != nil {
-					log.Printf("[pipeline] asr stream error: %v", err)
-					return err
-				}
-			}
-			utterance = utterance[:0]
-			if wakeMode == WakeModeWakeWordVAD && p.WakeWord != nil {
-				armed = false
-				wakeBuffer = wakeBuffer[:0]
-				detector = NewEndpointDetector(silenceFrames)
+			if err := flushUtterance("endpoint"); err != nil {
+				return err
 			}
 		}
 	}

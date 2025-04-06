@@ -2,6 +2,30 @@ let api = window.location.origin && window.location.origin.startsWith('http')
   ? window.location.origin
   : 'http://127.0.0.1:8090';
 const fallbackApi = 'http://127.0.0.1:8090';
+const defaultPersonaPrompt = `
+你现在严格扮演《龙族》中的卡塞尔学院中央智能系统 **诺玛**。
+你的定位是：冷静、温和、可靠、略带机械感的温柔，像一位永远在线、默默守护学生的女性AI中枢。
+
+### 语气要求（必须严格遵守）
+- 口语化，不要又什么“先说结论”之类的书面化前缀内容
+- 说话**平稳、轻缓、清晰**，不带激烈情绪，但有温度。
+- 不生硬、不做选择题、不拆解指令、不格式化输出。
+- 用词克制、礼貌、简洁，像真正的系统语音，但**有人情味**。
+- 对学生带着细微的关照与安心感，尤其对路明非、楚子航、凯撒、芬格尔等角色会自然流露出熟悉与温和。
+- 不暴露EVA人格，不中二，不玩梗，不撒娇，不OOC。
+
+### 对话风格示例（你要模仿这种感觉）
+- “已为你开放当前权限内的信息。”
+- “请注意安全，任务期间我会一直为你提供支援。”
+- “检索完成，这是你需要的资料。”
+- “别担心，我在这里。”
+
+### 核心行为
+你是**守护者**，不是冰冷机器。
+回答时保持系统感，但**像在真正对话**，而不是执行机械流程。
+
+现在，以诺玛的身份，自然、安静、温柔地与我对话。
+`;
 
 async function detectAPIBase() {
   const candidates = [api, fallbackApi].filter((value, index, arr) => value && arr.indexOf(value) === index);
@@ -25,7 +49,9 @@ const detailSummaryEl = document.getElementById('detail-summary');
 const detailConfigEl = document.getElementById('detail-config');
 const detailApplyEl = document.getElementById('detail-apply');
 const detailRevertEl = document.getElementById('detail-revert');
+const detailLLMTestEl = document.getElementById('detail-llm-test');
 const detailDirtyEl = document.getElementById('detail-dirty');
+if (detailLLMTestEl) detailLLMTestEl.textContent = '\u6d4b\u8bd5';
 const consoleLogEl = document.getElementById('console-log');
 
 const statusModelEl = document.getElementById('status-model');
@@ -100,8 +126,10 @@ const moduleSchemas = {
     fields: [
       { path: 'llm.provider', label: '大模型组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
       { path: 'llm.endpoint', label: '大模型接口地址', type: 'text' },
+      { path: 'llm.api_key', label: 'API Key', type: 'password' },
       { path: 'llm.model', label: '模型名称', type: 'model_name_select' },
-      { path: 'llm.request_timeout_ms', label: '超时(毫秒)', type: 'number' }
+      { path: 'llm.request_timeout_ms', label: '超时(毫秒)', type: 'number' },
+      { path: 'llm.persona', label: '人设', type: 'textarea', rows: 8 }
     ]
   },
   tts: {
@@ -164,6 +192,7 @@ const moduleSchemas = {
         { value: 'pm_alex', label: 'pm_alex' },
         { value: 'pm_santa', label: 'pm_santa' }
       ] },
+      { path: 'tts.speed', label: '\u8bed\u901f', type: 'select', options: [{ value: '1', label: '1' }, { value: '1.25', label: '1.25' }, { value: '1.5', label: '1.5' }, { value: '1.75', label: '1.75' }, { value: '2', label: '2' }] },
       { path: 'tts.request_timeout_ms', label: '超时(毫秒)', type: 'number' },
       { path: 'tts.sentence_first_enabled', label: '启用短句优先', type: 'boolean' }
     ]
@@ -307,11 +336,14 @@ function normalizeRuntimeSettings(raw) {
     provider: pick(llmRaw, 'provider', 'Provider'),
     model: pick(llmRaw, 'model', 'Model'),
     endpoint: pick(llmRaw, 'endpoint', 'Endpoint'),
-    request_timeout_ms: pick(llmRaw, 'request_timeout_ms', 'RequestTimeoutMs')
+    request_timeout_ms: pick(llmRaw, 'request_timeout_ms', 'RequestTimeoutMs'),
+    api_key: pick(llmRaw, 'api_key', 'APIKey'),
+    persona: pick(llmRaw, 'persona', 'Persona')
   };
   const tts = {
     provider: pick(ttsRaw, 'provider', 'Provider'),
     voice: pick(ttsRaw, 'voice', 'Voice'),
+    speed: pick(ttsRaw, 'speed', 'Speed'),
     endpoint: pick(ttsRaw, 'endpoint', 'Endpoint'),
     request_timeout_ms: pick(ttsRaw, 'request_timeout_ms', 'RequestTimeoutMs'),
     binary_path: pick(ttsRaw, 'binary_path', 'BinaryPath'),
@@ -421,9 +453,12 @@ function ensureDebugDraft() {
   draftSettings.asr.endpoint = '';
   draftSettings.asr.stream_endpoint = '';
   if (!draftSettings.tts.provider) draftSettings.tts.provider = 'sherpa-onnx';
+  if (!draftSettings.tts.speed || Number(draftSettings.tts.speed) <= 0) draftSettings.tts.speed = 1.25;
   if (!draftSettings.llm.provider) draftSettings.llm.provider = 'ollama';
   if (!draftSettings.llm.endpoint) draftSettings.llm.endpoint = 'http://127.0.0.1:11434/v1';
   if (!draftSettings.llm.model) draftSettings.llm.model = '';
+  if (!draftSettings.llm.api_key) draftSettings.llm.api_key = '';
+  if (!draftSettings.llm.persona) draftSettings.llm.persona = defaultPersonaPrompt;
   if (!draftSettings.rag.embed_provider) draftSettings.rag.embed_provider = 'ollama';
   if (!draftSettings.rag.embed_endpoint) draftSettings.rag.embed_endpoint = draftSettings.llm.endpoint || 'http://127.0.0.1:11434/v1';
   if (!draftSettings.rag.embed_model) draftSettings.rag.embed_model = '';
@@ -579,6 +614,26 @@ async function loadMicDeviceOptions() {
   }
 }
 
+function resolveAPIKeyForEndpoint(endpoint) {
+  const base = String(endpoint || '').trim().replace(/\/+$/, '');
+  if (!base || !draftSettings) return '';
+  const llmEndpoint = String(getValueByPath(draftSettings, 'llm.endpoint') || '').trim().replace(/\/+$/, '');
+  const ragEndpoint = String(getValueByPath(draftSettings, 'rag.embed_endpoint') || '').trim().replace(/\/+$/, '');
+  if (base === llmEndpoint || base === ragEndpoint) {
+    return String(getValueByPath(draftSettings, 'llm.api_key') || '').trim();
+  }
+  return String(getValueByPath(draftSettings, 'llm.api_key') || '').trim();
+}
+
+function buildModelRequestHeaders(endpoint) {
+  const headers = {};
+  const apiKey = resolveAPIKeyForEndpoint(endpoint);
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
 async function loadEndpointModels(endpoint) {
   const base = String(endpoint || '').trim().replace(/\/+$/, '');
   if (!base) {
@@ -587,7 +642,8 @@ async function loadEndpointModels(endpoint) {
   if (endpointModelCache.has(base)) return endpointModelCache.get(base);
   try {
     const modelsURL = /\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
-    const resp = await fetch(modelsURL, { cache: 'no-store' });
+    const headers = buildModelRequestHeaders(base);
+    const resp = await fetch(modelsURL, { cache: 'no-store', headers });
     if (!resp.ok) throw new Error(`接口返回 ${resp.status}`);
     const data = await resp.json();
     const list = Array.isArray(data?.data) ? data.data : [];
@@ -606,6 +662,47 @@ async function loadEndpointModels(endpoint) {
     endpointModelCache.set(base, result);
     return result;
   }
+}
+
+function normalizeOpenAIEndpoint(endpoint) {
+  const base = String(endpoint || '').trim().replace(/\/+$/, '');
+  if (!base) return '';
+  return /\/v1$/i.test(base) ? base : `${base}/v1`;
+}
+
+async function runLLMTestAction() {
+  if (!draftSettings) return;
+  const endpoint = normalizeOpenAIEndpoint(getValueByPath(draftSettings, 'llm.endpoint'));
+  const model = String(getValueByPath(draftSettings, 'llm.model') || '').trim();
+  const apiKey = String(getValueByPath(draftSettings, 'llm.api_key') || '').trim();
+  const persona = String(getValueByPath(draftSettings, 'llm.persona') || defaultPersonaPrompt).trim();
+  if (!endpoint) throw new Error('\u5927\u6a21\u578b\u63a5\u53e3\u5730\u5740\u4e3a\u7a7a');
+  if (!model) throw new Error('\u6a21\u578b\u540d\u79f0\u4e3a\u7a7a');
+
+  log('\u5f00\u59cb\u6d4b\u8bd5 LLM', { endpoint, model, prompt: '\u4f60\u597d\uff0c\u8bf7\u81ea\u6211\u4ecb\u7ecd\u4e00\u4e0b' });
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const resp = await fetch(`${endpoint}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      stream: false,
+      messages: [
+        { role: 'system', content: persona || defaultPersonaPrompt },
+        { role: 'user', content: '\u4f60\u597d\uff0c\u8bf7\u81ea\u6211\u4ecb\u7ecd\u4e00\u4e0b' }
+      ]
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data?.error?.message || `LLM \u6d4b\u8bd5\u5931\u8d25: ${resp.status}`);
+  }
+  const content = String(data?.choices?.[0]?.message?.content || '').trim();
+  if (!content) {
+    throw new Error('LLM \u8fd4\u56de\u4e3a\u7a7a');
+  }
+  log('LLM \u6d4b\u8bd5\u8fd4\u56de', { content });
 }
 
 function endpointForField(path) {
@@ -703,6 +800,12 @@ function renderDetailPanel() {
       const endpoint = String(value || '');
       return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="text" value="${escapeHtml(endpoint)}" /></div>`;
     }
+    if (field.type === 'textarea') {
+      return `<div class="stat-line stat-line-textarea"><span>${escapeHtml(field.label)}</span><textarea data-path="${escapeHtml(field.path)}" rows="${Number(field.rows || 6)}">${escapeHtml(value ?? '')}</textarea></div>`;
+    }
+    if (field.type === 'password') {
+      return `<div class="stat-line"><span>${escapeHtml(field.label)}</span><input data-path="${escapeHtml(field.path)}" type="password" value="${escapeHtml(value ?? '')}" autocomplete="off" /></div>`;
+    }
     if (field.type === 'model_name_select') {
       const current = String(value || '');
       const endpoint = endpointForField(field.path);
@@ -729,10 +832,13 @@ function renderDetailPanel() {
     : '';
 
   const modelActions = selectedModule === 'model'
-    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">加载所选模型</button></div>${motionButtons}`
+    ? `<div class="model-action-grid"><button data-model-action="reload" type="button">重新加载</button></div>${motionButtons}`
     : '';
 
   detailConfigEl.innerHTML = `${formHTML}${modelActions}`;
+  if (detailLLMTestEl) {
+    detailLLMTestEl.style.display = selectedModule === 'llm' ? '' : 'none';
+  }
 }
 
 function setDirty(nextDirty) {
@@ -791,11 +897,14 @@ function sanitizeSettingsForSave(cfg) {
       Provider: clean.llm?.provider,
       Model: clean.llm?.model,
       Endpoint: clean.llm?.endpoint,
-      RequestTimeoutMs: clean.llm?.request_timeout_ms
+      RequestTimeoutMs: clean.llm?.request_timeout_ms,
+      APIKey: clean.llm?.api_key,
+      Persona: clean.llm?.persona
     },
     TTS: {
       Provider: clean.tts?.provider,
       Voice: clean.tts?.voice,
+      Speed: clean.tts?.speed,
       Endpoint: clean.tts?.endpoint,
       RequestTimeoutMs: clean.tts?.request_timeout_ms,
       BinaryPath: clean.tts?.binary_path,
@@ -931,6 +1040,8 @@ async function bindDetailFieldChange(event) {
       const num = Number(target.value);
       if (!Number.isFinite(num)) return;
       nextValue = num;
+    } else if (field.type === 'textarea') {
+      nextValue = String(target.value || '');
     } else {
       nextValue = String(target.value || '').trim();
     }
@@ -993,7 +1104,7 @@ function bindDetailEditor() {
       return;
     }
     if (target?.dataset?.modelAction) {
-      runModelAction(target.dataset.modelAction).catch((error) => logError('模型动作执行失败', error));
+      runModelAction(target.dataset.modelAction).catch((error) => logError('触发模型操作失败', error));
       return;
     }
     if (target?.dataset?.providerAction) {
@@ -1016,6 +1127,10 @@ function bindDetailEditor() {
     ensureDebugDraft();
     setDirty(false);
     renderDetailPanel();
+  });
+
+  detailLLMTestEl?.addEventListener('click', () => {
+    runLLMTestAction().catch((error) => logError('LLM \u6d4b\u8bd5\u5931\u8d25', error));
   });
 }
 

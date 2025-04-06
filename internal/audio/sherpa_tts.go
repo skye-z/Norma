@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	sherpa "github.com/k2-fsa/sherpa-onnx-go-windows"
+	"norma/internal/config"
+	"norma/pkg/layout"
 )
 
 type SherpaKokoroTTS struct {
@@ -50,32 +52,101 @@ func (s *SherpaKokoroTTS) Encoding() string { return "pcm_s16le" }
 
 func (s *SherpaKokoroTTS) SupportsProsodyHints() bool { return false }
 
+func (s *SherpaKokoroTTS) refreshVoiceFromConfig() {
+	cfg, err := config.Load(layout.ConfigFileName)
+	if err != nil || cfg == nil {
+		if err != nil {
+			log.Printf("[tts] kokoro reload config failed: %v", err)
+		}
+		return
+	}
+	voice := strings.TrimSpace(cfg.TTS.Voice)
+	speed := cfg.TTS.Speed
+	if speed <= 0 {
+		speed = 1.25
+	}
+	if voice == "" {
+		if speed != s.Speed {
+			prevSpeed := s.Speed
+			s.Speed = speed
+			log.Printf("[tts] kokoro speed reloaded prev_speed=%.2f speed=%.2f", prevSpeed, s.Speed)
+		}
+		return
+	}
+	sid := ResolveSpeakerID(voice)
+	if sid < 0 {
+		log.Printf("[tts] kokoro unknown voice=%s, keep current voice=%s sid=%d", voice, s.Voice, s.Sid)
+		if speed != s.Speed {
+			prevSpeed := s.Speed
+			s.Speed = speed
+			log.Printf("[tts] kokoro speed reloaded prev_speed=%.2f speed=%.2f", prevSpeed, s.Speed)
+		}
+		return
+	}
+	if voice == s.Voice && sid == s.Sid && speed == s.Speed {
+		return
+	}
+	prevVoice := s.Voice
+	prevSid := s.Sid
+	prevSpeed := s.Speed
+	s.Voice = voice
+	s.Sid = sid
+	s.Speed = speed
+	log.Printf("[tts] kokoro config reloaded prev_voice=%s prev_sid=%d prev_speed=%.2f voice=%s sid=%d speed=%.2f", prevVoice, prevSid, prevSpeed, s.Voice, s.Sid, s.Speed)
+}
+
 func sanitizeKokoroInput(text string) string {
 	cleaned := strings.TrimSpace(text)
 	if cleaned == "" {
 		return ""
 	}
 	cleaned = strings.NewReplacer(
-		"\u2019", "'",
-		"\u2018", "'",
+		"’", "'",
+		"‘", "'",
 		"\u201c", "\"",
 		"\u201d", "\"",
-		"\u2014", "-",
-		"\u2013", "-",
-		"\u2026", "...",
-		"\u00a0", " ",
-		"\ufffd", "",
+		"—", "-",
+		"–", "-",
+		"…", "...",
+		" ", " ",
+		"　", " ",
+		"\uff0c", ",",
+		"\uff01", "!",
+		"\uff1f", "?",
+		"\uff1a", ":",
+		"\uff1b", ";",
+		"（", "(",
+		"）", ")",
+		"［", "[",
+		"］", "]",
+		"｛", "{",
+		"｝", "}",
+		"／", "/",
+		"－", "-",
+		"～", "~",
+		"�", "",
 	).Replace(cleaned)
 
 	var b strings.Builder
 	b.Grow(len(cleaned))
+	removed := make([]string, 0, 4)
 	for _, r := range cleaned {
 		switch {
-		case r == '\u025a':
+		case r == 'ɚ':
+			removed = append(removed, fmt.Sprintf("U+%04X", r))
 			continue
-		case r == '\ufffd':
+		case r == '�':
+			removed = append(removed, fmt.Sprintf("U+%04X", r))
 			continue
 		case unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r':
+			removed = append(removed, fmt.Sprintf("U+%04X", r))
+			continue
+		case !isKokoroSafeRune(r):
+			if isPunctuationRune(r) {
+				b.WriteRune(' ')
+				continue
+			}
+			removed = append(removed, fmt.Sprintf("U+%04X", r))
 			continue
 		default:
 			b.WriteRune(r)
@@ -83,14 +154,41 @@ func sanitizeKokoroInput(text string) string {
 	}
 	cleaned = strings.TrimSpace(b.String())
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	if len(removed) > 0 {
+		log.Printf("[tts] kokoro removed unsupported runes=%s", strings.Join(removed, ","))
+	}
 	if utf8.RuneCountInString(cleaned) == 0 {
 		return ""
 	}
 	return cleaned
 }
 
+func isKokoroSafeRune(r rune) bool {
+	switch {
+	case unicode.Is(unicode.Han, r):
+		return true
+	case unicode.IsLetter(r) || unicode.IsDigit(r):
+		return true
+	case unicode.IsSpace(r):
+		return true
+	default:
+		return false
+	}
+}
+
+func isPunctuationRune(r rune) bool {
+	switch r {
+	case '，', '。', '！', '？', '：', '；', '、', '“', '”', '‘', '’', '（', '）', '【', '】', '《', '》', '〈', '〉', '「', '」', '『', '』',
+		',', '.', '!', '?', ':', ';', '-', '~', '(', ')', '[', ']', '{', '}', '/', '\\', '\'', '"':
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {
 	ensureSherpaDLLPath()
+	s.refreshVoiceFromConfig()
 	if s.ModelDir == "" {
 		return fmt.Errorf("kokoro model dir empty")
 	}

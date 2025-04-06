@@ -12,6 +12,7 @@ type Request struct {
 	SessionID string
 	Prompt    string
 	Context   []string
+	Persona   string
 }
 
 // Streamer streams generated tokens.

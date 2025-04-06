@@ -79,3 +79,53 @@ func TestPipelineSupportsWakeWordMode(t *testing.T) {
 		t.Fatalf("expected ASR after wake word")
 	}
 }
+
+type sliceFrameSource struct {
+	frames [][]float32
+	idx    int
+}
+
+func (s *sliceFrameSource) Next(ctx context.Context) ([]float32, error) {
+	if s.idx >= len(s.frames) {
+		return nil, ErrEndOfStream
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	frame := s.frames[s.idx]
+	s.idx++
+	return frame, nil
+}
+
+func TestPipelineFlushesUtteranceOnEndOfStream(t *testing.T) {
+	asr := &frameASRStub{}
+	pipe := Pipeline{VAD: NewEnergyVAD(0.02), ASR: asr, SilenceFrames: 20}
+	speech := make([]float32, 160)
+	for i := range speech {
+		if i%2 == 0 {
+			speech[i] = 0.08
+		} else {
+			speech[i] = -0.08
+		}
+	}
+	src := &sliceFrameSource{frames: [][]float32{speech, speech, speech, speech}}
+
+	finalCount := 0
+	err := pipe.Run(context.Background(), src, nil, nil, func(string) {}, func(string) {
+		finalCount++
+	})
+	if err != nil {
+		t.Fatalf("run pipeline: %v", err)
+	}
+	if asr.calls != 1 {
+		t.Fatalf("expected frame ASR to flush once, got %d", asr.calls)
+	}
+	if asr.frameCount != 4 {
+		t.Fatalf("expected 4 flushed frames, got %d", asr.frameCount)
+	}
+	if finalCount != 1 {
+		t.Fatalf("expected final callback once, got %d", finalCount)
+	}
+}

@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"norma/internal/config"
 )
 
 type OllamaStreamer struct {
 	endpoint string
 	model    string
+	apiKey   string
 	client   *http.Client
 }
 
@@ -63,7 +66,7 @@ type ollamaModel struct {
 	Name string `json:"name"`
 }
 
-func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStreamer {
+func NewOllamaStreamer(endpoint, model, apiKey string, timeout time.Duration) *OllamaStreamer {
 	if strings.TrimSpace(endpoint) == "" {
 		endpoint = "http://127.0.0.1:11434/v1"
 	}
@@ -73,17 +76,18 @@ func NewOllamaStreamer(endpoint, model string, timeout time.Duration) *OllamaStr
 	return &OllamaStreamer{
 		endpoint: normalizeOpenAIEndpoint(endpoint),
 		model:    model,
+		apiKey:   strings.TrimSpace(apiKey),
 		client:   &http.Client{Timeout: timeout},
 	}
 }
 
-func PingOllama(endpoint string, timeout time.Duration) error {
-	_, err := listModels(endpoint, timeout)
+func PingOllama(endpoint, apiKey string, timeout time.Duration) error {
+	_, err := listModels(endpoint, apiKey, timeout)
 	return err
 }
 
-func DiscoverFirstLLMModel(endpoint string, timeout time.Duration) (string, error) {
-	models, err := listModels(endpoint, timeout)
+func DiscoverFirstLLMModel(endpoint, apiKey string, timeout time.Duration) (string, error) {
+	models, err := listModels(endpoint, apiKey, timeout)
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +102,7 @@ func DiscoverFirstLLMModel(endpoint string, timeout time.Duration) (string, erro
 	return "", fmt.Errorf("no ollama models found")
 }
 
-func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
+func listModels(endpoint, apiKey string, timeout time.Duration) ([]ollamaModel, error) {
 	endpoint = normalizeOpenAIEndpoint(endpoint)
 	if endpoint == "" {
 		endpoint = "http://127.0.0.1:11434/v1"
@@ -111,6 +115,10 @@ func listModels(endpoint string, timeout time.Duration) ([]ollamaModel, error) {
 	req, err := http.NewRequest(http.MethodGet, endpoint+"/models", nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if key := strings.TrimSpace(apiKey); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 
 	resp, err := client.Do(req)
@@ -160,6 +168,9 @@ func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(s
 		return fmt.Errorf("new ollama request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(o.apiKey) != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(o.apiKey))
+	}
 
 	resp, err := o.client.Do(httpReq)
 	if err != nil {
@@ -215,10 +226,15 @@ func normalizeOpenAIEndpoint(endpoint string) string {
 }
 
 func buildPrompt(req Request) string {
+	persona := strings.TrimSpace(req.Persona)
+	if persona == "" {
+		persona = config.DefaultLLMPersona
+	}
 	var sb strings.Builder
-	sb.WriteString("你是 Norma，一个中文桌面 AI 助手。回答要求：先给结论，再给 2-4 句自然解释；语气像靠谱同伴，不要官腔，不要空话；尽量口语化、简洁、有节奏。必要时用'先说结论'、'具体来说'、'如果你现在就做'这类过渡。\n")
+	sb.WriteString(persona)
+	sb.WriteString("\n请自然口语化回答，控制在 2-4 句，优先直接回应用户，不要写成流程说明，不要 OOC。\n")
 	if len(req.Context) > 0 {
-		sb.WriteString("你可参考以下本地检索上下文回答。\n")
+		sb.WriteString("以下是可参考的检索上下文：\n")
 		for i, c := range req.Context {
 			sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, c))
 		}

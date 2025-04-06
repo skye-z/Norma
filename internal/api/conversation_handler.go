@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"norma/internal/audio"
 	"norma/internal/bootstrap"
 	"norma/internal/config"
@@ -26,6 +28,7 @@ type ConversationHandler struct {
 	providers  *providers.Manager
 	streams    map[string]*audio.PushFrameSource
 	sources    map[string]audio.FrameSource
+	sockets    map[string]*websocket.Conn
 	capture    map[string]string
 	modes      map[string]string
 	frameSeen  map[string]bool
@@ -62,6 +65,10 @@ type conversationPolicy struct {
 
 var conversationSeq uint64
 
+var conversationWSUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
 	return &ConversationHandler{
 		configPath: configPath,
@@ -70,6 +77,7 @@ func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.In
 		providers:  providerMgr,
 		streams:    make(map[string]*audio.PushFrameSource),
 		sources:    make(map[string]audio.FrameSource),
+		sockets:    make(map[string]*websocket.Conn),
 		capture:    make(map[string]string),
 		modes:      make(map[string]string),
 		frameSeen:  make(map[string]bool),
@@ -83,6 +91,7 @@ func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/state", h.handleMicState)
 	mux.HandleFunc("/conversation/mic/test", h.handleMicTest)
 	mux.HandleFunc("/conversation/mic/frame", h.handleMicFrame)
+	mux.HandleFunc("/conversation/mic/ws", h.handleMicWS)
 	mux.HandleFunc("/conversation/mic/policy", h.handleMicPolicy)
 }
 
@@ -132,6 +141,12 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 			_ = closable.Close()
 		}
 		delete(h.sources, id)
+	}
+	for id, conn := range h.sockets {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		delete(h.sockets, id)
 	}
 	for id := range h.capture {
 		delete(h.capture, id)
@@ -260,18 +275,91 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	sid, tid := h.resolveIDs(req.SessionID, req.TraceID)
+	accepted, statusCode, message := h.ingestMicFrame(sid, tid, req)
+	if message != "" {
+		writeErr(w, statusCode, message)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": accepted, "session_id": sid, "trace_id": tid})
+}
+
+func (h *ConversationHandler) handleMicWS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	sid, tid := h.resolveIDs(r.URL.Query().Get("session_id"), r.URL.Query().Get("trace_id"))
+	conn, err := conversationWSUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+
+	h.mu.Lock()
+	stream := h.streams[sid]
+	captureMode := h.capture[sid]
+	if captureMode != "push" || stream == nil {
+		h.mu.Unlock()
+		_ = conn.WriteJSON(map[string]any{"ok": false, "error": "conversation stream not found"})
+		_ = conn.Close()
+		return
+	}
+	if prev := h.sockets[sid]; prev != nil && prev != conn {
+		_ = prev.Close()
+	}
+	h.sockets[sid] = conn
+	h.mu.Unlock()
+	log.Printf("[conversation] mic ws connected session=%s trace=%s", sid, tid)
+
+	defer func() {
+		shouldClear := false
+		h.mu.Lock()
+		current := h.sockets[sid]
+		if current == conn {
+			delete(h.sockets, sid)
+			shouldClear = h.sid == sid
+		}
+		h.mu.Unlock()
+		_ = conn.Close()
+		if shouldClear {
+			h.clearSession(sid)
+		}
+		log.Printf("[conversation] mic ws closed session=%s trace=%s", sid, tid)
+	}()
+
+	for {
+		var req micFrameReq
+		if err := conn.ReadJSON(&req); err != nil {
+			return
+		}
+		if strings.TrimSpace(req.SessionID) == "" {
+			req.SessionID = sid
+		}
+		if strings.TrimSpace(req.TraceID) == "" {
+			req.TraceID = tid
+		}
+		accepted, statusCode, message := h.ingestMicFrame(sid, tid, req)
+		if message != "" {
+			_ = conn.WriteJSON(map[string]any{"ok": false, "status": statusCode, "error": message})
+			return
+		}
+		if req.EOF {
+			_ = conn.WriteJSON(map[string]any{"ok": true, "accepted": accepted, "session_id": sid, "trace_id": tid, "eof": true})
+			return
+		}
+	}
+}
+
+func (h *ConversationHandler) ingestMicFrame(sid, tid string, req micFrameReq) (bool, int, string) {
 	h.mu.RLock()
 	stream := h.streams[sid]
 	captureMode := h.capture[sid]
 	mode := h.modes[sid]
 	h.mu.RUnlock()
 	if captureMode != "push" {
-		writeErr(w, http.StatusBadRequest, "conversation stream is not in push capture mode")
-		return
+		return false, http.StatusBadRequest, "conversation stream is not in push capture mode"
 	}
 	if stream == nil {
-		writeErr(w, http.StatusNotFound, "conversation stream not found")
-		return
+		return false, http.StatusNotFound, "conversation stream not found"
 	}
 	accepted := false
 	if len(req.Frames) > 0 {
@@ -292,9 +380,13 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 		stream.Close()
 		h.mu.Lock()
 		delete(h.streams, sid)
+		if conn := h.sockets[sid]; conn != nil {
+			_ = conn.Close()
+			delete(h.sockets, sid)
+		}
 		h.mu.Unlock()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": accepted, "session_id": sid, "trace_id": tid})
+	return accepted, http.StatusOK, ""
 }
 
 func (h *ConversationHandler) snapshot() conversationState {
@@ -397,6 +489,10 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		h.cancel = nil
 		delete(h.streams, sessionID)
 		delete(h.sources, sessionID)
+		if conn := h.sockets[sessionID]; conn != nil {
+			_ = conn.Close()
+			delete(h.sockets, sessionID)
+		}
 		delete(h.capture, sessionID)
 		delete(h.modes, sessionID)
 		delete(h.frameSeen, sessionID)
@@ -418,6 +514,9 @@ func (h *ConversationHandler) clearSession(sessionID string) {
 	if stream := h.streams[sessionID]; stream != nil {
 		stream.Close()
 	}
+	if conn := h.sockets[sessionID]; conn != nil {
+		_ = conn.Close()
+	}
 	if src := h.sources[sessionID]; src != nil {
 		if bg, ok := src.(audio.BackgroundCaptureController); ok {
 			bg.EnableBackgroundCapture(sessionID, true)
@@ -428,6 +527,7 @@ func (h *ConversationHandler) clearSession(sessionID string) {
 	}
 	delete(h.streams, sessionID)
 	delete(h.sources, sessionID)
+	delete(h.sockets, sessionID)
 	delete(h.capture, sessionID)
 	delete(h.modes, sessionID)
 	delete(h.frameSeen, sessionID)
@@ -456,7 +556,7 @@ func (h *ConversationHandler) resolvePolicy(cfg *config.Config) conversationPoli
 
 func normalizeConversationMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "manual":
+	case "manual", "direct":
 		return "manual"
 	case "wake":
 		return "wake"

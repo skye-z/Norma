@@ -302,7 +302,7 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 		return asr
 	case "whisper", "whispercpp":
 		log.Printf("[asr] embedded whisper enabled=%v", audio.EmbeddedWhisperEnabled())
-		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-large-v3.bin", "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin")
+		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3.bin", "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin")
 		if model == "" {
 			log.Printf("[asr] whisper model not configured")
 			return audio.UnavailableASR{Reason: "whisper model missing"}
@@ -350,8 +350,12 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 		if sid < 0 {
 			sid = 45
 		}
-		primary := audio.NewSherpaKokoroTTS(modelDir, cfg.TTS.Voice, sid, 1.0, 2)
-		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s", modelDir, sid, cfg.TTS.Voice)
+		speed := cfg.TTS.Speed
+		if speed <= 0 {
+			speed = 1.25
+		}
+		primary := audio.NewSherpaKokoroTTS(modelDir, cfg.TTS.Voice, sid, speed, 2)
+		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s speed=%.2f", modelDir, sid, cfg.TTS.Voice, speed)
 		return primary
 	default:
 		return &audio.UnavailableTTS{Reason: "unsupported tts provider: " + strings.TrimSpace(cfg.TTS.Provider)}
@@ -366,14 +370,14 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 
 	model := strings.TrimSpace(cfg.LLM.Model)
 	if model == "" {
-		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, 2*time.Second)
+		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, cfg.LLM.APIKey, 2*time.Second)
 		if derr != nil {
 			log.Printf("[llm] discover model failed: %v", derr)
 			return fallback
 		}
 		model = discovered
 	}
-	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond)
+	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, cfg.LLM.APIKey, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond)
 	degradedModel := ""
 	if degradedModel == "" || degradedModel == model {
 		log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
