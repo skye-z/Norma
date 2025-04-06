@@ -6,6 +6,8 @@ import (
 	"log"
 )
 
+const minPostWakeHoldFrames = 75
+
 // Run consumes frames and triggers ASR final on endpoint.
 func (p *Pipeline) Run(
 	ctx context.Context,
@@ -35,6 +37,7 @@ func (p *Pipeline) Run(
 		wakeMode = WakeModeVADOnly
 	}
 	armed := wakeMode == WakeModeVADOnly || p.WakeWord == nil
+	postWakeHoldFrames := 0
 	log.Printf("[pipeline] start wake_mode=%s armed=%v allow_barge_in=%v", wakeMode, armed, p.AllowBargeIn)
 
 	flushUtterance := func(reason string) error {
@@ -61,6 +64,7 @@ func (p *Pipeline) Run(
 		utterance = utterance[:0]
 		if wakeMode == WakeModeWakeWordVAD && p.WakeWord != nil {
 			armed = false
+			postWakeHoldFrames = 0
 			wakeBuffer = wakeBuffer[:0]
 			detector = NewEndpointDetector(silenceFrames)
 		}
@@ -105,6 +109,10 @@ func (p *Pipeline) Run(
 			if matched {
 				log.Printf("[pipeline] wake detected buffered_frames=%d", len(wakeBuffer))
 				armed = true
+				postWakeHoldFrames = wakeBufferFrames
+				if postWakeHoldFrames < minPostWakeHoldFrames {
+					postWakeHoldFrames = minPostWakeHoldFrames
+				}
 				utterance = append(utterance[:0], cloneFrames(wakeBuffer)...)
 				wakeBuffer = wakeBuffer[:0]
 				if onSpeechStart != nil {
@@ -116,17 +124,23 @@ func (p *Pipeline) Run(
 			continue
 		}
 
+		forceSpeech := false
+		if postWakeHoldFrames > 0 {
+			forceSpeech = true
+			postWakeHoldFrames--
+		}
+
 		isSpeech, err := p.VAD.Detect(processed)
 		if err != nil {
 			log.Printf("[pipeline] vad detect error: %v", err)
 			return err
 		}
 
-		if isSpeech {
+		if isSpeech || forceSpeech {
 			utterance = append(utterance, cloneFrame(processed))
 		}
 
-		start, end := detector.Update(isSpeech)
+		start, end := detector.Update(isSpeech || forceSpeech)
 		if p.AllowBargeIn && isSpeech && onSpeechStart != nil {
 			log.Printf("[pipeline] barge-in speech detected")
 			onSpeechStart()

@@ -261,19 +261,21 @@ func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, ans
 			"delivery":    delivery,
 		}})
 		o.emitVisemes(ctx, sessionID, traceID, segment)
+		segmentBytes := 0
+		sampleRate := 22050
+		channels := 1
+		encoding := "pcm_s16le"
+		if provider, ok := o.tts.(audio.AudioFormatProvider); ok {
+			sampleRate = provider.SampleRate()
+			channels = provider.Channels()
+			encoding = provider.Encoding()
+		}
 		if err := o.tts.Stream(ctx, styledSegment, func(chunk []byte) {
+			segmentBytes += len(chunk)
 			if o.playback != nil {
 				if err := o.playback.Queue(sessionID, traceID, chunk); err != nil {
 					log.Printf("[orchestrator] playback queue error: %v", err)
 				}
-			}
-			sampleRate := 22050
-			channels := 1
-			encoding := "pcm_s16le"
-			if provider, ok := o.tts.(audio.AudioFormatProvider); ok {
-				sampleRate = provider.SampleRate()
-				channels = provider.Channels()
-				encoding = provider.Encoding()
 			}
 			o.rt.Bus.Publish(bus.Event{Name: "tts.chunk.ready", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
 				"segment_index": index,
@@ -288,13 +290,6 @@ func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, ans
 			return err
 		}
 		log.Printf("[tts] segment done session=%s trace=%s index=%d", sessionID, traceID, index)
-		if o.playback != nil && sentenceFirstEnabled && index < len(plan.Segments)-1 {
-			start := time.Now()
-			if err := o.playback.Drain(ctx, sessionID); err != nil {
-				return err
-			}
-			log.Printf("[tts] segment playback drained session=%s trace=%s index=%d elapsed_ms=%d", sessionID, traceID, index, time.Since(start).Milliseconds())
-		}
 	}
 	if o.playback != nil {
 		start := time.Now()

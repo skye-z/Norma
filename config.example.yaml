@@ -15,7 +15,7 @@ audio:
   wake_model_path: ""
   wake_keywords_file_path: ""
   wake_keyword: 诺玛
-  wake_window_ms: 2000
+  wake_window_ms: 600
   wake_detect_interval_ms: 400
   endpoint_silence_frames: 20
   interrupt_during_speaking: true

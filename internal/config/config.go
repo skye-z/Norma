@@ -130,7 +130,7 @@ func defaultConfig() Config {
 			WakeModelPath:         "",
 			WakeKeywordsFilePath:  "",
 			WakeKeyword:           "诺玛",
-			WakeWindowMs:          2000,
+			WakeWindowMs:          600,
 			WakeDetectIntervalMs:  400,
 			EndpointSilenceFrames: 20,
 			InterruptDuringSpeak:  true,

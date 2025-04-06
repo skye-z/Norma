@@ -289,8 +289,22 @@ func (s *platformPlaybackSink) Queue(sessionID, traceID string, chunk []byte) er
 		}
 	}
 	s.flushStart = time.Now()
-	if len(chunk) > 4096 {
-		chunk = chunk[:4096]
+	const chunkSize = 4096
+	for offset := 0; offset < len(chunk); offset += chunkSize {
+		end := offset + chunkSize
+		if end > len(chunk) {
+			end = len(chunk)
+		}
+		if err := s.queueChunkLocked(chunk[offset:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *platformPlaybackSink) queueChunkLocked(chunk []byte) error {
+	if len(chunk) == 0 {
+		return nil
 	}
 	data := make([]byte, len(chunk))
 	copy(data, chunk)

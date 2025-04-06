@@ -832,12 +832,12 @@ async function initCompanion() {
   }
 
   function currentFlushSamples() {
-    return state.sessionMode === 'wake' ? 5120 : 2048;
+    return flushThresholdSamples();
   }
 
   async function createLegacyMediaCapture(audioCtx, stream) {
     const source = audioCtx.createMediaStreamSource(stream);
-    const processor = audioCtx.createScriptProcessor(state.sessionMode === 'wake' ? 4096 : 2048, 1, 1);
+    const processor = audioCtx.createScriptProcessor(1024, 1, 1);
     const sink = audioCtx.createGain();
     sink.gain.value = 0;
     processor.onaudioprocess = (event) => {
