@@ -1,0 +1,14 @@
+{
+  "motions": {
+    "idle": ["Idle", "Idle_01"],
+    "thinking": ["Think", "TapBody", "Tap"],
+    "tap": ["TapBody", "Tap"],
+    "flick": ["Flick", "Angry"]
+  },
+  "expressions": {
+    "smile": "smile",
+    "alert": "surprised",
+    "focus": "serious",
+    "soft": "sad"
+  }
+}

@@ -297,6 +297,10 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		_ = providerMgr.EnsureLayout()
 	}
 	pipe := bootstrap.BuildVoicePipeline(cfg, providerMgr)
+	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)
+	if wakeStatus.Enabled && !wakeStatus.Ready {
+		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "wake_word_unavailable", "message": wakeStatus.Reason}})
+	}
 
 	if closable, ok := any(source).(interface{ Close() error }); ok {
 		defer func() { _ = closable.Close() }()

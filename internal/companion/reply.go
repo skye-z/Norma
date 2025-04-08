@@ -7,9 +7,11 @@ import (
 )
 
 type EmotionSpec struct {
-	Emotion   string  `json:"emotion"`
-	Motion    string  `json:"motion"`
-	Intensity float64 `json:"intensity"`
+	Emotion    string             `json:"emotion"`
+	Motion     string             `json:"motion"`
+	Expression string             `json:"expression"`
+	Intensity  float64            `json:"intensity"`
+	Params     map[string]float64 `json:"params,omitempty"`
 }
 
 type ReplyPlan struct {
@@ -51,13 +53,13 @@ func AnalyzeEmotion(text string) EmotionSpec {
 	spec := EmotionSpec{Emotion: "neutral", Motion: "Idle", Intensity: 0.45}
 	switch {
 	case containsAny(lower, "抱歉", "sorry", "遗憾", "不好意思"):
-		spec = EmotionSpec{Emotion: "apology", Motion: "Idle", Intensity: 0.35}
+		spec = EmotionSpec{Emotion: "apology", Motion: "Idle", Expression: "soft", Intensity: 0.35, Params: map[string]float64{"ParamBrowAngleY": -0.25, "ParamEyeLOpen": 0.85, "ParamEyeROpen": 0.85}}
 	case containsAny(lower, "太好了", "很好", "完成", "成功", "great", "done"):
-		spec = EmotionSpec{Emotion: "positive", Motion: "Tap", Intensity: 0.72}
+		spec = EmotionSpec{Emotion: "positive", Motion: "Tap", Expression: "smile", Intensity: 0.72, Params: map[string]float64{"ParamMouthForm": 0.55, "ParamCheek": 0.35, "ParamBrowAngleY": 0.18}}
 	case containsAny(lower, "注意", "警告", "风险", "失败", "error", "warning"):
-		spec = EmotionSpec{Emotion: "alert", Motion: "Flick", Intensity: 0.82}
+		spec = EmotionSpec{Emotion: "alert", Motion: "Flick", Expression: "alert", Intensity: 0.82, Params: map[string]float64{"ParamEyeBallX": 0.08, "ParamBrowAngleY": 0.32, "ParamMouthForm": -0.18}}
 	case containsAny(lower, "建议", "可以这样", "步骤", "先", "然后"):
-		spec = EmotionSpec{Emotion: "guide", Motion: "Tap", Intensity: 0.58}
+		spec = EmotionSpec{Emotion: "guide", Motion: "Tap", Expression: "focus", Intensity: 0.58, Params: map[string]float64{"ParamBrowAngleY": 0.12, "ParamMouthForm": 0.14, "ParamEyeLOpen": 0.96, "ParamEyeROpen": 0.96}}
 	}
 	if utf8.RuneCountInString(lower) > 120 {
 		spec.Intensity -= 0.08

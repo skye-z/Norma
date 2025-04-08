@@ -760,6 +760,7 @@ func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Requ
 	}
 
 	cfg.Audio.WakeMode = "wake_word_vad"
+	cfg.Audio.EnableWakeWord = true
 	cfg.Audio.WakeProvider = "sherpa-onnx"
 	cfg.Audio.WakeKeyword = firstNonEmpty(cfg.Audio.WakeKeyword, "诺玛")
 	if cfg.Audio.WakeWindowMs <= 0 {

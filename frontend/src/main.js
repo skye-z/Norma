@@ -43,6 +43,38 @@ async function resolveModelMeta() {
   };
 }
 
+async function loadOptionalJSON(url) {
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+function siblingResourceURL(modelURL, filename) {
+  try {
+    const url = new URL(modelURL, window.location.href);
+    const pathname = url.pathname;
+    url.pathname = pathname.slice(0, pathname.lastIndexOf('/') + 1) + filename;
+    url.search = '';
+    return url.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+async function resolveModelMappingConfig(modelURL) {
+  const combined = await loadOptionalJSON(siblingResourceURL(modelURL, 'live2d.map.json'));
+  const motionMap = await loadOptionalJSON(siblingResourceURL(modelURL, 'motion_map.json'));
+  const expressionMap = await loadOptionalJSON(siblingResourceURL(modelURL, 'expression_map.json'));
+  return {
+    motions: combined?.motions && typeof combined.motions === 'object' ? combined.motions : (motionMap && typeof motionMap === 'object' ? motionMap : {}),
+    expressions: combined?.expressions && typeof combined.expressions === 'object' ? combined.expressions : (expressionMap && typeof expressionMap === 'object' ? expressionMap : {})
+  };
+}
+
 function normalizeModelURL(input) {
   const raw = String(input || '').trim();
   if (!raw) return '';
@@ -429,21 +461,183 @@ async function initCompanion() {
       traceID: '',
       interrupted: false,
       nextStartAt: 0
+    },
+    motionState: {
+      currentGroup: 'Idle',
+      priority: 0,
+      cooldownUntil: 0,
+      idleTimer: null,
+      expressionTimer: null,
+      paramTargets: {},
+      paramValues: {},
+      paramBlend: 0.18
+    },
+    live2dCatalog: {
+      motionGroups: new Map(),
+      expressions: new Map(),
+      canonicalMotions: new Map(),
+      modelMappings: { motions: {}, expressions: {} }
     }
   };
 
   function idleAfterMotion(ms = 1200) {
     if (!state.model) return;
-    if (state.idleTimer) {
-      window.clearTimeout(state.idleTimer);
-      state.idleTimer = null;
+    if (state.motionState.idleTimer) {
+      window.clearTimeout(state.motionState.idleTimer);
+      state.motionState.idleTimer = null;
     }
-    state.idleTimer = window.setTimeout(async () => {
+    state.motionState.idleTimer = window.setTimeout(async () => {
       if (!state.model) return;
       try {
-        await state.model.motion('Idle', 0, 1);
+        await state.model.motion(resolveMotionGroup('idle'), 0, 1);
       } catch (_) {}
     }, ms);
+  }
+
+  function scheduleExpressionReset(ms = 1200) {
+    if (state.motionState.expressionTimer) {
+      window.clearTimeout(state.motionState.expressionTimer);
+      state.motionState.expressionTimer = null;
+    }
+    state.motionState.expressionTimer = window.setTimeout(() => {
+      state.motionState.paramTargets = {};
+    }, ms);
+  }
+
+  function normalizeKey(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function buildLive2DCatalog(modelMappings = { motions: {}, expressions: {} }) {
+    const catalog = {
+      motionGroups: new Map(),
+      expressions: new Map(),
+      canonicalMotions: new Map(),
+      modelMappings
+    };
+    const settings = state.model?.internalModel?.settings;
+    const defs = settings?.motions || settings?.Motions || {};
+    Object.keys(defs || {}).forEach((group) => {
+      catalog.motionGroups.set(normalizeKey(group), group);
+    });
+    const loadedGroups = state.model?.internalModel?.motionManager?.motionGroups || {};
+    Object.keys(loadedGroups || {}).forEach((group) => {
+      if (!catalog.motionGroups.has(normalizeKey(group))) {
+        catalog.motionGroups.set(normalizeKey(group), group);
+      }
+    });
+    const expressions = settings?.expressions || settings?.Expressions || [];
+    expressions.forEach((expr, index) => {
+      const name = normalizeKey(expr?.Name || expr?.name || `expr-${index}`);
+      if (name) catalog.expressions.set(name, expr?.Name || expr?.name || index);
+    });
+    const expressionManager = state.model?.internalModel?.motionManager?.expressionManager;
+    const definitions = expressionManager?.definitions || [];
+    definitions.forEach((expr, index) => {
+      const name = normalizeKey(expr?.Name || expr?.name || `expr-${index}`);
+      if (name && !catalog.expressions.has(name)) {
+        catalog.expressions.set(name, expr?.Name || expr?.name || index);
+      }
+    });
+
+    const aliasGroups = {
+      idle: ['idle', 'idle_01', 'idle01', 'main_idle'],
+      thinking: ['thinking', 'think', 'idle_talk', 'tapbody', 'tap'],
+      tap: ['tap', 'tapbody', 'touch_head', 'touch_special'],
+      flick: ['flick', 'shake', 'damage', 'angry']
+    };
+    Object.entries(modelMappings?.motions || {}).forEach(([canonical, value]) => {
+      const aliases = Array.isArray(value) ? value : [value];
+      aliasGroups[normalizeKey(canonical)] = aliases.map((item) => String(item || ''));
+    });
+    Object.entries(aliasGroups).forEach(([canonical, aliases]) => {
+      for (const alias of aliases) {
+        const resolved = catalog.motionGroups.get(normalizeKey(alias));
+        if (resolved) {
+          catalog.canonicalMotions.set(canonical, resolved);
+          break;
+        }
+      }
+    });
+
+    if (!catalog.canonicalMotions.has('idle')) catalog.canonicalMotions.set('idle', 'Idle');
+    if (!catalog.canonicalMotions.has('tap')) catalog.canonicalMotions.set('tap', 'Tap');
+    if (!catalog.canonicalMotions.has('flick')) catalog.canonicalMotions.set('flick', 'Flick');
+    if (!catalog.canonicalMotions.has('thinking')) catalog.canonicalMotions.set('thinking', catalog.canonicalMotions.get('tap') || 'Tap');
+
+    state.live2dCatalog = catalog;
+  }
+
+  function resolveMotionGroup(group) {
+    const raw = String(group || 'Idle');
+    const normalized = normalizeKey(raw);
+    return state.live2dCatalog.canonicalMotions.get(normalized) || state.live2dCatalog.motionGroups.get(normalized) || raw;
+  }
+
+  function resolveExpressionName(name) {
+    const normalized = normalizeKey(name);
+    const mapped = state.live2dCatalog.modelMappings?.expressions?.[normalized];
+    if (mapped) {
+      const resolvedMapped = state.live2dCatalog.expressions.get(normalizeKey(mapped));
+      if (resolvedMapped !== undefined) return resolvedMapped;
+    }
+    return state.live2dCatalog.expressions.get(normalized) || '';
+  }
+
+  async function playMotionWithPolicy(payload) {
+    if (!state.model) return;
+    const group = resolveMotionGroup(normalizeMotionName(payload));
+    const index = Number.isInteger(payload?.index) ? payload.index : 0;
+    const priority = Number.isFinite(Number(payload?.priority)) ? Number(payload.priority) : 50;
+    const cooldownMs = Number.isFinite(Number(payload?.cooldown_ms)) ? Number(payload.cooldown_ms) : 0;
+    const interruptible = payload?.interruptible !== false;
+    const force = payload?.force === true;
+    const now = Date.now();
+    const current = state.motionState;
+    if (!force) {
+      if (!interruptible && current.cooldownUntil > now && priority <= current.priority) return;
+      if (current.cooldownUntil > now && priority < current.priority) return;
+      if (current.currentGroup === group && current.cooldownUntil > now) return;
+    }
+    current.currentGroup = String(group || 'Idle');
+    current.priority = priority;
+    current.cooldownUntil = now + Math.max(0, cooldownMs);
+    try {
+      await state.model.motion(group, index, 3);
+      if (String(group).toLowerCase() !== 'idle') {
+        idleAfterMotion(Number.isFinite(Number(payload?.idle_after_ms)) ? Number(payload.idle_after_ms) : 1200);
+      }
+    } catch (_) {
+      for (const fallback of [resolveMotionGroup('tap'), resolveMotionGroup('flick'), resolveMotionGroup('idle')]) {
+        try {
+          await state.model.motion(fallback, 0, 3);
+          break;
+        } catch (_) {}
+      }
+    }
+  }
+
+  async function playNativeExpression(payload) {
+    if (!state.model || !payload || typeof payload !== 'object') return false;
+    const resolved = resolveExpressionName(payload.name);
+    if (!resolved || typeof state.model.expression !== 'function') return false;
+    try {
+      const ok = await state.model.expression(resolved);
+      if (ok) {
+        scheduleExpressionReset(Number.isFinite(Number(payload.hold_ms)) ? Number(payload.hold_ms) : 1200);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  function debugCatalogSummary() {
+    return {
+      motions: Array.from(state.live2dCatalog.motionGroups.values()),
+      expressions: Array.from(state.live2dCatalog.expressions.keys()),
+      canonical: Object.fromEntries(state.live2dCatalog.canonicalMotions.entries()),
+      mappings: state.live2dCatalog.modelMappings
+    };
   }
 
   function setMicListening(listening) {
@@ -707,9 +901,13 @@ async function initCompanion() {
 
   function destroy() {
     closeEvents();
-    if (state.idleTimer) {
-      window.clearTimeout(state.idleTimer);
-      state.idleTimer = null;
+    if (state.motionState.idleTimer) {
+      window.clearTimeout(state.motionState.idleTimer);
+      state.motionState.idleTimer = null;
+    }
+    if (state.motionState.expressionTimer) {
+      window.clearTimeout(state.motionState.expressionTimer);
+      state.motionState.expressionTimer = null;
     }
     if (state.speechRecognition && state.speechListening) {
       try { state.speechRecognition.stop(); } catch (_) {}
@@ -819,27 +1017,50 @@ async function initCompanion() {
     closeEvents();
 
     state.eventSources.push(createRuntimeEventSource('live2d.motion', async (payload) => {
-      if (!state.model) return;
-      const group = normalizeMotionName(payload);
-      const index = Number.isInteger(payload?.index) ? payload.index : 0;
-      try {
-        await state.model.motion(group, index, 3);
-        if (String(group).toLowerCase() !== 'idle') {
-          idleAfterMotion(1200);
-        }
-      } catch (_) {
-        for (const fallback of ['Tap', 'Flick', 'Idle']) {
-          try {
-            await state.model.motion(fallback, 0, 3);
-            break;
-          } catch (_) {}
-        }
-      }
+      await playMotionWithPolicy(payload || {});
     }));
 
     state.eventSources.push(createRuntimeEventSource('live2d.emotion', (payload) => {
       const intensity = Number(payload?.intensity);
       if (Number.isFinite(intensity)) state.motionIntensity = clamp(intensity, 0.2, 1);
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('live2d.expression', (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      playNativeExpression(payload).then((usedNative) => {
+        if (usedNative) return;
+      const name = String(payload.name || '').toLowerCase();
+      const intensity = Number.isFinite(Number(payload.intensity)) ? Number(payload.intensity) : 0.5;
+      if (name === 'smile') {
+        state.motionState.paramTargets.ParamMouthForm = 0.4 + intensity * 0.35;
+        state.motionState.paramTargets.ParamCheek = 0.15 + intensity * 0.35;
+      } else if (name === 'alert') {
+        state.motionState.paramTargets.ParamBrowAngleY = 0.2 + intensity * 0.25;
+        state.motionState.paramTargets.ParamMouthForm = -0.08 - intensity * 0.2;
+      } else if (name === 'focus') {
+        state.motionState.paramTargets.ParamBrowAngleY = 0.08 + intensity * 0.18;
+        state.motionState.paramTargets.ParamEyeLOpen = 1;
+        state.motionState.paramTargets.ParamEyeROpen = 1;
+      } else if (name === 'soft') {
+        state.motionState.paramTargets.ParamBrowAngleY = -0.2;
+        state.motionState.paramTargets.ParamEyeLOpen = 0.88;
+        state.motionState.paramTargets.ParamEyeROpen = 0.88;
+      }
+      scheduleExpressionReset(Number.isFinite(Number(payload.hold_ms)) ? Number(payload.hold_ms) : 1200);
+      }).catch(() => undefined);
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('live2d.parameters', (payload) => {
+      const params = payload?.params;
+      if (!params || typeof params !== 'object') return;
+      Object.entries(params).forEach(([key, value]) => {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) state.motionState.paramTargets[key] = numeric;
+      });
+      if (Number.isFinite(Number(payload?.blend_ms))) {
+        state.motionState.paramBlend = clamp(Number(payload.blend_ms) / 1000, 0.08, 0.35);
+      }
+      scheduleExpressionReset(Number.isFinite(Number(payload?.hold_ms)) ? Number(payload.hold_ms) : 1200);
     }));
 
     state.eventSources.push(createRuntimeEventSource('live2d.mouth', (payload) => {
@@ -987,6 +1208,9 @@ async function initCompanion() {
     state.model = await state.Live2DModel.from(modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
     installGazeBridge();
+    const modelMappings = await resolveModelMappingConfig(modelURL);
+    buildLive2DCatalog(modelMappings);
+    console.info('[live2d] catalog', debugCatalogSummary());
 
     state.model.anchor.set(0.5, 1);
     const layout = () => {
@@ -1034,6 +1258,12 @@ async function initCompanion() {
       state.mouthCurrent += (state.mouthTarget - state.mouthCurrent) * 0.28;
       writeParam(core, 'ParamMouthOpenY', state.mouthCurrent);
       writeParam(core, 'ParamMouthForm', state.mouthForm);
+      Object.entries(state.motionState.paramTargets).forEach(([key, target]) => {
+        const current = Number.isFinite(state.motionState.paramValues[key]) ? state.motionState.paramValues[key] : 0;
+        const next = current + (target - current) * state.motionState.paramBlend;
+        state.motionState.paramValues[key] = next;
+        writeParam(core, key, next);
+      });
       writeParam(core, 'ParamBreath', 0.5 + Math.sin(t * 1.8) * 0.5);
       writeParam(core, 'ParamBodyAngleZ', Math.sin(t * 0.9) * 2.2 * state.motionIntensity);
       writeParam(core, 'ParamAngleZ', Math.sin(t * 1.1) * 2.0 * state.motionIntensity);

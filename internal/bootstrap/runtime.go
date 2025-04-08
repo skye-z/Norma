@@ -32,6 +32,17 @@ type Stack struct {
 	Playback        audioPlayback
 }
 
+type WakeConfigStatus struct {
+	Enabled       bool
+	EffectiveMode string
+	Provider      string
+	Keyword       string
+	Ready         bool
+	Reason        string
+	ModelDir      string
+	KeywordsFile  string
+}
+
 type audioPlayback interface {
 	Queue(sessionID, traceID string, chunk []byte) error
 	Complete(sessionID, traceID string)
@@ -80,15 +91,88 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 }
 
 func BuildVoicePipeline(cfg *config.Config, mgr *providers.Manager) audio.Pipeline {
+	wakeStatus := ResolveWakeConfig(cfg, mgr)
 	pipe := audio.Pipeline{
 		VAD:           audio.NewEnergyVAD(0.02),
 		WakeWord:      chooseWakeWord(cfg, mgr),
 		ASR:           chooseASR(cfg, mgr),
-		WakeMode:      cfg.Audio.WakeMode,
+		WakeMode:      wakeStatus.EffectiveMode,
 		SilenceFrames: cfg.Audio.EndpointSilenceFrames,
+	}
+	if !wakeStatus.Enabled || !wakeStatus.Ready {
+		pipe.WakeWord = nil
 	}
 	pipe.Preprocessors = choosePreprocessors(cfg)
 	return pipe
+}
+
+func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigStatus {
+	status := WakeConfigStatus{
+		Enabled:       cfg != nil && cfg.Audio.EnableWakeWord,
+		EffectiveMode: audio.WakeModeVADOnly,
+		Provider:      strings.ToLower(strings.TrimSpace(cfg.Audio.WakeProvider)),
+		Keyword:       strings.TrimSpace(cfg.Audio.WakeKeyword),
+	}
+	if cfg == nil {
+		status.Reason = "config unavailable"
+		return status
+	}
+	if !cfg.Audio.EnableWakeWord {
+		status.Reason = "audio.enable_wake_word=false"
+		return status
+	}
+	mode := strings.ToLower(strings.TrimSpace(cfg.Audio.WakeMode))
+	if mode == "" {
+		mode = audio.WakeModeWakeWordVAD
+	}
+	if mode != audio.WakeModeWakeWordVAD {
+		status.EffectiveMode = audio.WakeModeVADOnly
+		status.Reason = "wake_mode is not wake_word_vad"
+		return status
+	}
+	status.EffectiveMode = audio.WakeModeWakeWordVAD
+	if status.Provider == "" {
+		status.Reason = "wake provider is empty"
+		return status
+	}
+	if status.Provider != "sherpa-onnx" {
+		status.Reason = "unsupported wake provider: " + status.Provider
+		return status
+	}
+	modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
+	if modelDir == "" && mgr != nil {
+		modelDir = filepath.Join(mgr.Root(), "wake", "current")
+	}
+	status.ModelDir = modelDir
+	encoder := firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
+	decoder := firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
+	joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
+	tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
+	keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+	status.KeywordsFile = keywords
+	missing := make([]string, 0, 5)
+	if encoder == "" {
+		missing = append(missing, "encoder")
+	}
+	if decoder == "" {
+		missing = append(missing, "decoder")
+	}
+	if joiner == "" {
+		missing = append(missing, "joiner")
+	}
+	if tokens == "" {
+		missing = append(missing, "tokens")
+	}
+	if keywords == "" {
+		missing = append(missing, "keywords")
+	}
+	if len(missing) > 0 {
+		status.Reason = "wake assets incomplete: " + strings.Join(missing, ",")
+		return status
+	}
+	status.Ready = true
+	status.Reason = "ready"
+	return status
 }
 
 func choosePlayback(b *bus.Bus, tts audio.TTS) audioPlayback {
@@ -105,23 +189,21 @@ func choosePlayback(b *bus.Bus, tts audio.TTS) audioPlayback {
 }
 
 func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
-	if strings.ToLower(strings.TrimSpace(cfg.Audio.WakeMode)) != audio.WakeModeWakeWordVAD {
+	status := ResolveWakeConfig(cfg, mgr)
+	if !status.Enabled || status.EffectiveMode != audio.WakeModeWakeWordVAD {
 		return nil
 	}
-	provider := strings.ToLower(strings.TrimSpace(cfg.Audio.WakeProvider))
+	provider := status.Provider
 	if provider == "" {
 		return &audio.UnavailableWakeWord{Reason: "wake provider is empty"}
 	}
 	if provider == "sherpa-onnx" {
-		modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
-		if modelDir == "" {
-			modelDir = filepath.Join(mgr.Root(), "wake", "current")
-		}
+		modelDir := status.ModelDir
 		encoder := firstExistingPath(filepath.Join(modelDir, "encoder-epoch-*.onnx"), filepath.Join(modelDir, "encoder.int8.onnx"), filepath.Join(modelDir, "encoder.onnx"))
 		decoder := firstExistingPath(filepath.Join(modelDir, "decoder-epoch-*.onnx"), filepath.Join(modelDir, "decoder.int8.onnx"), filepath.Join(modelDir, "decoder.onnx"))
 		joiner := firstExistingPath(filepath.Join(modelDir, "joiner-epoch-*.onnx"), filepath.Join(modelDir, "joiner.int8.onnx"), filepath.Join(modelDir, "joiner.onnx"))
 		tokens := firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
-		keywords := firstExistingPath(strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath), filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+		keywords := status.KeywordsFile
 		if encoder == "" || decoder == "" || joiner == "" || tokens == "" || keywords == "" {
 			log.Printf("[wake] sherpa-onnx assets incomplete")
 			return &audio.UnavailableWakeWord{Reason: "sherpa-onnx assets incomplete"}

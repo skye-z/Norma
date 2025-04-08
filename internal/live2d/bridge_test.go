@@ -24,9 +24,11 @@ func TestBridgeEmotionStructPayload(t *testing.T) {
 		SessionID: "s1",
 		TraceID:   "t1",
 		Payload: companion.EmotionSpec{
-			Emotion:   "guide",
-			Motion:    "Tap",
-			Intensity: 0.6,
+			Emotion:    "guide",
+			Motion:     "Tap",
+			Expression: "focus",
+			Intensity:  0.6,
+			Params:     map[string]float64{"ParamMouthForm": 0.2},
 		},
 	})
 

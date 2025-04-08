@@ -67,6 +67,11 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
 		cfg.Audio.WakeProvider = "sherpa-onnx"
 	}
+	if !cfg.Audio.EnableWakeWord {
+		cfg.Audio.WakeMode = "vad"
+	} else if strings.TrimSpace(cfg.Audio.WakeMode) == "" || strings.EqualFold(strings.TrimSpace(cfg.Audio.WakeMode), "vad") {
+		cfg.Audio.WakeMode = "wake_word_vad"
+	}
 	if strings.TrimSpace(cfg.Audio.MicDeviceID) == "" {
 		cfg.Audio.MicDeviceID = "default"
 	}
