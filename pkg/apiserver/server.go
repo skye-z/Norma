@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"norma/internal/api"
-	"norma/internal/bootstrap"
-	"norma/internal/config"
-	"norma/internal/db"
-	"norma/internal/memory"
+	"norma/backend/api"
+	"norma/backend/core/bootstrap"
+	"norma/backend/core/db"
+	memorySvc "norma/backend/core/memory"
+	"norma/backend/utils"
 	"norma/pkg/layout"
 	"xorm.io/xorm"
 )
@@ -64,7 +64,7 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("init runtime stack: %w", err)
 	}
 
-	svc := memory.NewService(engine)
+	svc := memorySvc.NewService(engine)
 	mh := api.NewMemoryHandler(svc)
 	rh := api.NewRuntimeHandler(stack.Runtime.Bus, stack.Runtime.Inspector)
 	sh := api.NewSettingsHandler(configPath, stack.Runtime.Bus)

@@ -18,6 +18,19 @@
 
 `mic -> wake -> vad/endpoint -> asr -> rag -> llm -> tts -> audio play -> live2d`
 
+/backend
+    /api
+    /core
+        /audio
+            /wake
+            /vad
+            /asr
+            /tts
+        /live2d
+        /llm
+        /memory
+    /utils
+
 目前已完成的关键调整：
 
 - 桌面伴侣页面会根据配置决定是否显示麦克风按钮。

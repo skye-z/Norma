@@ -1,0 +1,3 @@
+package audio
+
+func EnsureSherpaDLLPath() {}
