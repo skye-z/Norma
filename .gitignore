@@ -40,3 +40,10 @@ config.yaml
 frontend/dist/
 frontend/node_modules/
 /build/bin/
+
+# Browser automation artifacts
+fumadocs-docs.png
+
+# Docs app artifacts
+docs/.next/
+docs/.content-collections/
