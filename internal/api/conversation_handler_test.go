@@ -179,7 +179,62 @@ func TestConversationMicFrameRequiresActiveStream(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/conversation/mic/frame", bytes.NewReader(body))
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConversationInterruptKeepsNativeSourceRegisteredUntilPipelineStops(t *testing.T) {
+	rt := runtime.New()
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	cfg := &config.Config{}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	h := NewConversationHandler(configPath, rt.Bus, rt.Inspector, providers.NewManager(filepath.Join(root, "providers")))
+	h.sources["s1"] = audio.NewMockFrameSource(audio.DefaultDemoFrames(), 40*time.Millisecond)
+	h.sid = "s1"
+	h.tid = "t1"
+	h.active = true
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/conversation/mic/interrupt", bytes.NewReader([]byte(`{"session_id":"s1","trace_id":"t1","reason":"barge"}`)))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("interrupt code=%d", rec.Code)
+	}
+	if h.sources["s1"] == nil {
+		t.Fatalf("expected source to remain registered for background capture path")
+	}
+}
+
+func TestConversationInterruptClosesStreamButPreservesSource(t *testing.T) {
+	rt := runtime.New()
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	if err := config.Save(configPath, &config.Config{}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	h := NewConversationHandler(configPath, rt.Bus, rt.Inspector, providers.NewManager(filepath.Join(root, "providers")))
+	stream := audio.NewPushFrameSource(8)
+	h.streams["s2"] = stream
+	h.sources["s2"] = audio.NewMockFrameSource(audio.DefaultDemoFrames(), 40*time.Millisecond)
+	h.sid = "s2"
+	h.tid = "t2"
+	h.active = true
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/conversation/mic/interrupt", bytes.NewReader([]byte(`{"session_id":"s2","trace_id":"t2","reason":"barge"}`)))
+	mux.ServeHTTP(rec, req)
+	if h.streams["s2"] != nil {
+		t.Fatalf("expected push stream removed on interrupt")
+	}
+	if h.sources["s2"] == nil {
+		t.Fatalf("expected native source preserved for continuous capture")
 	}
 }

@@ -39,39 +39,8 @@ async function resolveModelMeta() {
   const modelURL = localPreferred || `${apiBase}${data.model_url}`;
   return {
     modelURL,
-    modelName: String(data.model_name || '')
-  };
-}
-
-async function loadOptionalJSON(url) {
-  try {
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (_) {
-    return null;
-  }
-}
-
-function siblingResourceURL(modelURL, filename) {
-  try {
-    const url = new URL(modelURL, window.location.href);
-    const pathname = url.pathname;
-    url.pathname = pathname.slice(0, pathname.lastIndexOf('/') + 1) + filename;
-    url.search = '';
-    return url.toString();
-  } catch (_) {
-    return '';
-  }
-}
-
-async function resolveModelMappingConfig(modelURL) {
-  const combined = await loadOptionalJSON(siblingResourceURL(modelURL, 'live2d.map.json'));
-  const motionMap = await loadOptionalJSON(siblingResourceURL(modelURL, 'motion_map.json'));
-  const expressionMap = await loadOptionalJSON(siblingResourceURL(modelURL, 'expression_map.json'));
-  return {
-    motions: combined?.motions && typeof combined.motions === 'object' ? combined.motions : (motionMap && typeof motionMap === 'object' ? motionMap : {}),
-    expressions: combined?.expressions && typeof combined.expressions === 'object' ? combined.expressions : (expressionMap && typeof expressionMap === 'object' ? expressionMap : {})
+    modelName: String(data.model_name || ''),
+    modelMapping: data.mapping && typeof data.mapping === 'object' ? data.mapping : { motions: {}, expressions: {} }
   };
 }
 
@@ -281,6 +250,7 @@ function renderSettingsPage() {
         <div class="console-stat-line"><strong>${name}</strong>${statePill(item.status)}</div>
         <div class="console-foot">找到：${(item.found || []).join('，') || '无'}</div>
         <div class="console-foot">缺失：${(item.missing || []).join('，') || '无'}</div>
+        ${item?.paths && typeof item.paths === 'object' && Object.keys(item.paths).length ? `<div class="console-foot">路径：${Object.entries(item.paths).map(([key, value]) => `${key}=${String(value).replaceAll('<', '&lt;')}`).join('<br>')}</div>` : ''}
       </div>
     `).join('') || '<div class="console-foot">暂无 provider 信息</div>';
 
@@ -451,6 +421,7 @@ async function initCompanion() {
     mediaStream: null,
     mediaContext: null,
     mediaProcessor: null,
+    captureMode: '',
     playbackContext: null,
     playbackQueue: Promise.resolve(),
     audioFormat: { sampleRate: 22050, channels: 1, encoding: 'pcm_s16le' },
@@ -477,6 +448,10 @@ async function initCompanion() {
       expressions: new Map(),
       canonicalMotions: new Map(),
       modelMappings: { motions: {}, expressions: {} }
+    },
+    runtimeHints: {
+      keepMicCaptureAlive: false,
+      needRealAECNS: false
     }
   };
 
@@ -724,7 +699,7 @@ async function initCompanion() {
   }
 
   async function sendMicFrame(frame, eof = false) {
-    if (!state.sessionID) return;
+    if (!state.sessionID || state.captureMode !== 'push') return;
     await postJSON('/conversation/mic/frame', {
       session_id: state.sessionID,
       trace_id: state.traceID,
@@ -753,6 +728,7 @@ async function initCompanion() {
   }
 
   async function startMediaCapture() {
+    if (state.mediaStream && state.mediaContext && state.mediaProcessor) return;
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) throw new Error('当前环境不支持 Web Audio');
@@ -914,6 +890,7 @@ async function initCompanion() {
     }
     stopMediaCapture(false).catch(() => undefined);
     resetPlaybackState();
+    state.captureMode = '';
     state.speechRecognition = null;
     setMicListening(false);
     if (state.resizeObserver) {
@@ -936,10 +913,6 @@ async function initCompanion() {
 
   state.speechRecognition = setupSpeechRecognition();
   micFabEl?.addEventListener('click', () => {
-    if (!state.speechRecognition) {
-      setStatus('当前环境不支持语音输入，请在支持语音识别的环境中使用。', 'error');
-      return;
-    }
     try {
       if (state.speechListening) {
         postJSON('/conversation/mic/interrupt', {
@@ -947,31 +920,44 @@ async function initCompanion() {
           trace_id: state.traceID,
           reason: 'mic_toggle_stop'
         }).catch(() => undefined);
+        setMicListening(false);
+        setStatus('语音输入已停止', 'info', true);
         if (state.playbackState.started) {
           state.playbackState.pending = 0;
           state.playbackState.interrupted = true;
           finishPlaybackIfIdle('interrupt');
         }
-        stopMediaCapture(true).catch(() => undefined);
+        if (!window.__NORMA_KEEP_CAPTURE_ALIVE__ && !state.runtimeHints.keepMicCaptureAlive) {
+          stopMediaCapture(true).catch(() => undefined);
+        }
         if (state.useSpeechFallback) {
           state.speechRecognition.stop();
         }
+        state.captureMode = '';
+        state.sessionID = '';
+        state.traceID = '';
       } else {
         postJSON('/conversation/mic/start').then((started) => {
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
+          state.captureMode = String(started?.capture || '');
           setMicListening(true);
+          if (state.captureMode === 'native') {
+            state.useSpeechFallback = false;
+            setStatus('语音输入已启动（桌面原生采集）', 'info');
+            return;
+          }
           startMediaCapture().then(() => {
             state.useSpeechFallback = false;
             setStatus('语音输入已启动（真实麦克风）', 'info');
           }).catch(async () => {
-            if (!state.speechRecognition) throw new Error('no fallback recognizer');
+            if (!state.speechRecognition) throw new Error('native capture unavailable and no browser fallback recognizer');
             state.useSpeechFallback = true;
             setStatus('语音输入已启动（浏览器识别 fallback）', 'info');
             state.speechRecognition.start();
           });
         }).catch(async () => {
-          if (!state.speechRecognition) throw new Error('no fallback recognizer');
+          if (!state.speechRecognition) throw new Error('conversation start failed and no browser fallback recognizer');
           state.useSpeechFallback = true;
           const started = await postJSON('/conversation/mic/start').catch(() => ({}));
           state.sessionID = String(started?.session_id || '');
@@ -980,7 +966,12 @@ async function initCompanion() {
         });
       }
     } catch (error) {
-      setStatus(`语音输入启动失败：${error}`, 'error');
+      const message = String(error && error.message ? error.message : error || 'unknown');
+      if (message.includes('native capture unavailable') || message.includes('conversation start failed')) {
+        setStatus('当前环境无法启动真实语音输入，且浏览器 fallback 不可用。请检查麦克风权限、后端状态和原生音频链路。', 'error');
+      } else {
+        setStatus(`语音输入启动失败：${message}`, 'error');
+      }
     }
   });
 
@@ -1139,6 +1130,15 @@ async function initCompanion() {
       const evtSessionID = String(evt?.session_id || state.sessionID || '');
       const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
       publish('live2d.mouth', 'speaking', { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+      if ((window.__NORMA_KEEP_CAPTURE_ALIVE__ || state.runtimeHints.keepMicCaptureAlive) && !state.useSpeechFallback) {
+        startMediaCapture().catch(() => undefined);
+      }
+    }));
+
+    state.eventSources.push(createRuntimeEventSource('assistant.runtime.hints', (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      state.runtimeHints.keepMicCaptureAlive = payload.keep_mic_capture_alive === true;
+      state.runtimeHints.needRealAECNS = payload.need_real_aec_ns === true;
     }));
 
     state.eventSources.push(createRuntimeEventSource('audio.play.end', (_payload, evt) => {
@@ -1208,8 +1208,7 @@ async function initCompanion() {
     state.model = await state.Live2DModel.from(modelURL, { autoInteract: false });
     state.app.stage.addChild(state.model);
     installGazeBridge();
-    const modelMappings = await resolveModelMappingConfig(modelURL);
-    buildLive2DCatalog(modelMappings);
+    buildLive2DCatalog(modelMeta.modelMapping || { motions: {}, expressions: {} });
     console.info('[live2d] catalog', debugCatalogSummary());
 
     state.model.anchor.set(0.5, 1);

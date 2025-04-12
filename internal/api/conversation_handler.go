@@ -24,6 +24,8 @@ type ConversationHandler struct {
 	configPath string
 	providers  *providers.Manager
 	streams    map[string]*audio.PushFrameSource
+	sources    map[string]audio.FrameSource
+	capture    map[string]string
 
 	mu     sync.RWMutex
 	active bool
@@ -43,12 +45,13 @@ type conversationState struct {
 	SessionID string `json:"session_id"`
 	TraceID   string `json:"trace_id"`
 	State     string `json:"state,omitempty"`
+	Capture   string `json:"capture,omitempty"`
 }
 
 var conversationSeq uint64
 
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
-	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource)}
+	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string)}
 }
 
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
@@ -91,14 +94,23 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 		prev.Close()
 		delete(h.streams, sid)
 	}
+	if prevSource := h.sources[sid]; prevSource != nil {
+		if closable, ok := prevSource.(interface{ Close() error }); ok {
+			_ = closable.Close()
+		}
+		delete(h.sources, sid)
+	}
+	delete(h.capture, sid)
 	ctx, cancel := context.WithCancel(context.Background())
 	var source audio.FrameSource
+	captureMode := "native"
 	platformSource, sourceErr := audio.NewPlatformCaptureSource(cfg.Audio.MicSampleRate, cfg.Audio.MicChannelCount)
 	if sourceErr != nil {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sid, TraceID: tid, Payload: map[string]string{"code": "mic_capture_unavailable", "message": sourceErr.Error()}})
 		stream := audio.NewPushFrameSource(64)
 		h.streams[sid] = stream
 		source = stream
+		captureMode = "push"
 	} else {
 		source = platformSource
 	}
@@ -106,10 +118,14 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	h.sid = sid
 	h.tid = tid
 	h.cancel = cancel
+	h.sources[sid] = source
+	h.capture[sid] = captureMode
 	h.mu.Unlock()
 
 	go h.runMicPipeline(ctx, sid, tid, source)
-	writeJSON(w, http.StatusOK, h.snapshot())
+	state := h.snapshot()
+	state.Capture = captureMode
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +149,13 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 		stream.Close()
 		delete(h.streams, sid)
 	}
+	if src := h.sources[sid]; src != nil {
+		if closable, ok := src.(interface{ Close() error }); ok {
+			_ = closable.Close()
+		}
+		delete(h.sources, sid)
+	}
+	delete(h.capture, sid)
 	h.active = false
 	h.mu.Unlock()
 
@@ -163,6 +186,14 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	if stream := h.streams[sid]; stream != nil {
 		stream.Close()
 		delete(h.streams, sid)
+	}
+	if src := h.sources[sid]; src != nil {
+		if bg, ok := src.(audio.BackgroundCaptureController); ok {
+			bg.EnableBackgroundCapture(sid, true)
+		}
+	}
+	if h.capture[sid] == "push" {
+		delete(h.capture, sid)
 	}
 	h.active = false
 	h.mu.Unlock()
@@ -231,7 +262,12 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 	sid, tid := h.resolveIDs(req.SessionID, req.TraceID)
 	h.mu.RLock()
 	stream := h.streams[sid]
+	mode := h.capture[sid]
 	h.mu.RUnlock()
+	if mode != "push" {
+		writeErr(w, http.StatusBadRequest, "conversation stream is not in push capture mode")
+		return
+	}
 	if stream == nil {
 		writeErr(w, http.StatusNotFound, "conversation stream not found")
 		return
@@ -252,6 +288,9 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 func (h *ConversationHandler) snapshot() conversationState {
 	h.mu.RLock()
 	state := conversationState{Active: h.active, SessionID: h.sid, TraceID: h.tid}
+	if h.sid != "" {
+		state.Capture = h.capture[h.sid]
+	}
 	h.mu.RUnlock()
 	if h.inspector != nil {
 		state.State = h.inspector.Snapshot().State
@@ -303,7 +342,14 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	}
 
 	if closable, ok := any(source).(interface{ Close() error }); ok {
-		defer func() { _ = closable.Close() }()
+		defer func() {
+			h.mu.RLock()
+			_, stillRegistered := h.sources[sessionID]
+			h.mu.RUnlock()
+			if stillRegistered {
+				_ = closable.Close()
+			}
+		}()
 	}
 
 	err = pipe.Run(
@@ -328,6 +374,8 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		h.active = false
 		h.cancel = nil
 		delete(h.streams, sessionID)
+		delete(h.sources, sessionID)
+		delete(h.capture, sessionID)
 	}
 	h.mu.Unlock()
 
