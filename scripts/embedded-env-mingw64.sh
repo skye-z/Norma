@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-WHISPER_CPP_DIR_DEFAULT="/d/Project/AI/_deps/whisper.cpp"
+WHISPER_CPP_DIR_DEFAULT="/d/Project/AI/Norma/deps/whisper.cpp"
 WHISPER_CPP_DIR="${WHISPER_CPP_DIR:-$WHISPER_CPP_DIR_DEFAULT}"
 EMBEDDED_TAGS="${EMBEDDED_TAGS:-whisper_embedded sherpa_embedded}"
 HOST_GO_BIN="${HOST_GO_BIN:-}"

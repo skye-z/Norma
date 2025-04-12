@@ -1,6 +1,6 @@
 param(
     [string]$MSYS2Shell = "D:\Environment\MSYS2\msys2_shell.cmd",
-    [string]$WhisperCppDir = "D:/Project/AI/_deps/whisper.cpp"
+    [string]$WhisperCppDir = "D:/Project/AI/Norma/deps/whisper.cpp"
 )
 
 $ErrorActionPreference = "Stop"
