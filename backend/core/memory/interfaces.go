@@ -2,7 +2,8 @@ package memory
 
 import "context"
 
-// Chunk is a retrievable content unit.
+// Chunk 可检索的内容单元
+// 包含文档ID、片段ID、相似度分数和实际内容
 type Chunk struct {
 	DocID   string
 	ChunkID string
@@ -10,14 +11,18 @@ type Chunk struct {
 	Content string
 }
 
-// Retriever defines hybrid retrieval behavior.
+// Retriever 定义混合检索的行为接口
+// 用于根据查询字符串返回最相关的记忆片段
 type Retriever interface {
 	Search(ctx context.Context, query string, topK int) ([]Chunk, error)
 }
 
-// MockRetriever is a development-only retriever.
+// MockRetriever 开发阶段使用的模拟检索器
+// 用于在没有实际后端存储时进行开发和测试
 type MockRetriever struct{}
 
+// Search 实现 Retriever 接口
+// 返回指定数量的模拟检索结果，模拟真实的检索行为
 func (m MockRetriever) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
 	_ = ctx
 	if topK <= 0 {

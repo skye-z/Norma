@@ -10,16 +10,16 @@ import (
 	"time"
 
 	"norma/backend/core/audio"
-	"norma/backend/core/memory"
 	"norma/backend/core/llm"
+	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
 )
 
 type fixedRetriever struct {
-	chunks []index.Chunk
+	chunks []memory.Chunk
 }
 
-func (r fixedRetriever) Search(ctx context.Context, query string, topK int) ([]index.Chunk, error) {
+func (r fixedRetriever) Search(ctx context.Context, query string, topK int) ([]memory.Chunk, error) {
 	_ = ctx
 	_ = query
 	_ = topK
@@ -37,8 +37,8 @@ func (l captureLLM) Stream(ctx context.Context, req llm.Request, onToken func(st
 	case l.ctxs <- req.Context:
 	default:
 	}
-	onToken("??)
-	onToken("�?)
+	onToken("?")
+	onToken("?")
 	return nil
 }
 
@@ -127,7 +127,7 @@ func TestRegressionVoiceQAFlow(t *testing.T) {
 		}
 	})
 
-	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "voice-s", TraceID: "voice-t", Payload: "今天天气怎么�?})
+	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "voice-s", TraceID: "voice-t", Payload: "今天天气怎么样?"})
 
 	select {
 	case <-done:
@@ -179,7 +179,7 @@ func TestRegressionDocumentQAUsesRetrievedContext(t *testing.T) {
 	llmSpy := captureLLM{ctxs: make(chan []string, 1)}
 	_ = NewOrchestrator(
 		rt,
-		fixedRetriever{chunks: []index.Chunk{{DocID: "doc-1", ChunkID: "c-1", Content: "DOC_FACT: 项目目标是完整产�?}}},
+		fixedRetriever{chunks: []memory.Chunk{{DocID: "doc-1", ChunkID: "c-1", Content: "DOC_FACT: 项目目标是完整产?"}}},
 		llmSpy,
 		audio.NewMockTTS(),
 		6,
@@ -194,7 +194,7 @@ func TestRegressionDocumentQAUsesRetrievedContext(t *testing.T) {
 		}
 	})
 
-	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "doc-s", TraceID: "doc-t", Payload: "项目目标是什�?})
+	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "doc-s", TraceID: "doc-t", Payload: "项目目标是什么?"})
 
 	select {
 	case <-done:

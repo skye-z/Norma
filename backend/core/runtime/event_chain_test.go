@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"norma/backend/core/audio"
-	"norma/backend/core/memory"
 	"norma/backend/core/llm"
+	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
 )
 
 func TestEventChainE2E(t *testing.T) {
 	rt := New()
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
 
 	done := make(chan struct{}, 1)
 	_ = rt.Bus.Subscribe("llm.done", func(evt bus.Event) {
@@ -39,7 +39,7 @@ func TestEventChainE2E(t *testing.T) {
 
 func TestOrchestratorCancelByInterrupt(t *testing.T) {
 	rt := New()
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "s-int", TraceID: "t-int", Payload: "hello"})
 	time.Sleep(100 * time.Millisecond)

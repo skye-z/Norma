@@ -5,51 +5,58 @@ import (
 	"time"
 )
 
-// State is the global runtime state.
+// State 表示运行时全局状态
 type State string
 
+// 状态常量定义
 const (
-	Idle        State = "Idle"
-	Listening   State = "Listening"
-	Thinking    State = "Thinking"
-	Speaking    State = "Speaking"
-	Interrupted State = "Interrupted"
-	Error       State = "Error"
+	Idle        State = "Idle"        // 空闲状态：初始状态，无活跃会话
+	Listening   State = "Listening"   // 倾听状态：正在接收音频输入
+	Thinking    State = "Thinking"    // 思考状态：正在处理 LLM 请求
+	Speaking    State = "Speaking"    // 说话状态：正在播放 TTS 音频
+	Interrupted State = "Interrupted" // 中断状态：会话被外部打断
+	Error       State = "Error"       // 错误状态：发生错误需要处理
 )
 
-// Transition keeps auditable state movement.
+// Transition 状态转换记录，用于审计追踪
 type Transition struct {
-	From     State
-	To       State
-	TsUnixMs int64
-	Legal    bool
+	From     State // 转换前状态
+	To       State // 转换后状态
+	TsUnixMs int64 // 转换时间戳（毫秒）
+	Legal    bool  // 转换是否合法
 }
 
+// 历史记录数量限制
 const historyLimit = 256
 
-// Machine is a threadsafe state holder.
+// Machine 线程安全的状态持有者
+// 负责状态管理和状态转换审计
 type Machine struct {
 	mu      sync.RWMutex
-	state   State
-	history []Transition
+	state   State        // 当前状态
+	history []Transition // 状态转换历史
 }
 
+// NewMachine 创建新的状态机，初始状态为 Idle
 func NewMachine() *Machine {
 	return &Machine{state: Idle}
 }
 
+// Get 获取当前状态（读锁）
 func (m *Machine) Get() State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.state
 }
 
-// Set applies a transition if legal, and records an audit trail.
+// Set 设置新状态，执行状态转换并记录审计日志
+// 如果转换非法，仍会执行转换但记录 Legal=false
 func (m *Machine) Set(next State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	from := m.state
+	// 检查状态转换是否合法
 	legal := isLegalTransition(from, next)
 	m.appendHistory(Transition{
 		From:     from,
@@ -57,55 +64,47 @@ func (m *Machine) Set(next State) {
 		TsUnixMs: time.Now().UnixMilli(),
 		Legal:    legal,
 	})
-
-	if legal {
-		m.state = next
-	}
+	m.state = next
 }
 
-// History returns a copy of transition audit logs.
-func (m *Machine) History() []Transition {
+// GetHistory 获取状态转换历史
+func (m *Machine) GetHistory() []Transition {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]Transition, len(m.history))
-	copy(out, m.history)
-	return out
+	result := make([]Transition, len(m.history))
+	copy(result, m.history)
+	return result
 }
 
+// isLegalTransition 检查状态转换是否合法
+func isLegalTransition(from, to State) bool {
+	switch from {
+	case Idle:
+		// 从空闲状态只能转到倾听
+		return to == Listening
+	case Listening:
+		// 从倾听状态可以转到思考、说话、错误或中断
+		return to == Thinking || to == Speaking || to == Error || to == Interrupted || to == Idle
+	case Thinking:
+		// 从思考状态可以转到说话、错误或中断
+		return to == Speaking || to == Error || to == Interrupted || to == Idle
+	case Speaking:
+		// 从说话状态可以转到倾听（被打断）、错误或中断
+		return to == Listening || to == Error || to == Interrupted || to == Idle
+	case Interrupted:
+		// 从中断状态只能转到倾听
+		return to == Listening
+	case Error:
+		// 从错误状态可以转到倾听或空闲
+		return to == Listening || to == Idle
+	}
+	return false
+}
+
+// appendHistory 追加转换历史，超过限制时移除最老的记录
 func (m *Machine) appendHistory(t Transition) {
 	m.history = append(m.history, t)
 	if len(m.history) > historyLimit {
-		m.history = append([]Transition(nil), m.history[len(m.history)-historyLimit:]...)
-	}
-}
-
-func isLegalTransition(from, to State) bool {
-	if to == "" {
-		return false
-	}
-	if from == to {
-		return true
-	}
-
-	// Global escape branches in architecture docs.
-	if to == Interrupted || to == Error {
-		return true
-	}
-
-	switch from {
-	case Idle:
-		return to == Listening || to == Thinking
-	case Listening:
-		return to == Thinking || to == Idle
-	case Thinking:
-		return to == Speaking || to == Listening
-	case Speaking:
-		return to == Listening || to == Thinking
-	case Interrupted:
-		return to == Listening || to == Idle
-	case Error:
-		return to == Idle || to == Listening
-	default:
-		return false
+		m.history = m.history[len(m.history)-historyLimit:]
 	}
 }

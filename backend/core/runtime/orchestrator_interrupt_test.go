@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"norma/backend/core/memory"
 	"norma/backend/core/llm"
+	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
 )
 
@@ -45,7 +45,7 @@ func (n noopTTS) Stop(sessionID string) error { _ = sessionID; return nil }
 func TestInterruptCancelsInFlightSession(t *testing.T) {
 	rt := New()
 	l := &slowLLM{}
-	_ = NewOrchestrator(rt, index.MockRetriever{}, l, noopTTS{}, 4)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, l, noopTTS{}, 4)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "s1", TraceID: "t1", Payload: "hi"})
 	time.Sleep(120 * time.Millisecond)

@@ -1,3 +1,5 @@
+// Package audio 提供音频处理的核心接口和管道实现
+// 包含VAD(语音活动检测)、WakeWord(唤醒词)、ASR(语音识别)、TTS(语音合成)等组件
 package audio
 
 import (
@@ -6,72 +8,76 @@ import (
 )
 
 const (
-	WakeModeVADOnly     = "vad"
-	WakeModeWakeWordVAD = "wake_word_vad"
+	WakeModeVADOnly     = "vad"           // 仅使用VAD模式，无需唤醒词即可检测语音
+	WakeModeWakeWordVAD = "wake_word_vad" // 唤醒词+VAD模式，需要唤醒词触发
 )
 
-// VAD detects speech activity from audio frames.
+// VAD 检测音频帧中的语音活动
 type VAD interface {
 	Detect(frame []float32) (bool, error)
 }
 
-// WakeWord detects wake phrase from PCM stream.
+// WakeWord 从PCM流中检测唤醒词/短语
 type WakeWord interface {
 	Detect(frame []int16) (bool, error)
 }
 
-// Preprocessor can apply AEC/NS before VAD/ASR.
+// Preprocessor 在VAD/ASR之前进行预处理，可应用AEC(回声消除)/NS(噪声抑制)
 type Preprocessor interface {
 	Process(frame []float32) []float32
 	Name() string
 }
 
-// ASR streams transcription events.
+// ASR 流式输出转录结果
 type ASR interface {
 	Stream(ctx context.Context, onPartial func(text string), onFinal func(text string)) error
 }
 
-// FrameASR can transcribe utterance frames directly.
+// FrameASR 可以直接转录语音片段
 type FrameASR interface {
 	ASR
 	TranscribeFrames(ctx context.Context, frames [][]float32, onPartial func(text string), onFinal func(text string)) error
 }
 
-// TTS streams synthesized audio chunks and supports interruption.
+// TTS 流式合成音频块，支持中断
 type TTS interface {
 	Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error
 	Stop(sessionID string) error
 }
 
+// AudioFormatProvider 提供音频格式信息
 type AudioFormatProvider interface {
 	SampleRate() int
 	Channels() int
 	Encoding() string
 }
 
+// ProsodyHintProvider 指示是否支持韵律提示
 type ProsodyHintProvider interface {
 	SupportsProsodyHints() bool
 }
 
+// BackgroundCaptureController 控制后台音频捕获
 type BackgroundCaptureController interface {
 	EnableBackgroundCapture(sessionID string, enabled bool)
 }
 
-// Pipeline coordinates voice-related components.
+// Pipeline 协调语音相关组件的执行
 type Pipeline struct {
-	VAD              VAD
-	WakeWord         WakeWord
-	ASR              ASR
-	TTS              TTS
-	Preprocessors    []Preprocessor
-	WakeMode         string
-	WakeBufferFrames int
-	SilenceFrames    int
-	AllowBargeIn     bool
+	VAD              VAD            // 语音活动检测器
+	WakeWord         WakeWord       // 唤醒词检测器
+	ASR              ASR            // 语音识别引擎
+	TTS              TTS            // 语音合成引擎
+	Preprocessors    []Preprocessor // 预处理链(AEC/NS等)
+	WakeMode         string         // 唤醒模式: vad 或 wake_word_vad
+	WakeBufferFrames int            // 唤醒缓冲帧数
+	SilenceFrames    int            // 静默帧数阈值
+	AllowBargeIn     bool           // 是否允许打断
 }
 
+// UnavailableASR 不可用的ASR实现，返回错误信息
 type UnavailableASR struct {
-	Reason string
+	Reason string // 不可用原因
 }
 
 func (u UnavailableASR) Stream(ctx context.Context, onPartial func(string), onFinal func(string)) error {
@@ -84,8 +90,9 @@ func (u UnavailableASR) Stream(ctx context.Context, onPartial func(string), onFi
 	return errors.New("asr unavailable: " + u.Reason)
 }
 
+// UnavailableWakeWord 不可用的唤醒词检测器实现
 type UnavailableWakeWord struct {
-	Reason string
+	Reason string // 不可用原因
 }
 
 func (u *UnavailableWakeWord) Detect(frame []int16) (bool, error) {
@@ -96,8 +103,9 @@ func (u *UnavailableWakeWord) Detect(frame []int16) (bool, error) {
 	return false, errors.New("wake word unavailable: " + u.Reason)
 }
 
+// UnavailableTTS 不可用的TTS实现
 type UnavailableTTS struct {
-	Reason string
+	Reason string // 不可用原因
 }
 
 func (u *UnavailableTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {

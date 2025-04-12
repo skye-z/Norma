@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"norma/backend/core/audio"
-	"norma/backend/core/memory"
 	"norma/backend/core/llm"
+	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
 )
 
@@ -24,7 +24,7 @@ func (l llmFailStreamer) Stream(ctx context.Context, req llm.Request, onToken fu
 
 func TestProtocolAudioPlayEvents(t *testing.T) {
 	rt := New()
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, llm.MockStreamer{}, audio.NewMockTTS(), 6)
 
 	playStart := make(chan struct{}, 1)
 	playEnd := make(chan struct{}, 1)
@@ -63,7 +63,7 @@ func TestProtocolAudioPlayEvents(t *testing.T) {
 
 func TestProtocolErrorEventOnLLMFailure(t *testing.T) {
 	rt := New()
-	_ = NewOrchestrator(rt, index.MockRetriever{}, llmFailStreamer{}, audio.NewMockTTS(), 6)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, llmFailStreamer{}, audio.NewMockTTS(), 6)
 
 	errEvt := make(chan bus.Event, 1)
 	_ = rt.Bus.Subscribe("error", func(evt bus.Event) {

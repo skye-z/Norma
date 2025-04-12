@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"norma/backend/core/memory"
 	"norma/backend/core/llm"
+	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
 )
 
@@ -15,7 +15,7 @@ type blockingRetriever struct {
 	canceled atomic.Bool
 }
 
-func (r *blockingRetriever) Search(ctx context.Context, query string, topK int) ([]index.Chunk, error) {
+func (r *blockingRetriever) Search(ctx context.Context, query string, topK int) ([]memory.Chunk, error) {
 	_ = query
 	_ = topK
 	<-ctx.Done()
@@ -74,7 +74,7 @@ func TestCancelPropagationRetriever(t *testing.T) {
 func TestCancelPropagationTTS(t *testing.T) {
 	rt := New()
 	tts := &blockingTTS{}
-	_ = NewOrchestrator(rt, index.MockRetriever{}, instantLLM{}, tts, 6)
+	_ = NewOrchestrator(rt, memory.MockRetriever{}, instantLLM{}, tts, 6)
 
 	rt.Bus.Publish(bus.Event{Name: "asr.final", SessionID: "c2", TraceID: "tc2", Payload: "hello"})
 	time.Sleep(120 * time.Millisecond)

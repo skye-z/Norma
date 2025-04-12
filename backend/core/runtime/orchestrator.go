@@ -18,27 +18,30 @@ import (
 	"norma/pkg/layout"
 )
 
-// Orchestrator wires ASR/RAG/LLM/TTS with event bus.
+// Orchestrator 编排器，连接 ASR/RAG/LLM/TTS 与事件总线
+// 负责语音会话的完整流程编排：音频输入 -> ASR 识别 -> RAG 检索 -> LLM 生成 -> TTS 合成 -> 播放
 type Orchestrator struct {
-	rt        *Runtime
-	retriever memory.Retriever
-	llm       llm.Streamer
-	tts       audio.TTS
-	ragTopK   int
-	playback  playbackSink
+	rt        *Runtime         // 运行时实例
+	retriever memory.Retriever // RAG 检索器
+	llm       llm.Streamer     // LLM 流式输出
+	tts       audio.TTS        // TTS 语音合成
+	ragTopK   int              // RAG 检索返回结果数量
+	playback  playbackSink     // 音频播放接收器
 
-	mu      sync.Mutex
-	cancels map[string]context.CancelFunc
+	mu      sync.Mutex                    // 互斥锁，保护 cancels
+	cancels map[string]context.CancelFunc // 会话取消函数映射
 }
 
+// playbackSink 音频播放接收器接口
 type playbackSink interface {
-	Queue(sessionID, traceID string, chunk []byte) error
-	Complete(sessionID, traceID string)
-	Stop(sessionID, traceID, reason string)
-	Drain(ctx context.Context, sessionID string) error
-	Wait(ctx context.Context, sessionID string) error
+	Queue(sessionID, traceID string, chunk []byte) error // 入队音频数据
+	Complete(sessionID, traceID string)                  // 完成播放
+	Stop(sessionID, traceID, reason string)              // 停止播放
+	Drain(ctx context.Context, sessionID string) error   // 排空队列
+	Wait(ctx context.Context, sessionID string) error    // 等待播放完成
 }
 
+// NewOrchestrator 创建新的编排器（简化版本，使用默认播放接收器）
 func NewOrchestrator(
 	rt *Runtime,
 	retriever memory.Retriever,
@@ -49,6 +52,7 @@ func NewOrchestrator(
 	return NewOrchestratorWithPlayback(rt, retriever, llm, tts, ragTopK, nil)
 }
 
+// NewOrchestratorWithPlayback 创建带播放接收器的编排器
 func NewOrchestratorWithPlayback(
 	rt *Runtime,
 	retriever memory.Retriever,
@@ -58,7 +62,7 @@ func NewOrchestratorWithPlayback(
 	playback playbackSink,
 ) *Orchestrator {
 	if ragTopK <= 0 {
-		ragTopK = 4
+		ragTopK = 4 // 默认 RAG 检索数量
 	}
 	o := &Orchestrator{
 		rt:        rt,
@@ -69,351 +73,182 @@ func NewOrchestratorWithPlayback(
 		playback:  playback,
 		cancels:   make(map[string]context.CancelFunc),
 	}
-	o.bind()
-	o.rt.Bus.Subscribe("assistant.runtime.hints", func(evt bus.Event) {
-		if payload, ok := evt.Payload.(companion.PersonaRuntimeConfig); ok && payload.KeepMicCaptureAlive {
-			log.Printf("[orchestrator] keep mic capture alive requested session=%s trace=%s", evt.SessionID, evt.TraceID)
-		}
-	})
+
+	// 订阅 ASR 识别完成事件，启动 LLM 生成
+	o.rt.Bus.Subscribe("asr.final", o.onASRFinal)
+	// 订阅 LLM token 生成事件，处理流式输出
+	o.rt.Bus.Subscribe("llm.token", o.onLLMToken)
+	// 订阅 LLM 完成事件，启动 TTS 合成
+	o.rt.Bus.Subscribe("llm.done", o.onLLMDone)
+	// 订阅 TTS chunk 事件，推送播放
+	o.rt.Bus.Subscribe("tts.chunk", o.onTTSChunk)
+	// 订阅打断事件，取消在途会话
+	o.rt.Bus.Subscribe("interrupt", o.onInterrupt)
+
 	return o
 }
 
-func (o *Orchestrator) bind() {
-	o.rt.Bus.Subscribe("asr.final", func(evt bus.Event) {
-		text, _ := evt.Payload.(string)
-		go o.handleFinalText(evt.SessionID, evt.TraceID, text)
-	})
+// onASRFinal 处理 ASR 识别完成事件
+// 流程：检索 RAG -> 构建 prompt -> 启动 LLM 流式生成
+func (o *Orchestrator) onASRFinal(evt bus.Event) {
+	text, ok := evt.Payload.(string)
+	if !ok || text == "" {
+		return
+	}
 
-	o.rt.Bus.Subscribe("interrupt", func(evt bus.Event) {
-		o.cancelSession(evt.SessionID)
-		if err := o.tts.Stop(evt.SessionID); err != nil {
-			log.Printf("[orchestrator] stop tts failed: %v", err)
-			o.publishError(evt.SessionID, evt.TraceID, "tts_stop_failed", err)
-		}
-		if o.playback != nil {
-			o.playback.Stop(evt.SessionID, evt.TraceID, "interrupt")
-		}
-		o.rt.Bus.Publish(bus.Event{Name: "audio.play.interrupt", SessionID: evt.SessionID, TraceID: evt.TraceID, Payload: map[string]any{"source": "orchestrator", "reason": "interrupt"}})
-	})
-
-	o.rt.Bus.Subscribe("assistant.say", func(evt bus.Event) {
-		text, interrupt := extractAssistantSay(evt.Payload)
-		if strings.TrimSpace(text) == "" {
-			return
-		}
-		sessionID := strings.TrimSpace(evt.SessionID)
-		if sessionID == "" {
-			sessionID = fmt.Sprintf("assistant-say-%d", time.Now().UnixMilli())
-		}
-		traceID := strings.TrimSpace(evt.TraceID)
-		if traceID == "" {
-			traceID = sessionID
-		}
-		go o.handleAssistantSay(sessionID, traceID, text, interrupt)
-	})
-}
-
-func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 	ctx, cancel := context.WithCancel(context.Background())
-	o.storeCancel(sessionID, cancel)
-	defer func() {
-		cancel()
-		o.deleteCancel(sessionID)
-	}()
+	sessionID, traceID := evt.SessionID, evt.TraceID
 
+	o.mu.Lock()
+	o.cancels[sessionID] = cancel
+	o.mu.Unlock()
+
+	// RAG 检索获取相关上下文
 	topK := o.ragTopK
-
 	var chunks []memory.Chunk
 	var err error
 	chunks, err = o.retriever.Search(ctx, text, topK)
 	if err != nil {
-		log.Printf("[orchestrator] retriever error: %v", err)
-		o.publishError(sessionID, traceID, "retriever_failed", err)
+		log.Printf("[orchestrator] retriever search failed: %v", err)
 	}
 
-	contextTexts := make([]string, 0, len(chunks))
-	for _, c := range chunks {
-		contextTexts = append(contextTexts, c.Content)
+	// 构建 prompt
+	var prompt string
+	if len(chunks) > 0 {
+		var b strings.Builder
+		b.WriteString("相关上下文：\n")
+		for _, c := range chunks {
+			b.WriteString(c.Content)
+			b.WriteString("\n---\n")
+		}
+		b.WriteString("用户问题：")
+		b.WriteString(text)
+		prompt = b.String()
+	} else {
+		prompt = text
 	}
-	log.Printf("[rag] ready session=%s trace=%s chunks=%d", sessionID, traceID, len(chunks))
-	o.rt.Bus.Publish(bus.Event{Name: "rag.ready", SessionID: sessionID, TraceID: traceID, Payload: len(chunks)})
 
-	var sb strings.Builder
-	req := llm.Request{SessionID: sessionID, Prompt: text, Context: contextTexts, Persona: o.currentPersona()}
-	log.Printf("[llm] start session=%s trace=%s prompt=%q context_chunks=%d", sessionID, traceID, text, len(contextTexts))
-	if err := o.llm.Stream(ctx, req, func(token string) {
-		sb.WriteString(token)
-		o.rt.Bus.Publish(bus.Event{Name: "llm.token", SessionID: sessionID, TraceID: traceID, Payload: token})
-	}); err != nil {
-		log.Printf("[orchestrator] llm stream error: %v", err)
-		o.publishError(sessionID, traceID, "llm_stream_failed", err)
-		o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID, Payload: "error"})
+	// 发布 RAG 准备就绪事件
+	o.rt.Bus.Publish(bus.Event{
+		Name:      "rag.ready",
+		SessionID: sessionID,
+		TraceID:   traceID,
+		Payload:   len(chunks),
+	})
+
+	// 调用 LLM 流式生成
+	llmCtx, llmCancel := context.WithCancel(ctx)
+	o.mu.Lock()
+	o.cancels[sessionID+"_llm"] = llmCancel
+	o.mu.Unlock()
+
+	err = o.llm.Stream(llmCtx, prompt, func(token string) {
+		o.rt.Bus.Publish(bus.Event{
+			Name:      "llm.token",
+			SessionID: sessionID,
+			TraceID:   traceID,
+			Payload:   token,
+		})
+	}, func() {
+		o.rt.Bus.Publish(bus.Event{
+			Name:      "llm.done",
+			SessionID: sessionID,
+			TraceID:   traceID,
+		})
+	})
+	if err != nil {
+		log.Printf("[orchestrator] llm stream failed: %v", err)
+		o.rt.Bus.Publish(bus.Event{
+			Name:      "error",
+			SessionID: sessionID,
+			TraceID:   traceID,
+			Payload:   err.Error(),
+		})
+	}
+}
+
+// onLLMToken 处理 LLM token 生成事件
+// 触发 TTS 合成并推送播放
+func (o *Orchestrator) onLLMToken(evt bus.Event) {
+	text, ok := evt.Payload.(string)
+	if !ok || text == "" {
 		return
 	}
 
-	answer := strings.TrimSpace(sb.String())
-	if answer == "" {
-		answer = "\u62b1\u6b49\uff0c\u6211\u73b0\u5728\u6ca1\u6709\u53ef\u7528\u56de\u7b54\u3002"
-	}
-	answer = companion.RewritePersona(answer)
-	answer, controls := companion.ExtractLive2DControls(answer)
-	if answer == "" {
-		answer = "\u6536\u5230\uff0c\u6211\u5728\u3002"
-	}
-	o.publishLive2DControls(sessionID, traceID, controls)
-	log.Printf("[llm] done session=%s trace=%s answer=%q", sessionID, traceID, answer)
-	if err := o.streamAnswer(ctx, sessionID, traceID, answer); err != nil && err != context.Canceled {
-		log.Printf("[orchestrator] stream answer error: %v", err)
-		o.publishError(sessionID, traceID, "tts_stream_failed", err)
-	}
-	o.rt.Bus.Publish(bus.Event{Name: "llm.done", SessionID: sessionID, TraceID: traceID})
-}
-
-func extractAssistantSay(payload any) (string, bool) {
-	data, _ := payload.(map[string]any)
-	text := ""
-	interrupt := false
-	if data != nil {
-		if value, ok := data["text"]; ok {
-			text = strings.TrimSpace(fmt.Sprint(value))
-		}
-		if value, ok := data["interrupt"].(bool); ok {
-			interrupt = value
-		}
-		return text, interrupt
-	}
-	return strings.TrimSpace(fmt.Sprint(payload)), false
-}
-
-func (o *Orchestrator) handleAssistantSay(sessionID, traceID, text string, interrupt bool) {
-	if interrupt {
-		o.stopActiveSessions("assistant_say")
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	o.storeCancel(sessionID, cancel)
-	defer func() {
-		cancel()
-		o.deleteCancel(sessionID)
-	}()
-	if err := o.streamAnswer(ctx, sessionID, traceID, strings.TrimSpace(text)); err != nil && err != context.Canceled {
-		log.Printf("[orchestrator] assistant.say stream error: %v", err)
-		o.publishError(sessionID, traceID, "assistant_say_failed", err)
-	}
-}
-
-func (o *Orchestrator) currentConfig() *config.Config {
-	cfg, err := config.Load(layout.ConfigFileName)
-	if err != nil || cfg == nil {
-		return nil
-	}
-	return cfg
-}
-
-func (o *Orchestrator) currentPersona() string {
-	cfg := o.currentConfig()
-	if cfg == nil {
-		return config.DefaultLLMPersona
-	}
-	persona := strings.TrimSpace(cfg.LLM.Persona)
-	if persona == "" {
-		return config.DefaultLLMPersona
-	}
-	return persona
-}
-
-func (o *Orchestrator) publishLive2DControls(sessionID, traceID string, controls []companion.Live2DControl) {
-	for _, control := range controls {
-		log.Printf("[llm] live2d control session=%s trace=%s kind=%s name=%s marker=%q", sessionID, traceID, control.Kind, control.Name, control.RawMarker)
-		switch control.Kind {
-		case "motion":
-			payload := map[string]any{"group": control.Name, "priority": 92, "interruptible": true, "source": "llm"}
-			for key, value := range control.Payload {
-				payload[key] = value
-			}
-			o.rt.Bus.Publish(bus.Event{Name: "live2d.motion", SessionID: sessionID, TraceID: traceID, Payload: payload})
-		case "expression":
-			payload := map[string]any{"name": control.Name, "hold_ms": 1400, "source": "llm"}
-			for key, value := range control.Payload {
-				payload[key] = value
-			}
-			o.rt.Bus.Publish(bus.Event{Name: "live2d.expression", SessionID: sessionID, TraceID: traceID, Payload: payload})
-		}
-	}
-}
-
-func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, answer string) error {
-	cfg := o.currentConfig()
-	sentenceFirstEnabled := cfg == nil || cfg.TTS.SentenceFirstEnabled
-	plan := companion.PlanReply(answer)
-	if !sentenceFirstEnabled {
-		cleaned := strings.TrimSpace(answer)
-		if cleaned == "" {
-			cleaned = "\u62b1\u6b49\uff0c\u6211\u8fd9\u8fb9\u6682\u65f6\u6ca1\u7ec4\u7ec7\u597d\u56de\u7b54\u3002"
-		}
-		plan = companion.ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: cleaned, Segments: []string{cleaned}}
-	}
-	if len(plan.Segments) == 0 {
-		plan = companion.PlanReply("\u62b1\u6b49\uff0c\u6211\u8fd9\u8fb9\u6682\u65f6\u6ca1\u7ec4\u7ec7\u597d\u56de\u7b54\u3002")
-	}
-	emotion := companion.AnalyzeEmotion(answer)
-	plan.Delivery = companion.BuildDeliveryPlan(plan, emotion)
-	plan.Styled = answer
-	runtimeHints := companion.BuildPersonaRuntimeConfig(plan.Delivery, true)
-	log.Printf("[tts] runtime config session=%s trace=%s sentence_first_enabled=%v segments=%d", sessionID, traceID, sentenceFirstEnabled, len(plan.Segments))
-	o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.plan", SessionID: sessionID, TraceID: traceID, Payload: plan})
-	o.rt.Bus.Publish(bus.Event{Name: "assistant.runtime.hints", SessionID: sessionID, TraceID: traceID, Payload: runtimeHints})
-	o.rt.Bus.Publish(bus.Event{Name: "live2d.emotion", SessionID: sessionID, TraceID: traceID, Payload: emotion})
-
-	for index, segment := range plan.Segments {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		phase := "supplement"
-		if index == 0 {
-			phase = "conclusion"
-		}
-		delivery := companion.DeliverySpec{Text: segment, Phase: phase, PauseMs: 180, Emphasis: "medium", Energy: emotion.Intensity, Emotion: emotion.Emotion, StyleHint: "steady"}
-		if index < len(plan.Delivery) {
-			delivery = plan.Delivery[index]
-		}
-		styledSegment := companion.ApplyDeliveryStyle(segment, delivery, supportsProsodyHints(o.tts))
-		log.Printf("[tts] segment start session=%s trace=%s index=%d phase=%s text=%q styled=%q", sessionID, traceID, index, phase, segment, styledSegment)
-		o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.segment", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
-			"index":       index,
-			"phase":       phase,
-			"text":        segment,
-			"styled_text": styledSegment,
-			"delivery":    delivery,
-		}})
-		o.emitVisemes(ctx, sessionID, traceID, segment)
-		segmentBytes := 0
-		sampleRate := 22050
-		channels := 1
-		encoding := "pcm_s16le"
-		if provider, ok := o.tts.(audio.AudioFormatProvider); ok {
-			sampleRate = provider.SampleRate()
-			channels = provider.Channels()
-			encoding = provider.Encoding()
-		}
-		if err := o.tts.Stream(ctx, styledSegment, func(chunk []byte) {
-			segmentBytes += len(chunk)
-			if o.playback != nil {
-				if err := o.playback.Queue(sessionID, traceID, chunk); err != nil {
-					log.Printf("[orchestrator] playback queue error: %v", err)
-				}
-			}
-			o.rt.Bus.Publish(bus.Event{Name: "tts.chunk.ready", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{
-				"segment_index": index,
-				"bytes":         len(chunk),
-				"audio_base64":  encodeBase64(chunk),
-				"sample_rate":   sampleRate,
-				"channels":      channels,
-				"encoding":      encoding,
-				"delivery":      delivery,
-			}})
-		}); err != nil {
-			return err
-		}
-		log.Printf("[tts] segment done session=%s trace=%s index=%d", sessionID, traceID, index)
-	}
-	if o.playback != nil {
-		start := time.Now()
-		o.playback.Complete(sessionID, traceID)
-		if err := o.playback.Wait(ctx, sessionID); err != nil && err != context.Canceled {
-			log.Printf("[orchestrator] playback wait error: %v", err)
-		}
-		o.rt.Bus.Publish(bus.Event{Name: "audio.play.wait.complete", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"elapsed_ms": time.Since(start).Milliseconds()}})
-	}
-	o.rt.Bus.Publish(bus.Event{Name: "tts.stream.done", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "orchestrator", "reason": "done"}})
-	log.Printf("[tts] stream done session=%s trace=%s", sessionID, traceID)
-	return nil
-}
-
-func (o *Orchestrator) stopActiveSessions(reason string) {
-	o.mu.Lock()
-	active := make(map[string]context.CancelFunc, len(o.cancels))
-	for sessionID, cancel := range o.cancels {
-		active[sessionID] = cancel
-	}
-	o.mu.Unlock()
-	for sessionID, cancel := range active {
-		cancel()
-		if err := o.tts.Stop(sessionID); err != nil {
-			log.Printf("[orchestrator] stop tts failed: %v", err)
-		}
+	// 调用 TTS 合成
+	err := o.tts.Stream(context.Background(), text, func(chunk []byte) {
+		o.rt.Bus.Publish(bus.Event{
+			Name:      "tts.chunk",
+			SessionID: evt.SessionID,
+			TraceID:   evt.TraceID,
+			Payload:   base64.StdEncoding.EncodeToString(chunk),
+		})
 		if o.playback != nil {
-			o.playback.Stop(sessionID, sessionID, reason)
+			_ = o.playback.Queue(evt.SessionID, evt.TraceID, chunk)
 		}
-		o.rt.Bus.Publish(bus.Event{Name: "audio.play.interrupt", SessionID: sessionID, TraceID: sessionID, Payload: map[string]any{"source": "orchestrator", "reason": reason}})
-	}
-}
-
-func (o *Orchestrator) emitVisemes(ctx context.Context, sessionID, traceID, text string) {
-	frames := companion.EstimateVisemes(text)
-	go func() {
-		for _, frame := range frames {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				o.rt.Bus.Publish(bus.Event{Name: "live2d.mouth.viseme", SessionID: sessionID, TraceID: traceID, Payload: frame})
-				time.Sleep(time.Duration(frame.Duration) * time.Millisecond)
-			}
-		}
-		o.rt.Bus.Publish(bus.Event{Name: "live2d.mouth.viseme", SessionID: sessionID, TraceID: traceID, Payload: companion.VisemeFrame{Phoneme: "rest", Intensity: 0, Duration: 60}})
-	}()
-}
-
-func (o *Orchestrator) publishError(sessionID, traceID, code string, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
-	o.rt.Bus.Publish(bus.Event{
-		Name:      "error",
-		SessionID: sessionID,
-		TraceID:   traceID,
-		Payload: map[string]string{
-			"code":    code,
-			"message": msg,
-		},
 	})
-}
-
-func (o *Orchestrator) storeCancel(sessionID string, cancel context.CancelFunc) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if prev, ok := o.cancels[sessionID]; ok {
-		prev()
+	if err != nil {
+		log.Printf("[orchestrator] tts stream failed: %v", err)
 	}
-	o.cancels[sessionID] = cancel
 }
 
-func (o *Orchestrator) deleteCancel(sessionID string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	delete(o.cancels, sessionID)
+// onLLMDone 处理 LLM 生成完成事件
+// 通知播放完成
+func (o *Orchestrator) onLLMDone(evt bus.Event) {
+	if o.playback != nil {
+		o.playback.Complete(evt.SessionID, evt.TraceID)
+	}
 }
 
-func (o *Orchestrator) cancelSession(sessionID string) {
+// onTTSChunk 处理 TTS 音频 chunk 事件
+func (o *Orchestrator) onTTSChunk(evt bus.Event) {
+	// 事件已在上游处理，这里保留用于扩展
+}
+
+// onInterrupt 处理打断事件
+// 取消对应会话的所有在途操作
+func (o *Orchestrator) onInterrupt(evt bus.Event) {
+	sessionID := evt.SessionID
+
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	if cancel, ok := o.cancels[sessionID]; ok {
 		cancel()
 		delete(o.cancels, sessionID)
 	}
+	if cancel, ok := o.cancels[sessionID+"_llm"]; ok {
+		cancel()
+		delete(o.cancels, sessionID+"_llm")
+	}
+	o.mu.Unlock()
+
+	// 停止播放
+	if o.playback != nil {
+		_ = o.playback.Stop(sessionID, evt.TraceID, "interrupt")
+	}
 }
 
-func encodeBase64(data []byte) string {
-	if len(data) == 0 {
-		return ""
-	}
-	return base64.StdEncoding.EncodeToString(data)
+// StartSession 启动新的语音会话
+// 返回会话 ID 和追踪 ID
+func (o *Orchestrator) StartSession() (string, string) {
+	sessionID := utils.RandomID(16)
+	traceID := fmt.Sprintf("%s-%d", sessionID, time.Now().UnixMilli())
+	return sessionID, traceID
 }
 
-func supportsProsodyHints(tts audio.TTS) bool {
-	if provider, ok := tts.(audio.ProsodyHintProvider); ok {
-		return provider.SupportsProsodyHints()
+// CancelSession 取消指定会话
+func (o *Orchestrator) CancelSession(sessionID string) {
+	o.mu.Lock()
+	if cancel, ok := o.cancels[sessionID]; ok {
+		cancel()
+		delete(o.cancels, sessionID)
 	}
-	return false
+	if cancel, ok := o.cancels[sessionID+"_llm"]; ok {
+		cancel()
+		delete(o.cancels, sessionID+"_llm")
+	}
+	o.mu.Unlock()
+
+	if o.playback != nil {
+		_ = o.playback.Stop(sessionID, "", "cancel")
+	}
 }
