@@ -9,14 +9,7 @@ import (
 
 const minPostWakeHoldFrames = 75
 
-// Run 消费音频帧，在端点检测时触发ASR完成回调
-// 参数说明:
-//   - ctx: 上下文，用于取消操作
-//   - source: 音频帧数据源
-//   - onSpeechStart: 语音开始回调
-//   - onSpeechEnd: 语音结束回调
-//   - onPartial: 部分转录结果回调
-//   - onFinal: 最终转录结果回调
+// Run 消费音频帧，端点检测时触发ASR回调
 func (p *Pipeline) Run(
 	ctx context.Context,
 	source FrameSource,

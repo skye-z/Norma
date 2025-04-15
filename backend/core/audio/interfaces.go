@@ -1,5 +1,4 @@
-// Package audio 提供音频处理的核心接口和管道实现
-// 包含VAD(语音活动检测)、WakeWord(唤醒词)、ASR(语音识别)、TTS(语音合成)等组件
+// Package audio 音频处理核心接口和管道实现
 package audio
 
 import (
