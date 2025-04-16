@@ -62,54 +62,15 @@
             "integrity_note": "模型来自 whisper.cpp 官方 Hugging Face 仓库，但上游未提供对应 checksum 清单。"
         },
         {
-            "id": "tts-piper-windows-x64",
+            "id": "tts-sherpa-kokoro-multi-lang-v1_1",
             "kind": "tts",
-            "name": "piper",
-            "version": "v1.2.0",
-            "source": "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_windows_amd64.zip",
-            "archive_type": "zip",
-            "binary_candidates": [
-                "piper.exe"
-            ],
-            "notes": "Piper Windows 二进制。",
+            "name": "kokoro-multi-lang-v1_1",
+            "version": "v1_1",
+            "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
+            "archive_type": "tar.bz2",
+            "notes": "Kokoro 多语言模型（中英），解压后包含 model.onnx、voices.bin、tokens.txt、espeak-ng-data 和 lexicon 文件。",
             "integrity": "official-source-only",
-            "integrity_note": "二进制来自 Piper 官方 release，但上游未提供对应 checksum 清单。"
-        },
-        {
-            "id": "tts-piper-voice-zh-cn-huayan-medium",
-            "kind": "tts",
-            "name": "zh_CN-huayan-medium",
-            "version": "v1.0.0",
-            "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx?download=true",
-            "archive_type": "file",
-            "target_name": "zh_CN-huayan-medium.onnx",
-            "extra_files": [
-                {
-                    "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/medium/zh_CN-huayan-medium.onnx.json?download=true",
-                    "target_name": "zh_CN-huayan-medium.onnx.json"
-                }
-            ],
-            "notes": "中文中等质量语音，安装后可直接配合 Piper 使用。",
-            "integrity": "official-source-only",
-            "integrity_note": "语音模型来自官方 piper-voices 仓库，但上游未提供对应 checksum 清单。"
-        },
-        {
-            "id": "tts-piper-voice-zh-cn-huayan-x-low",
-            "kind": "tts",
-            "name": "zh_CN-huayan-x_low",
-            "version": "v1.0.0",
-            "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx?download=true",
-            "archive_type": "file",
-            "target_name": "zh_CN-huayan-x_low.onnx",
-            "extra_files": [
-                {
-                    "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/zh/zh_CN/huayan/x_low/zh_CN-huayan-x_low.onnx.json?download=true",
-                    "target_name": "zh_CN-huayan-x_low.onnx.json"
-                }
-            ],
-            "notes": "中文低资源语音，体积更小，首装更轻。",
-            "integrity": "official-source-only",
-            "integrity_note": "语音模型来自官方 piper-voices 仓库，但上游未提供对应 checksum 清单。"
+            "integrity_note": "模型包来自 sherpa-onnx 官方 release，未提供 checksum 清单。"
         },
         {
             "id": "llm-ollama-windows-x64",

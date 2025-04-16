@@ -11,7 +11,11 @@ for pkg in Norma-windows-amd64 Norma-linux-amd64 Norma-darwin-amd64; do
   else
     binary="Norma"
   fi
-  for path in "$binary" config.example.yaml config.yaml debug resource/data resource/logs resource/diagnostics resource/runtime/providers; do
+  paths=("$binary" config.example.yaml config.yaml console resource/data resource/logs resource/diagnostics resource/runtime/providers)
+  if [[ "$pkg" == Norma-windows-* ]]; then
+    paths+=(resource/runtime/providers/tts/current/model.onnx)
+  fi
+  for path in "${paths[@]}"; do
     [[ -e "$OUT_DIR/$pkg/$path" ]] && echo "[OK] $pkg => $path" || { echo "[FAIL] $pkg missing: $path" >&2; exit 1; }
   done
   if [[ -d "resource/model" ]]; then

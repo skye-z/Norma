@@ -45,7 +45,7 @@ func TestProviderExportReadiness(t *testing.T) {
 	cfg.App.Name = "Norma"
 	cfg.Providers.Root = providersRoot
 	cfg.ASR.Provider = "whispercpp"
-	cfg.TTS.Provider = "piper"
+	cfg.TTS.Provider = "sherpa-onnx"
 	cfg.Audio.WakeProvider = "sherpa-onnx"
 	cfg.RAG.EmbedProvider = "ollama"
 	cfg.LLM.Provider = "ollama"

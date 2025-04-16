@@ -35,7 +35,7 @@ if (-not (Test-Path $env:GOMODCACHE)) { New-Item -ItemType Directory -Path $env:
 $commit = ""
 try { $commit = (git rev-parse --short HEAD) } catch { $commit = "unknown" }
 $ldflags = "-X main.version=$Version -X main.commit=$commit"
-$debugDist = Join-Path 'frontend' 'dist/debug'
+$consoleDist = Join-Path 'frontend' 'dist/console'
 $packageNames = @()
 foreach ($t in $resolvedTargets) {
   $packageDir = Join-Path $OutDir "Norma-$($t.GOOS)-$($t.GOARCH)"
@@ -56,12 +56,12 @@ foreach ($t in $resolvedTargets) {
 		if ($LASTEXITCODE -ne 0) { throw "wails build failed for windows-amd64" }
 		$wailsBinary = if (Test-Path 'build/bin/Norma.exe') { 'build/bin/Norma.exe' } else { 'build/bin/Norma' }
 		Copy-Item -Force $wailsBinary $out
-		if (-not (Test-Path $debugDist)) { throw "debug dist missing: $debugDist" }
+		if (-not (Test-Path $consoleDist)) { throw "console dist missing: $consoleDist" }
 	} else {
 		if ($isWindowsHost) {
 			throw "target $($t.GOOS)/$($t.GOARCH) requires non-Windows build environment or dedicated cross-compile toolchain; use scripts/build.sh on the target platform or pass -Targets windows/amd64"
 		}
-		if (-not (Test-Path $debugDist)) {
+		if (-not (Test-Path $consoleDist)) {
 			Push-Location frontend
 			try {
 				& npm run build
@@ -78,7 +78,7 @@ foreach ($t in $resolvedTargets) {
 
 	Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.example.yaml')
 	Copy-Item -Force config.example.yaml (Join-Path $packageDir 'config.yaml')
-	Copy-Item -Recurse -Force $debugDist (Join-Path $packageDir 'debug')
+	Copy-Item -Recurse -Force $consoleDist (Join-Path $packageDir 'console')
 
 	$resourceRoot = Join-Path $packageDir 'resource'
   New-Item -ItemType Directory -Force -Path $resourceRoot | Out-Null
@@ -87,6 +87,15 @@ foreach ($t in $resolvedTargets) {
   }
   if (Test-Path 'resource/model') {
     Copy-Item -Recurse -Force 'resource/model' (Join-Path $resourceRoot 'model')
+  }
+  if ($t.GOOS -eq 'windows') {
+    $kokoroSource = Join-Path 'build' 'embedded\tts\kokoro\windows'
+    if (-not (Test-Path $kokoroSource)) {
+      throw "embedded kokoro assets missing: $kokoroSource"
+    }
+    $kokoroTarget = Join-Path $resourceRoot 'runtime\providers\tts\current'
+    New-Item -ItemType Directory -Force -Path $kokoroTarget | Out-Null
+    Copy-Item -Recurse -Force (Join-Path $kokoroSource '*') $kokoroTarget
   }
 }
 Remove-Item Env:GOOS -ErrorAction SilentlyContinue

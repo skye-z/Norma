@@ -24,20 +24,22 @@ foreach ($pkg in $packages) {
 }
 [System.IO.File]::WriteAllLines((Join-Path $OutDir 'SHA256SUMS.txt'), $checksums, [System.Text.UTF8Encoding]::new($false))
 [System.IO.File]::WriteAllText((Join-Path $OutDir 'release_manifest.json'), ($manifest | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
-$install = @(
-  '# Norma Install Guide',
-  '',
-  'Each package directory uses this layout:',
-  '- `Norma.exe` or `Norma`',
-  '- `config.example.yaml`',
-  '- `config.yaml`',
-  '- `resource/model/`',
-  '- `resource/data/`',
-  '- `resource/logs/`',
-  '- `resource/diagnostics/`',
-  '- `resource/runtime/providers/`',
-  '',
-  'On first run, edit `config.yaml` if needed, then start Norma.'
-) -join "`n"
+  $install = @(
+    '# Norma Install Guide',
+    '',
+    'Each package directory uses this layout:',
+    '- `Norma.exe` or `Norma`',
+    '- `config.example.yaml`',
+    '- `config.yaml`',
+    '- `console/`',
+    '- `resource/model/`',
+    '- `resource/data/`',
+    '- `resource/logs/`',
+    '- `resource/diagnostics/`',
+    '- `resource/runtime/providers/`',
+    '- `resource/runtime/providers/tts/current/model.onnx` (Windows embedded)',
+    '',
+    'On first run, edit `config.yaml` if needed, then start Norma.'
+  ) -join "`n"
 [System.IO.File]::WriteAllText((Join-Path $OutDir 'INSTALL.md'), $install, [System.Text.UTF8Encoding]::new($false))
 Write-Host "[OK] release manifest written"

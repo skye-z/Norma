@@ -16,7 +16,7 @@
 - 桌面层：Wails + Live2D
 - Wake：Sherpa-onnx（内嵌）
 - ASR：Whisper.cpp（内嵌）
-- TTS：Piper
+- TTS：Sherpa ONNX Kokoro
 - LLM / Embedding：Ollama
 
 ## 架构总览
@@ -40,7 +40,7 @@
 
 目标链路：
 
-`mic -> wake(sherpa embedded) -> vad/endpoint -> asr(whisper embedded) -> llm(ollama) -> tts(piper) -> audio play -> live2d`
+`mic -> wake(sherpa embedded) -> vad/endpoint -> asr(whisper embedded) -> llm(ollama) -> tts(sherpa kokoro) -> audio play -> live2d`
 
 关键事件：
 

@@ -5,7 +5,7 @@
 Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
 - Wake：`sherpa-onnx`
 - ASR：`whisper.cpp`
-- TTS：`Piper`
+- TTS：`Sherpa ONNX Kokoro`
 - Embedding：`Ollama`
 
 这些 Provider 会尽量纳入 Norma 统一管理，避免用户自行下载安装、手工改路径和分散排障。
@@ -68,9 +68,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
    - `wake-sherpa-kws-zh-en-model`
    - `asr-whispercpp-windows-x64`
    - `asr-whisper-model-base`
-   - `tts-piper-windows-x64`
-   - `tts-piper-voice-zh-cn-huayan-medium`
-   - `tts-piper-voice-zh-cn-huayan-x-low`
+   - `tts-sherpa-kokoro-multi-lang-v1_1`
    - `llm-ollama-windows-x64`
 4. 点击“应用受管 Provider”，把路径和默认值自动回填到 `config.yaml`。
 
@@ -87,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPa
 
 ### 4.3 来源与校验说明
 - `sherpa-onnx` 已接入官方 `checksum.txt` 校验，安装时会自动解析并验证 SHA256。
-- `whisper.cpp / Piper / Ollama` 当前只能确认“官方来源”，尚不能确认上游发布了可直接接入的 checksum 清单。
+- `whisper.cpp / sherpa-onnx / Ollama` 当前只能确认“官方来源”，尚不能确认上游发布了可直接接入的 checksum 清单。
 - 对于没有官方 checksum 的 Provider，Norma 会在安装时记录：
   - 下载来源 URL
   - 安装时间
@@ -117,7 +115,7 @@ audio:
 asr:
   provider: whispercpp
 tts:
-  provider: piper
+  provider: sherpa-onnx
   voice: zh_CN-huayan-medium
 rag:
   embed_provider: ollama
@@ -141,7 +139,7 @@ perf:
 
 说明：
 - `degraded_llm_model`：高负载时切换到更轻的 Ollama 模型
-- `degraded_tts_voice`：高负载时切换到更轻的 Piper 音色
+- `degraded_tts_voice`：高负载时切换到更轻的 Kokoro 声线
 - `degraded_ef_search / degraded_rag_top_k`：降低检索成本，优先保住首答速度
 
 ## 6. 启动方式

@@ -18,7 +18,7 @@ func TestProviderStatusAndInit(t *testing.T) {
 	cfg.LLM.Provider = "ollama"
 	cfg.LLM.Endpoint = "http://127.0.0.1:11434"
 	cfg.ASR.Provider = "whispercpp"
-	cfg.TTS.Provider = "piper"
+	cfg.TTS.Provider = "sherpa-onnx"
 	cfg.Audio.WakeProvider = "sherpa-onnx"
 	cfg.RAG.EmbedProvider = "ollama"
 	cfg.Providers.Root = filepath.Join(t.TempDir(), "providers")
@@ -69,8 +69,11 @@ func TestProviderStatusHealthGrading(t *testing.T) {
 	mustMkdirAll(t, filepath.Join(providersRoot, "tts", "current"))
 	mustMkdirAll(t, filepath.Join(providersRoot, "wake", "current"))
 	mustWriteFile(t, filepath.Join(providersRoot, "asr", "current", "ggml-base.bin"), "model")
-	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "piper.exe"), "bin")
-	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "zh_CN-huayan-medium.onnx"), "model")
+	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "model.onnx"), "model")
+	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "voices.bin"), "voices")
+	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "tokens.txt"), "tokens")
+	mustMkdirAll(t, filepath.Join(providersRoot, "tts", "current", "espeak-ng-data"))
+	mustWriteFile(t, filepath.Join(providersRoot, "tts", "current", "lexicon-us-en.txt"), "lexicon")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "encoder-epoch-12-avg-2.onnx"), "encoder")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "decoder-epoch-12-avg-2.onnx"), "decoder")
 	mustWriteFile(t, filepath.Join(providersRoot, "wake", "current", "joiner-epoch-12-avg-2.onnx"), "joiner")

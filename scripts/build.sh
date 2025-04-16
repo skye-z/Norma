@@ -11,7 +11,7 @@ if git rev-parse --short HEAD >/dev/null 2>&1; then
   COMMIT="$(git rev-parse --short HEAD)"
 fi
 LDFLAGS="-X main.version=${VERSION} -X main.commit=${COMMIT}"
-if [[ ! -d "frontend/dist/debug" ]]; then
+if [[ ! -d "frontend/dist/console" ]]; then
   (cd frontend && npm run build)
 fi
 for target in windows/amd64 linux/amd64 darwin/amd64; do
@@ -29,9 +29,17 @@ for target in windows/amd64 linux/amd64 darwin/amd64; do
   GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "$LDFLAGS" -o "$PKG_DIR/$BINARY_NAME" .
   cp config.example.yaml "$PKG_DIR/config.example.yaml"
   cp config.example.yaml "$PKG_DIR/config.yaml"
-  cp -R frontend/dist/debug "$PKG_DIR/debug"
+  cp -R frontend/dist/console "$PKG_DIR/console"
   if [[ -d "resource/model" ]]; then
     cp -R resource/model "$PKG_DIR/resource/model"
+  fi
+  if [[ "$GOOS" == "windows" ]]; then
+    if [[ ! -d "build/embedded/tts/kokoro/windows" ]]; then
+      echo "embedded kokoro assets missing: build/embedded/tts/kokoro/windows" >&2
+      exit 1
+    fi
+    mkdir -p "$PKG_DIR/resource/runtime/providers/tts/current"
+    cp -R build/embedded/tts/kokoro/windows/* "$PKG_DIR/resource/runtime/providers/tts/current/"
   fi
 done
 bash ./scripts/write-release-manifest.sh "$OUT_DIR" "$VERSION"

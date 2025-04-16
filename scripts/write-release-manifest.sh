@@ -52,6 +52,7 @@ Each package directory uses this layout:
 - `resource/logs/`
 - `resource/diagnostics/`
 - `resource/runtime/providers/`
+- `resource/runtime/providers/tts/current/model.onnx` (Windows embedded)
 
 On first run, edit `config.yaml` if needed, then start Norma.
 MD

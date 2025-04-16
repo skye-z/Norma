@@ -13,7 +13,11 @@ foreach ($pkg in $Packages) {
     if (-not (Test-Path $root)) { Fail "package missing: $pkg"; continue }
     Ok "package exists: $pkg"
     $binary = if ($pkg -like 'Norma-windows-*') { 'Norma.exe' } else { 'Norma' }
-    foreach ($path in @($binary,'config.example.yaml','config.yaml','debug','resource/model','resource/data','resource/logs','resource/diagnostics','resource/runtime/providers')) {
+    $paths = @($binary,'config.example.yaml','config.yaml','console','resource/model','resource/data','resource/logs','resource/diagnostics','resource/runtime/providers')
+    if ($pkg -like 'Norma-windows-*') {
+        $paths += 'resource/runtime/providers/tts/current/model.onnx'
+    }
+    foreach ($path in $paths) {
         $full = Join-Path $root $path
         if (Test-Path $full) { Ok "$pkg => $path" } else { Fail "$pkg missing: $path" }
     }

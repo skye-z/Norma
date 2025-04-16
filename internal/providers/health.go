@@ -24,10 +24,12 @@ func BuildHealth(mgr *Manager) map[string]Health {
 			"keywords": mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt"),
 		}),
 		"asr": classifyHealth(asrRequired(mgr), asrFound(mgr)),
-		"tts": classifyHealth([]string{"binary", "voice_model", "voice_config"}, map[string]string{
-			"binary":       mgr.FindFirst("tts", "piper.exe", "piper"),
-			"voice_model":  mgr.FindGlob("tts", "*.onnx"),
-			"voice_config": mgr.FindGlob("tts", "*.onnx.json"),
+		"tts": classifyHealth([]string{"model", "voices", "tokens", "data_dir", "lexicon"}, map[string]string{
+			"model":    mgr.FindFirst("tts", "model.onnx"),
+			"voices":   mgr.FindFirst("tts", "voices.bin"),
+			"tokens":   mgr.FindFirst("tts", "tokens.txt"),
+			"data_dir": mgr.FindGlob("tts", "espeak-ng-data"),
+			"lexicon":  mgr.FindFirst("tts", "lexicon-us-en.txt", "lexicon-zh.txt"),
 		}),
 		"llm": classifyHealth([]string{"binary"}, map[string]string{
 			"binary": mgr.FindFirst("llm", "ollama.exe", "ollama"),

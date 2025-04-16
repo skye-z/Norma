@@ -57,12 +57,12 @@ let modelCatalog = [];
 
 const componentCatalog = [
   { key: 'ollama', name: 'Ollama', desc: '用于大模型和向量嵌入' },
-  { key: 'piper', name: 'Piper', desc: '用于语音合成' }
+  { key: 'sherpa-onnx-tts', name: 'Sherpa ONNX TTS', desc: '用于离线 TTS（Kokoro）' }
 ];
 
 const providerInstallPlan = {
   ollama: ['llm-ollama-windows-x64'],
-  piper: ['tts-piper-windows-x64', 'tts-piper-voice-zh-cn-huayan-medium']
+  'sherpa-onnx-tts': ['tts-sherpa-kokoro-multi-lang-v1_1']
 };
 
 const moduleSchemas = {
@@ -115,11 +115,64 @@ const moduleSchemas = {
   },
   tts: {
     title: '输出模块',
-    summary: '语音合成配置。',
+    summary: '语音合成配置（Sherpa ONNX Kokoro）。',
     fields: [
-      { path: 'tts.provider', label: '合成组件', type: 'select', options: [{ value: 'piper', label: 'Piper' }] },
-      { path: 'tts.voice', label: '声线', type: 'text' },
-      { path: 'tts.endpoint', label: '合成接口地址', type: 'text' },
+      { path: 'tts.provider', label: '合成组件', type: 'select', options: [{ value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
+      { path: 'tts.voice', label: '声线', type: 'select', options: [
+        { value: 'zf_xiaobei', label: 'zf_xiaobei' },
+        { value: 'zf_xiaoni', label: 'zf_xiaoni' },
+        { value: 'zf_xiaoxiao', label: 'zf_xiaoxiao' },
+        { value: 'zf_xiaoyi', label: 'zf_xiaoyi' },
+        { value: 'zm_yunjian', label: 'zm_yunjian' },
+        { value: 'zm_yunxi', label: 'zm_yunxi' },
+        { value: 'zm_yunxia', label: 'zm_yunxia' },
+        { value: 'zm_yunyang', label: 'zm_yunyang' },
+        { value: 'af_alloy', label: 'af_alloy' },
+        { value: 'af_aoede', label: 'af_aoede' },
+        { value: 'af_bella', label: 'af_bella' },
+        { value: 'af_heart', label: 'af_heart' },
+        { value: 'af_jessica', label: 'af_jessica' },
+        { value: 'af_kore', label: 'af_kore' },
+        { value: 'af_nicole', label: 'af_nicole' },
+        { value: 'af_nova', label: 'af_nova' },
+        { value: 'af_river', label: 'af_river' },
+        { value: 'af_sarah', label: 'af_sarah' },
+        { value: 'af_sky', label: 'af_sky' },
+        { value: 'am_adam', label: 'am_adam' },
+        { value: 'am_echo', label: 'am_echo' },
+        { value: 'am_eric', label: 'am_eric' },
+        { value: 'am_fenrir', label: 'am_fenrir' },
+        { value: 'am_liam', label: 'am_liam' },
+        { value: 'am_michael', label: 'am_michael' },
+        { value: 'am_onyx', label: 'am_onyx' },
+        { value: 'am_puck', label: 'am_puck' },
+        { value: 'am_santa', label: 'am_santa' },
+        { value: 'bf_alice', label: 'bf_alice' },
+        { value: 'bf_emma', label: 'bf_emma' },
+        { value: 'bf_isabella', label: 'bf_isabella' },
+        { value: 'bf_lily', label: 'bf_lily' },
+        { value: 'bm_daniel', label: 'bm_daniel' },
+        { value: 'bm_fable', label: 'bm_fable' },
+        { value: 'bm_george', label: 'bm_george' },
+        { value: 'bm_lewis', label: 'bm_lewis' },
+        { value: 'ef_dora', label: 'ef_dora' },
+        { value: 'em_alex', label: 'em_alex' },
+        { value: 'ff_siwis', label: 'ff_siwis' },
+        { value: 'hf_alpha', label: 'hf_alpha' },
+        { value: 'hf_beta', label: 'hf_beta' },
+        { value: 'hm_omega', label: 'hm_omega' },
+        { value: 'hm_psi', label: 'hm_psi' },
+        { value: 'if_sara', label: 'if_sara' },
+        { value: 'im_nicola', label: 'im_nicola' },
+        { value: 'jf_alpha', label: 'jf_alpha' },
+        { value: 'jf_gongitsune', label: 'jf_gongitsune' },
+        { value: 'jf_nezumi', label: 'jf_nezumi' },
+        { value: 'jf_tebukuro', label: 'jf_tebukuro' },
+        { value: 'jm_kumo', label: 'jm_kumo' },
+        { value: 'pf_dora', label: 'pf_dora' },
+        { value: 'pm_alex', label: 'pm_alex' },
+        { value: 'pm_santa', label: 'pm_santa' }
+      ] },
       { path: 'tts.request_timeout_ms', label: '超时(毫秒)', type: 'number' },
       { path: 'tts.sentence_first_enabled', label: '启用短句优先', type: 'boolean' }
     ]
@@ -433,6 +486,12 @@ function ensureDebugDraft() {
 
 function providerHealthStatus(providerName) {
   if (!providerName || providerName === 'mock') return null;
+  const normalized = String(providerName).trim().toLowerCase();
+  if (['sherpa-onnx', 'kokoro', 'piper', 'tts'].includes(normalized)) {
+    const node = currentProviderStatus?.health?.tts;
+    if (!node) return 'missing';
+    return node.status || 'missing';
+  }
   const node = currentProviderStatus?.health?.[providerName];
   if (!node) return 'missing';
   return node.status || 'missing';
@@ -495,7 +554,7 @@ function moduleIndicatorColor(moduleKey) {
     case 'tts': {
       if (!currentSettings.tts?.provider) return 'gray';
       if (currentSettings.tts.provider === 'mock') return 'red';
-      const st = providerHealthStatus(stack.tts || currentSettings.tts.provider);
+      const st = providerHealthStatus('tts');
       if (st === 'ready') return 'green';
       if (st === 'partial') return 'yellow';
       if (st === 'missing') return 'gray';
@@ -544,7 +603,9 @@ function renderSidebarText(settings, providerStatus) {
   if (textAsrEl) textAsrEl.textContent = `内嵌 Whisper / ${settings?.asr?.language || 'zh'}`;
   if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
   if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
-  if (textTtsEl) textTtsEl.textContent = `${stack.tts || settings?.tts?.provider || '-'} / ${settings?.tts?.voice || '默认声线'}`;
+  const ttsProvider = settings?.tts?.provider ? String(settings.tts.provider) : (stack.tts || '-');
+  const ttsVoice = settings?.tts?.voice || '默认声线';
+  if (textTtsEl) textTtsEl.textContent = `${ttsProvider} / ${ttsVoice}`;
   if (textPerfEl) textPerfEl.textContent = `${settings?.perf?.auto_degrade ? '已启用' : '未启用'} / 阈值 ${settings?.perf?.llm_first_token_threshold_ms ?? '-'}`;
 }
 

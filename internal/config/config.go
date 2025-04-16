@@ -150,7 +150,7 @@ func defaultConfig() Config {
 		},
 		ASR:    ASRConfig{Provider: "whispercpp", Endpoint: "", StreamEndpoint: "", RequestTimeoutMs: 10000, BinaryPath: "", ModelPath: "", Language: "zh", Threads: 4},
 		LLM:    LLMConfig{Provider: "ollama", Model: "", Endpoint: "http://127.0.0.1:11434/v1", RequestTimeoutMs: 45000},
-		TTS:    TTSConfig{Provider: "piper", Voice: "zh_CN-huayan-medium", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
+		TTS:    TTSConfig{Provider: "sherpa-onnx", Voice: "zf_xiaobei", Endpoint: "", RequestTimeoutMs: 30000, BinaryPath: "", ModelPath: "", SentenceFirstEnabled: true},
 		RAG:    RAGConfig{TopK: 6, VectorIndexPath: layout.VectorIndexPath, EmbedProvider: "ollama", EmbedEndpoint: "http://127.0.0.1:11434/v1", EmbedModel: "bge-m3:latest"},
 		Memory: MemoryConfig{STMTokenBudget: 2048, STMReserveImportant: true, SummaryAutoWrite: true, GovernanceCompactHours: 24},
 		Perf: PerfConfig{
@@ -162,7 +162,7 @@ func defaultConfig() Config {
 			DegradedRetrieverFuse:    2,
 			DegradedAudioChunkSize:   4096,
 			DegradedLLMModel:         "",
-			DegradedTTSVoice:         "zh_CN-huayan-x_low",
+			DegradedTTSVoice:         "zf_xiaobei",
 			AlertLLMFirstTokenMs:     1500,
 			AlertTTSFirstChunkMs:     1200,
 			BaselineFile:             "build/perf-baseline.json",

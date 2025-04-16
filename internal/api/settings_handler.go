@@ -9,6 +9,7 @@ import (
 
 	"norma/internal/config"
 	"norma/internal/errs"
+	"norma/internal/providers"
 	"norma/internal/runtime/bus"
 	"norma/pkg/layout"
 )
@@ -43,6 +44,12 @@ func (h *SettingsHandler) handleRuntimeGet(w http.ResponseWriter) {
 		writeAPIError(w, errs.Internal("config_load_failed", err.Error()))
 		return
 	}
+	if normalizeTTSToSherpa(cfg) {
+		if err := config.Save(h.configPath, cfg); err != nil {
+			writeAPIError(w, errs.Internal("config_save_failed", err.Error()))
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, cfg)
 }
 
@@ -52,6 +59,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, errs.Invalid("invalid json"))
 		return
 	}
+	_ = normalizeTTSToSherpa(&cfg)
 	if strings.TrimSpace(cfg.LLM.Provider) == "" {
 		writeAPIError(w, errs.Invalid("llm.provider required"))
 		return
@@ -97,7 +105,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		cfg.TTS.RequestTimeoutMs = 30000
 	}
 	if strings.TrimSpace(cfg.TTS.Provider) == "" {
-		cfg.TTS.Provider = "piper"
+		cfg.TTS.Provider = "sherpa-onnx"
 	}
 	if cfg.RAG.TopK <= 0 {
 		cfg.RAG.TopK = 6
@@ -129,8 +137,8 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if cfg.Perf.DegradedAudioChunkSize <= 0 {
 		cfg.Perf.DegradedAudioChunkSize = 4096
 	}
-	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" {
-		cfg.Perf.DegradedTTSVoice = "zh_CN-huayan-x_low"
+	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" || strings.HasPrefix(strings.TrimSpace(cfg.Perf.DegradedTTSVoice), "zh_CN-") {
+		cfg.Perf.DegradedTTSVoice = "zf_xiaobei"
 	}
 	if cfg.Perf.AlertLLMFirstTokenMs <= 0 {
 		cfg.Perf.AlertLLMFirstTokenMs = 1500
@@ -140,6 +148,12 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	}
 	if strings.TrimSpace(cfg.Providers.Root) == "" {
 		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
+	}
+	if strings.TrimSpace(cfg.TTS.ModelPath) == "" {
+		mgr := providers.NewManager(cfg.Providers.Root)
+		if p := mgr.FindFirst("tts", "model.onnx"); p != "" {
+			cfg.TTS.ModelPath = p
+		}
 	}
 	if cfg.Security.PurgeProofDir == "" {
 		cfg.Security.PurgeProofDir = filepath.ToSlash(layout.PurgeProofDir)
@@ -187,4 +201,39 @@ func validateEndpointPolicy(endpoint string, sec config.SecurityConfig) *errs.Er
 		}
 	}
 	return errs.Forbidden("remote providers are disabled by security policy")
+}
+
+func normalizeTTSToSherpa(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	changed := false
+	if strings.TrimSpace(cfg.TTS.Provider) == "" || strings.EqualFold(strings.TrimSpace(cfg.TTS.Provider), "piper") {
+		cfg.TTS.Provider = "sherpa-onnx"
+		changed = true
+	}
+	if strings.HasPrefix(strings.TrimSpace(cfg.TTS.Voice), "zh_CN-") {
+		cfg.TTS.Voice = "zf_xiaobei"
+		changed = true
+	}
+	if strings.TrimSpace(cfg.TTS.Voice) == "" {
+		cfg.TTS.Voice = "zf_xiaobei"
+		changed = true
+	}
+	if strings.TrimSpace(cfg.Perf.DegradedTTSVoice) == "" || strings.HasPrefix(strings.TrimSpace(cfg.Perf.DegradedTTSVoice), "zh_CN-") {
+		cfg.Perf.DegradedTTSVoice = "zf_xiaobei"
+		changed = true
+	}
+	if strings.TrimSpace(cfg.Providers.Root) == "" {
+		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
+		changed = true
+	}
+	if strings.TrimSpace(cfg.TTS.ModelPath) == "" {
+		mgr := providers.NewManager(cfg.Providers.Root)
+		if p := mgr.FindFirst("tts", "model.onnx"); p != "" {
+			cfg.TTS.ModelPath = p
+			changed = true
+		}
+	}
+	return changed
 }

@@ -555,10 +555,10 @@ func (h *ProviderHandler) handleDiscover(w http.ResponseWriter, r *http.Request)
 			Installed: false,
 		},
 		{
-			Key:       "piper",
-			Name:      "Piper",
-			Paths:     findAll("tts", "piper.exe", "piper"),
-			Hint:      "用于 TTS",
+			Key:       "sherpa-onnx-tts",
+			Name:      "Sherpa ONNX TTS",
+			Paths:     discoverKokoroAssets(mgr),
+			Hint:      "用于 TTS (Kokoro)",
 			Installed: false,
 		},
 		{
@@ -606,6 +606,28 @@ func discoverWakeAssets(mgr *providers.Manager) []string {
 	appendOnce(mgr.FindGlob("wake", "joiner-epoch-*.onnx", "joiner.int8.onnx", "joiner.onnx"))
 	appendOnce(mgr.FindFirst("wake", "tokens.txt"))
 	appendOnce(mgr.FindFirst("wake", "keywords.txt", "test_keywords.txt"))
+	return out
+}
+
+func discoverKokoroAssets(mgr *providers.Manager) []string {
+	set := map[string]struct{}{}
+	out := make([]string, 0, 6)
+	appendOnce := func(path string) {
+		if strings.TrimSpace(path) == "" {
+			return
+		}
+		if _, ok := set[path]; ok {
+			return
+		}
+		set[path] = struct{}{}
+		out = append(out, path)
+	}
+	appendOnce(mgr.FindFirst("tts", "model.onnx"))
+	appendOnce(mgr.FindFirst("tts", "voices.bin"))
+	appendOnce(mgr.FindFirst("tts", "tokens.txt"))
+	appendOnce(mgr.FindGlob("tts", "espeak-ng-data"))
+	appendOnce(mgr.FindFirst("tts", "lexicon-us-en.txt"))
+	appendOnce(mgr.FindFirst("tts", "lexicon-zh.txt"))
 	return out
 }
 
@@ -777,7 +799,7 @@ func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Requ
 	if cfg.ASR.RequestTimeoutMs <= 0 {
 		cfg.ASR.RequestTimeoutMs = 10000
 	}
-	cfg.TTS.Provider = "piper"
+	cfg.TTS.Provider = "sherpa-onnx"
 	if cfg.TTS.RequestTimeoutMs <= 0 {
 		cfg.TTS.RequestTimeoutMs = 30000
 	}
@@ -809,13 +831,11 @@ func (h *ProviderHandler) handleApplyManaged(w http.ResponseWriter, r *http.Requ
 	if p := mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"); p != "" {
 		cfg.ASR.ModelPath = p
 	}
-	if p := mgr.FindFirst("tts", "piper.exe", "piper"); p != "" {
-		cfg.TTS.BinaryPath = p
-	}
-	if p := mgr.FindFirst("tts", "zh_CN-huayan-medium.onnx", "zh_CN-huayan-x_low.onnx", "model.onnx"); p != "" {
+	if p := mgr.FindFirst("tts", "model.onnx"); p != "" {
 		cfg.TTS.ModelPath = p
-		base := filepath.Base(p)
-		cfg.TTS.Voice = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+	if strings.TrimSpace(cfg.TTS.Voice) == "" || strings.HasPrefix(strings.TrimSpace(cfg.TTS.Voice), "zh_CN-") {
+		cfg.TTS.Voice = "zf_xiaobei"
 	}
 	if p := mgr.FindFirst("wake", "sherpa-onnx-keyword-spotter.exe", "sherpa-onnx-keyword-spotter"); p != "" {
 		cfg.Audio.WakeBinaryPath = p

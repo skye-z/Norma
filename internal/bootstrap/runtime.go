@@ -327,28 +327,22 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager, quality *runtime.Qual
 			return fallback
 		}
 		return audio.NewXTTSStreamer(cfg.TTS.Endpoint, cfg.TTS.Voice, time.Duration(cfg.TTS.RequestTimeoutMs)*time.Millisecond)
-	case "piper":
-		binary := mgr.ResolveBinary("tts", "", cfg.TTS.BinaryPath, "piper.exe", "piper")
-		model := mgr.ResolveFile("tts", "", cfg.TTS.ModelPath, cfg.TTS.Voice+".onnx", "model.onnx")
-		if binary == "" || model == "" {
-			log.Printf("[tts] piper not configured")
+	case "sherpa", "sherpa-onnx", "kokoro":
+		modelPath := mgr.ResolveFile("tts", "", cfg.TTS.ModelPath, "model.onnx")
+		if modelPath == "" {
+			log.Printf("[tts] sherpa kokoro model not configured")
 			return fallback
 		}
-		primary := audio.NewPiperTTS(binary, model, cfg.TTS.Voice)
-		degraded := audio.TTS(nil)
-		if quality != nil {
-			if degradedVoice := strings.TrimSpace(cfg.Perf.DegradedTTSVoice); degradedVoice != "" && degradedVoice != cfg.TTS.Voice {
-				degradedModel := mgr.ResolveFile("tts", "", "", degradedVoice+".onnx")
-				if degradedModel != "" {
-					log.Printf("[tts] degrade voice available voice=%s model=%s", degradedVoice, degradedModel)
-					degraded = audio.NewPiperTTS(binary, degradedModel, degradedVoice)
-				}
-			}
+		modelDir := filepath.Dir(modelPath)
+		sid := -1
+		if v := strings.TrimSpace(cfg.TTS.Voice); v != "" {
+			sid = audio.ResolveSpeakerID(v)
 		}
-		log.Printf("[tts] use piper binary=%s model=%s", binary, model)
-		if degraded != nil && quality != nil {
-			return &audio.RoutedTTS{Primary: primary, Degraded: degraded, Fallback: fallback, UseDegraded: quality.IsDegraded}
+		if sid < 0 {
+			sid = 45
 		}
+		primary := audio.NewSherpaKokoroTTS(modelDir, cfg.TTS.Voice, sid, 1.0, 2)
+		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s", modelDir, sid, cfg.TTS.Voice)
 		return primary
 	default:
 		return &audio.UnavailableTTS{Reason: "unsupported tts provider: " + strings.TrimSpace(cfg.TTS.Provider)}
