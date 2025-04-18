@@ -1,3 +1,4 @@
+// Package api 提供 HTTP API
 package api
 
 import (
@@ -10,14 +11,17 @@ import (
 	"norma/backend/core/memory"
 )
 
+// MemoryHandler 记忆处理器
 type MemoryHandler struct {
 	svc *memory.Service
 }
 
+// NewMemoryHandler 创建记忆处理器
 func NewMemoryHandler(svc *memory.Service) *MemoryHandler {
 	return &MemoryHandler{svc: svc}
 }
 
+// Register 注册路由
 func (h *MemoryHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/memory", h.handleMemory)
 	mux.HandleFunc("/memory/", h.handleMemoryByID)
@@ -25,6 +29,7 @@ func (h *MemoryHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/memory/summary", h.handleSummary)
 }
 
+// handleMemory 处理记忆 CRUD
 func (h *MemoryHandler) handleMemory(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -67,6 +72,7 @@ func (h *MemoryHandler) handleMemory(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleMemoryByID 根据 ID 处理记忆
 func (h *MemoryHandler) handleMemoryByID(w http.ResponseWriter, r *http.Request) {
 	idStr := strings.TrimPrefix(r.URL.Path, "/memory/")
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
@@ -99,6 +105,7 @@ func (h *MemoryHandler) handleMemoryByID(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// handleGovernanceRun 运行记忆治理
 func (h *MemoryHandler) handleGovernanceRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -112,11 +119,13 @@ func (h *MemoryHandler) handleGovernanceRun(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, result)
 }
 
+// summaryReq 摘要请求
 type summaryReq struct {
 	SessionID string        `json:"session_id"`
 	Turns     []memory.Turn `json:"turns"`
 }
 
+// handleSummary 处理摘要请求
 func (h *MemoryHandler) handleSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")

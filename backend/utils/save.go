@@ -1,3 +1,4 @@
+// Package config 配置管理
 package config
 
 import (
@@ -8,7 +9,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Save writes config to yaml file.
+// Save 保存配置到 YAML 文件
 func Save(path string, cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")

@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -6,21 +7,24 @@ import (
 	"strings"
 )
 
-// Worker consumes indexing tasks.
+// Worker 索引任务消费者
 type Worker struct {
 	queue     Queue
 	extractor Extractor
 	sink      Sink
 }
 
+// NewWorker 创建 Worker
 func NewWorker(queue Queue, extractor Extractor) *Worker {
 	return &Worker{queue: queue, extractor: extractor}
 }
 
+// NewWorkerWithSink 创建带 Sink 的 Worker
 func NewWorkerWithSink(queue Queue, extractor Extractor, sink Sink) *Worker {
 	return &Worker{queue: queue, extractor: extractor, sink: sink}
 }
 
+// Run 运行 Worker
 func (w *Worker) Run(ctx context.Context) error {
 	for {
 		task, err := w.queue.Dequeue(ctx)
@@ -54,10 +58,12 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
+// chunkText 文本分块
 func chunkText(text string, maxChars int) []string {
 	return chunkStructured(text, maxChars, 0)
 }
 
+// chunkStructured 结构化文本分块
 func chunkStructured(text string, maxChars int, overlapChars int) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -139,6 +145,7 @@ func chunkStructured(text string, maxChars int, overlapChars int) []string {
 	return out
 }
 
+// splitStructuredSegments 分割结构化段落
 func splitStructuredSegments(text string) []string {
 	lines := strings.Split(text, "\n")
 	segments := make([]string, 0, len(lines)/2)
@@ -197,6 +204,7 @@ func splitStructuredSegments(text string) []string {
 	return segments
 }
 
+// splitByRunes 按字符分块
 func splitByRunes(text string, maxChars int, overlapChars int) []string {
 	runes := []rune(strings.TrimSpace(text))
 	if len(runes) == 0 {
@@ -230,6 +238,7 @@ func splitByRunes(text string, maxChars int, overlapChars int) []string {
 	return out
 }
 
+// lastRunes 获取最后 n 个字符
 func lastRunes(text string, n int) string {
 	if n <= 0 {
 		return ""

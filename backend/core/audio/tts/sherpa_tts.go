@@ -1,3 +1,4 @@
+// Package audio 音频处理
 package audio
 
 import (
@@ -17,6 +18,7 @@ import (
 	"norma/pkg/layout"
 )
 
+// SherpaKokoroTTS Sherpa Kokoro TTS
 type SherpaKokoroTTS struct {
 	ModelDir string
 	Voice    string
@@ -28,6 +30,7 @@ type SherpaKokoroTTS struct {
 	cancel context.CancelFunc
 }
 
+// NewSherpaKokoroTTS 创建 Sherpa TTS
 func NewSherpaKokoroTTS(modelDir, voice string, sid int, speed float32, threads int) *SherpaKokoroTTS {
 	if threads <= 0 {
 		threads = 1

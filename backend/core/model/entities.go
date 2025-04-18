@@ -1,8 +1,9 @@
+// Package model 数据模型
 package model
 
 import "time"
 
-// Conversation stores user-assistant turns.
+// Conversation 对话记录
 type Conversation struct {
 	ID        int64     `xorm:"'id' pk autoincr"`
 	SessionID string    `xorm:"'session_id' index notnull"`
@@ -11,7 +12,7 @@ type Conversation struct {
 	CreatedAt time.Time `xorm:"'created_at' created"`
 }
 
-// Memory stores long-term memory snippets.
+// Memory 长期记忆
 type Memory struct {
 	ID           int64     `xorm:"'id' pk autoincr"`
 	Kind         string    `xorm:"'kind' varchar(32) index notnull"`
@@ -29,7 +30,7 @@ type Memory struct {
 	UpdatedAt    time.Time `xorm:"'updated_at' updated"`
 }
 
-// IndexChunk stores extracted file chunks.
+// IndexChunk 文件索引块
 type IndexChunk struct {
 	ID        int64     `xorm:"'id' pk autoincr"`
 	Path      string    `xorm:"'path' index notnull"`

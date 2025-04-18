@@ -1,7 +1,9 @@
+// Package audio 音频处理
 package audio
 
 import "strings"
 
+// splitSentences 分割句子
 func splitSentences(text string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -33,6 +35,7 @@ func splitSentences(text string) []string {
 	return parts
 }
 
+// prioritizeSentenceParts 优先短句
 func prioritizeSentenceParts(parts []string) []string {
 	if len(parts) <= 1 {
 		return parts

@@ -1,3 +1,4 @@
+// Package db 数据库操作
 package db
 
 import (
@@ -12,7 +13,7 @@ import (
 	"norma/backend/core/model"
 )
 
-// NewEngine creates and initializes xorm engine with sqlite.
+// NewEngine 创建 xorm 引擎
 func NewEngine(dbPath string, enableSQLLog bool) (*xorm.Engine, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)
@@ -46,6 +47,7 @@ func NewEngine(dbPath string, enableSQLLog bool) (*xorm.Engine, error) {
 	return engine, nil
 }
 
+// ensureFTS 确保 FTS 表存在
 func ensureFTS(engine *xorm.Engine) error {
 	_, err := engine.Exec(`
 CREATE VIRTUAL TABLE IF NOT EXISTS index_chunks_fts

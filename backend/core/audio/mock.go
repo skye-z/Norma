@@ -1,3 +1,4 @@
+// Package audio 音频处理
 package audio
 
 import (
@@ -6,13 +7,14 @@ import (
 	"time"
 )
 
-// MockASR emits partial and final sentences after a short delay.
+// MockASR 模拟 ASR
 type MockASR struct {
 	FinalText string
 	Partials  []string
 	Delay     time.Duration
 }
 
+// Stream 模拟流式识别
 func (m MockASR) Stream(ctx context.Context, onPartial func(string), onFinal func(string)) error {
 	delay := m.Delay
 	if delay <= 0 {
@@ -47,11 +49,12 @@ func (m MockASR) text() string {
 	return m.FinalText
 }
 
-// MockWakeWord matches when the frame contains non-zero samples.
+// MockWakeWord 模拟唤醒词
 type MockWakeWord struct {
 	Hits int
 }
 
+// Detect 检测唤醒词
 func (m *MockWakeWord) Detect(frame []int16) (bool, error) {
 	for _, sample := range frame {
 		if sample != 0 {
@@ -62,11 +65,12 @@ func (m *MockWakeWord) Detect(frame []int16) (bool, error) {
 	return false, nil
 }
 
-// MockAECNS is a lightweight preprocessor stub for scene configuration coverage.
+// MockAECNS 模拟回声消除和降噪
 type MockAECNS struct {
 	label string
 }
 
+// NewMockAECNS 创建模拟 AECNS
 func NewMockAECNS(label string) *MockAECNS {
 	if label == "" {
 		label = "aec_ns"
@@ -74,6 +78,7 @@ func NewMockAECNS(label string) *MockAECNS {
 	return &MockAECNS{label: label}
 }
 
+// Process 处理音频帧
 func (m *MockAECNS) Process(frame []float32) []float32 {
 	out := make([]float32, len(frame))
 	copy(out, frame)
@@ -83,18 +88,21 @@ func (m *MockAECNS) Process(frame []float32) []float32 {
 	return out
 }
 
+// Name 获取名称
 func (m *MockAECNS) Name() string { return m.label }
 
-// MockTTS emits fake audio chunks and supports stop.
+// MockTTS 模拟 TTS
 type MockTTS struct {
 	mu    sync.Mutex
 	stops map[string]struct{}
 }
 
+// NewMockTTS 创建模拟 TTS
 func NewMockTTS() *MockTTS {
 	return &MockTTS{stops: make(map[string]struct{})}
 }
 
+// Stream 模拟流式合成
 func (m *MockTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {
 	chunks := []string{"[audio:head]", "[audio:body]", "[audio:tail]"}
 	for _, ch := range chunks {
@@ -111,6 +119,7 @@ func (m *MockTTS) Stream(ctx context.Context, text string, onChunk func(chunk []
 	return nil
 }
 
+// Stop 模拟停止
 func (m *MockTTS) Stop(sessionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -118,10 +127,14 @@ func (m *MockTTS) Stop(sessionID string) error {
 	return nil
 }
 
+// SampleRate 获取采样率
 func (m *MockTTS) SampleRate() int { return 22050 }
 
+// Channels 获取声道数
 func (m *MockTTS) Channels() int { return 1 }
 
+// Encoding 获取编码格式
 func (m *MockTTS) Encoding() string { return "pcm_s16le" }
 
+// SupportsProsodyHints 是否支持韵律提示
 func (m *MockTTS) SupportsProsodyHints() bool { return false }

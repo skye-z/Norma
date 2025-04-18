@@ -1,3 +1,4 @@
+// Package providers 提供商管理器
 package providers
 
 import (
@@ -6,6 +7,7 @@ import (
 	asrAudio "norma/backend/core/audio/asr"
 )
 
+// Health 提供商健康状态
 type Health struct {
 	Status   string            `json:"status"`
 	Required []string          `json:"required"`
@@ -14,6 +16,7 @@ type Health struct {
 	Paths    map[string]string `json:"paths,omitempty"`
 }
 
+// BuildHealth 构建健康检查状态
 func BuildHealth(mgr *Manager) map[string]Health {
 	return map[string]Health{
 		"wake": classifyHealth([]string{"encoder", "decoder", "joiner", "tokens", "keywords"}, map[string]string{
@@ -40,11 +43,13 @@ func BuildHealth(mgr *Manager) map[string]Health {
 	}
 }
 
+// asrRequired ASR 必需文件
 func asrRequired(mgr *Manager) []string {
 	_ = mgr
 	return []string{"model", "runtime"}
 }
 
+// asrFound 查找 ASR 文件
 func asrFound(mgr *Manager) map[string]string {
 	model := mgr.FindFirst("asr", "ggml-base.bin", "ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin")
 	runtimePath := mgr.FindFirst("asr", "whisper-cli.exe", "main.exe", "whisper-cli", "main")
@@ -59,6 +64,7 @@ func asrFound(mgr *Manager) map[string]string {
 	}
 }
 
+// classifyHealth 分类健康状态
 func classifyHealth(required []string, foundMap map[string]string) Health {
 	found := make([]string, 0, len(required))
 	missing := make([]string, 0, len(required))

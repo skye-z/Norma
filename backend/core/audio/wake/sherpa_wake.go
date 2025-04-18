@@ -1,3 +1,4 @@
+// Package audio 音频处理
 package audio
 
 import (
@@ -11,6 +12,7 @@ import (
 	"time"
 )
 
+// SherpaWakeWord Sherpa 唤醒词检测器
 type SherpaWakeWord struct {
 	BinaryPath       string
 	EncoderPath      string
@@ -32,10 +34,12 @@ type SherpaWakeWord struct {
 	lastDetectedAt time.Time
 }
 
+// sherpaKWSEvent 唤醒词事件
 type sherpaKWSEvent struct {
 	Keyword string `json:"keyword"`
 }
 
+// NewSherpaWakeWord 创建 Sherpa 唤醒词检测器
 func NewSherpaWakeWord(binaryPath, encoderPath, decoderPath, joinerPath, tokensPath, keywordsFilePath, keyword string) *SherpaWakeWord {
 	return &SherpaWakeWord{
 		BinaryPath:       strings.TrimSpace(binaryPath),

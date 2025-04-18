@@ -1,3 +1,4 @@
+// Package live2d Live2D 相关功能
 package live2d
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 )
 
+// ValidationResult 验证结果
 type ValidationResult struct {
 	ModelDir      string
 	HasCan3       bool
@@ -15,6 +17,7 @@ type ValidationResult struct {
 	Issues        []string
 }
 
+// ValidateModelDir 验证模型目录
 func ValidateModelDir(dir string) ValidationResult {
 	res := ValidationResult{ModelDir: dir, Issues: make([]string, 0, 8)}
 
@@ -59,6 +62,7 @@ func ValidateModelDir(dir string) ValidationResult {
 	return res
 }
 
+// OK 验证是否通过
 func (r ValidationResult) OK() bool {
 	return len(r.Issues) == 0
 }

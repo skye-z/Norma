@@ -1,3 +1,4 @@
+// Package api 提供 HTTP API
 package api
 
 import (
@@ -12,19 +13,22 @@ import (
 	"norma/backend/core/runtime/bus"
 )
 
-var runtimeWSUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
+// RuntimeHandler 运行时处理器
 type RuntimeHandler struct {
 	bus       *bus.Bus
 	inspector *runtime.Inspector
 }
 
+var runtimeWSUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// NewRuntimeHandler 创建运行时处理器
 func NewRuntimeHandler(b *bus.Bus, inspector *runtime.Inspector) *RuntimeHandler {
 	return &RuntimeHandler{bus: b, inspector: inspector}
 }
 
+// publishReq 发布请求
 type publishReq struct {
 	Name      string `json:"name"`
 	SessionID string `json:"session_id"`
@@ -32,12 +36,14 @@ type publishReq struct {
 	Payload   any    `json:"payload"`
 }
 
+// Register 注册路由
 func (h *RuntimeHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/publish", h.handlePublish)
 	mux.HandleFunc("/runtime/events/ws", h.handleEventsWS)
 	mux.HandleFunc("/runtime/diagnostics", h.handleDiagnostics)
 }
 
+// handlePublish 发布事件
 func (h *RuntimeHandler) handlePublish(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -63,6 +69,7 @@ func (h *RuntimeHandler) handlePublish(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleDiagnostics 获取诊断信息
 func (h *RuntimeHandler) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -80,6 +87,7 @@ func (h *RuntimeHandler) handleDiagnostics(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, snapshot)
 }
 
+// handleEventsWS WebSocket 事件流
 func (h *RuntimeHandler) handleEventsWS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")

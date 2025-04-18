@@ -1,3 +1,4 @@
+// Package api 提供 HTTP API
 package api
 
 import (
@@ -21,6 +22,7 @@ import (
 	"norma/pkg/layout"
 )
 
+// DiagnosticsHandler 诊断处理器
 type DiagnosticsHandler struct {
 	configPath string
 	modelDir   string
@@ -29,6 +31,7 @@ type DiagnosticsHandler struct {
 	memorySvc  *memory.Service
 }
 
+// diagnosticsRunRequest 诊断请求
 type diagnosticsRunRequest struct {
 	Text   string  `json:"text"`
 	Motion string  `json:"motion"`
@@ -37,6 +40,7 @@ type diagnosticsRunRequest struct {
 	EyeY   float64 `json:"eye_y"`
 }
 
+// diagnosticsRunResponse 诊断响应
 type diagnosticsRunResponse struct {
 	Target  string         `json:"target"`
 	OK      bool           `json:"ok"`
@@ -45,14 +49,17 @@ type diagnosticsRunResponse struct {
 	State   string         `json:"state,omitempty"`
 }
 
+// NewDiagnosticsHandler 创建诊断处理器
 func NewDiagnosticsHandler(configPath, modelDir string, b *bus.Bus, inspector *runtime.Inspector, memorySvc *memory.Service) *DiagnosticsHandler {
 	return &DiagnosticsHandler{configPath: configPath, modelDir: modelDir, bus: b, inspector: inspector, memorySvc: memorySvc}
 }
 
+// Register 注册路由
 func (h *DiagnosticsHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/diagnostics/run/", h.handleRun)
 }
 
+// handleRun 运行诊断
 func (h *DiagnosticsHandler) handleRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -98,6 +105,7 @@ func (h *DiagnosticsHandler) handleRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// runLive2D 诊断 Live2D
 func (h *DiagnosticsHandler) runLive2D(req diagnosticsRunRequest) diagnosticsRunResponse {
 	modelDir := strings.TrimSpace(h.modelDir)
 	if modelDir == "" {
@@ -120,6 +128,7 @@ func (h *DiagnosticsHandler) runLive2D(req diagnosticsRunRequest) diagnosticsRun
 	}
 }
 
+// runTTS 诊断 TTS
 func (h *DiagnosticsHandler) runTTS(req diagnosticsRunRequest) diagnosticsRunResponse {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
@@ -144,6 +153,7 @@ func (h *DiagnosticsHandler) runTTS(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 }
 
+// runASR 诊断 ASR
 func (h *DiagnosticsHandler) runASR(req diagnosticsRunRequest) diagnosticsRunResponse {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
@@ -176,6 +186,7 @@ func (h *DiagnosticsHandler) runASR(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 }
 
+// runLLM 诊断 LLM
 func (h *DiagnosticsHandler) runLLM(req diagnosticsRunRequest) diagnosticsRunResponse {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
@@ -197,6 +208,7 @@ func (h *DiagnosticsHandler) runLLM(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 }
 
+// runMemory 诊断记忆服务
 func (h *DiagnosticsHandler) runMemory(req diagnosticsRunRequest) diagnosticsRunResponse {
 	if h.memorySvc == nil {
 		return diagnosticsRunResponse{Target: "memory", OK: false, Summary: "记忆服务不可用"}
@@ -223,6 +235,7 @@ func (h *DiagnosticsHandler) runMemory(req diagnosticsRunRequest) diagnosticsRun
 	}
 }
 
+// runRAG 诊断 RAG
 func (h *DiagnosticsHandler) runRAG(req diagnosticsRunRequest) diagnosticsRunResponse {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
@@ -247,6 +260,7 @@ func (h *DiagnosticsHandler) runRAG(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 }
 
+// pathExists 检查路径是否存在
 func pathExists(path string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -256,6 +270,7 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
+// endpointReachable 检查端点是否可达
 func endpointReachable(raw string) (bool, string) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -282,6 +297,7 @@ func endpointReachable(raw string) (bool, string) {
 	return true, "tcp reachable"
 }
 
+// firstNonEmpty 返回第一个非空字符串
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

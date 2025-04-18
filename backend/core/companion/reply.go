@@ -1,3 +1,4 @@
+// Package companion 陪伴功能
 package companion
 
 import (
@@ -7,6 +8,7 @@ import (
 	"unicode/utf8"
 )
 
+// EmotionSpec 情感规格
 type EmotionSpec struct {
 	Emotion    string             `json:"emotion"`
 	Motion     string             `json:"motion"`
@@ -15,6 +17,7 @@ type EmotionSpec struct {
 	Params     map[string]float64 `json:"params,omitempty"`
 }
 
+// ReplyPlan 回复计划
 type ReplyPlan struct {
 	Raw        string         `json:"raw"`
 	Styled     string         `json:"styled"`
@@ -23,6 +26,7 @@ type ReplyPlan struct {
 	Delivery   []DeliverySpec `json:"delivery,omitempty"`
 }
 
+// DeliverySpec 投递规格
 type DeliverySpec struct {
 	Text      string  `json:"text"`
 	Phase     string  `json:"phase"`
@@ -33,17 +37,20 @@ type DeliverySpec struct {
 	StyleHint string  `json:"style_hint"`
 }
 
+// PersonaRuntimeConfig 角色运行时配置
 type PersonaRuntimeConfig struct {
 	KeepMicCaptureAlive bool `json:"keep_mic_capture_alive"`
 	NeedRealAECNS       bool `json:"need_real_aec_ns"`
 }
 
+// VisemeFrame 视素帧
 type VisemeFrame struct {
 	Phoneme   string  `json:"phoneme"`
 	Intensity float64 `json:"intensity"`
 	Duration  int     `json:"duration_ms"`
 }
 
+// Live2DControl Live2D 控制
 type Live2DControl struct {
 	Kind      string         `json:"kind"`
 	Name      string         `json:"name"`
@@ -87,6 +94,7 @@ var live2DExpressionAliases = map[string]string{
 	"\u5e73\u9759": "neutral",
 }
 
+// PlanReply 生成回复计划
 func PlanReply(text string) ReplyPlan {
 	cleaned := strings.TrimSpace(text)
 	if cleaned == "" {
@@ -107,6 +115,7 @@ func PlanReply(text string) ReplyPlan {
 	return ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: segments[0], Segments: segments}
 }
 
+// RewritePersona 重写角色设定
 func RewritePersona(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -131,6 +140,7 @@ func RewritePersona(text string) string {
 	return text
 }
 
+// ExtractLive2DControls 提取 Live2D 控制指令
 func ExtractLive2DControls(text string) (string, []Live2DControl) {
 	matches := live2dMarkerRE.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
@@ -153,6 +163,7 @@ func ExtractLive2DControls(text string) (string, []Live2DControl) {
 	return cleaned, controls
 }
 
+// parseLive2DControl 解析 Live2D 控制指令
 func parseLive2DControl(body, raw string) (Live2DControl, bool) {
 	kind := ""
 	name := body
@@ -180,6 +191,7 @@ func parseLive2DControl(body, raw string) (Live2DControl, bool) {
 	return Live2DControl{}, false
 }
 
+// BuildDeliveryPlan 构建投递计划
 func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
 	out := make([]DeliverySpec, 0, len(plan.Segments))
 	for index, segment := range plan.Segments {
@@ -213,6 +225,7 @@ func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
 	return out
 }
 
+// ApplyDeliveryStyle 应用投递风格
 func ApplyDeliveryStyle(text string, spec DeliverySpec, supportsProsody bool) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -233,6 +246,7 @@ func ApplyDeliveryStyle(text string, spec DeliverySpec, supportsProsody bool) st
 	return prefix + text + suffix
 }
 
+// BuildPersonaRuntimeConfig 构建角色运行时配置
 func BuildPersonaRuntimeConfig(delivery []DeliverySpec, interruptDuringSpeak bool) PersonaRuntimeConfig {
 	keepAlive := interruptDuringSpeak
 	needAECNS := false
@@ -244,6 +258,7 @@ func BuildPersonaRuntimeConfig(delivery []DeliverySpec, interruptDuringSpeak boo
 	return PersonaRuntimeConfig{KeepMicCaptureAlive: keepAlive, NeedRealAECNS: needAECNS}
 }
 
+// AnalyzeEmotion 分析情感
 func AnalyzeEmotion(text string) EmotionSpec {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	spec := EmotionSpec{Emotion: "neutral", Motion: "Idle", Intensity: 0.45}
@@ -269,6 +284,7 @@ func AnalyzeEmotion(text string) EmotionSpec {
 	return spec
 }
 
+// EstimateVisemes 估算视素
 func EstimateVisemes(text string) []VisemeFrame {
 	frames := make([]VisemeFrame, 0, utf8.RuneCountInString(text))
 	for _, r := range text {
@@ -287,6 +303,7 @@ func EstimateVisemes(text string) []VisemeFrame {
 	return frames
 }
 
+// containsAny 检查是否包含任意关键字
 func containsAny(text string, values ...string) bool {
 	for _, value := range values {
 		if strings.Contains(text, strings.ToLower(value)) {
@@ -296,6 +313,7 @@ func containsAny(text string, values ...string) bool {
 	return false
 }
 
+// classifyRune 分类字符为视素
 func classifyRune(r rune) string {
 	switch strings.ToLower(string(r)) {
 	case "a", "\u554a", "\u5440":
@@ -313,6 +331,7 @@ func classifyRune(r rune) string {
 	}
 }
 
+// visemeIntensity 获取视素强度
 func visemeIntensity(r rune) float64 {
 	switch classifyRune(r) {
 	case "a":

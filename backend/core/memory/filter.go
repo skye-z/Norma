@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -29,6 +30,7 @@ var binaryExts = map[string]struct{}{
 	".zip": {}, ".7z": {}, ".rar": {}, ".gz": {}, ".tar": {},
 }
 
+// shouldSkipPath 检查是否应跳过该路径
 func shouldSkipPath(path string) bool {
 	clean := strings.ToLower(filepath.Clean(path))
 	base := strings.ToLower(filepath.Base(clean))

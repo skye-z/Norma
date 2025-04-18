@@ -1,3 +1,4 @@
+// Package audio 音频处理
 package audio
 
 import (
@@ -5,6 +6,7 @@ import (
 	"os"
 )
 
+// writeWavHeader 写入 WAV 文件头
 func writeWavHeader(f *os.File, sampleRate uint32, dataLen uint32) error {
 	byteRate := sampleRate * 2
 	blockAlign := uint16(2)

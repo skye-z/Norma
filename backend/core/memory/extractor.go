@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -13,14 +14,15 @@ import (
 	"unicode"
 )
 
-// Extractor extracts plain text from files.
+// Extractor 文件内容提取器接口
 type Extractor interface {
 	Extract(path string) (string, error)
 }
 
-// TextExtractor extracts from text-like files.
+// TextExtractor 文本文件提取器
 type TextExtractor struct{}
 
+// Extract 提取文本内容
 func (e TextExtractor) Extract(path string) (string, error) {
 	if shouldSkipPath(path) {
 		return "", fmt.Errorf("path ignored by filter")
@@ -46,6 +48,7 @@ func (e TextExtractor) Extract(path string) (string, error) {
 	}
 }
 
+// extractDOCX 提取 DOCX 内容
 func extractDOCX(path string) (string, error) {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
@@ -77,6 +80,7 @@ func extractDOCX(path string) (string, error) {
 	return "", fmt.Errorf("word/document.xml not found")
 }
 
+// extractPDF 提取 PDF 内容
 func extractPDF(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -91,6 +95,7 @@ func extractPDF(path string) (string, error) {
 	return text, nil
 }
 
+// extractPDFLiteralStrings 提取 PDF 文本字符串
 func extractPDFLiteralStrings(data []byte) string {
 	var out bytes.Buffer
 	in := false
@@ -144,6 +149,7 @@ func extractPDFLiteralStrings(data []byte) string {
 
 var xmlTagRE = regexp.MustCompile(`<[^>]+>`)
 
+// stripXML 去除 XML 标签
 func stripXML(s string) string {
 	s = strings.ReplaceAll(s, "</w:p>", "\n")
 	s = strings.ReplaceAll(s, "<w:br/>", "\n")
@@ -152,11 +158,13 @@ func stripXML(s string) string {
 	return s
 }
 
+// cleanWhitespace 清理空白字符
 func cleanWhitespace(s string) string {
 	fields := strings.Fields(s)
 	return strings.TrimSpace(strings.Join(fields, " "))
 }
 
+// likelyBinary 检查是否可能是二进制文件
 func likelyBinary(data []byte) bool {
 	max := len(data)
 	if max > 1024 {

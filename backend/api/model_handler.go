@@ -1,3 +1,4 @@
+// Package api 提供 HTTP API
 package api
 
 import (
@@ -11,21 +12,25 @@ import (
 	"norma/backend/utils"
 )
 
+// ModelHandler 模型处理器
 type ModelHandler struct {
 	configPath string
 	modelDir   string
 }
 
+// NewModelHandler 创建模型处理器
 func NewModelHandler(configPath, modelDir string) *ModelHandler {
 	return &ModelHandler{configPath: configPath, modelDir: modelDir}
 }
 
+// Register 注册路由
 func (h *ModelHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/model/resolve", h.handleResolve)
 	mux.HandleFunc("/runtime/model/list", h.handleList)
 	mux.HandleFunc("/runtime/model/pose-groups", h.handlePoseGroups)
 }
 
+// handlePoseGroups 获取姿势组
 func (h *ModelHandler) handlePoseGroups(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeAPIError(w, config.Invalid("method not allowed"))
@@ -60,6 +65,7 @@ func (h *ModelHandler) handlePoseGroups(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handleList 获取模型列表
 func (h *ModelHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeAPIError(w, config.Invalid("method not allowed"))
@@ -76,6 +82,7 @@ func (h *ModelHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleResolve 解析模型路径
 func (h *ModelHandler) handleResolve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeAPIError(w, config.Invalid("method not allowed"))
@@ -115,6 +122,7 @@ func (h *ModelHandler) handleResolve(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// loadModelMapping 加载模型映射配置
 func loadModelMapping(modelDir string) map[string]any {
 	readJSON := func(path string) map[string]any {
 		data, err := os.ReadFile(path)
@@ -151,6 +159,7 @@ func loadModelMapping(modelDir string) map[string]any {
 	return map[string]any{"motions": motions, "expressions": expressions}
 }
 
+// resolveLive2DModelPath 解析 Live2D 模型路径
 func resolveLive2DModelPath(rootDir, configuredModelName string) (string, string, error) {
 	rootDir = strings.TrimSpace(rootDir)
 	if rootDir == "" {
@@ -200,6 +209,7 @@ func resolveLive2DModelPath(rootDir, configuredModelName string) (string, string
 	return modelPath, modelName, nil
 }
 
+// findFirstModelFile 查找第一个模型文件
 func findFirstModelFile(dir string) (string, error) {
 	type candidate struct {
 		path  string
@@ -243,6 +253,7 @@ func findFirstModelFile(dir string) (string, error) {
 	return best.path, nil
 }
 
+// findCoreForModel 查找模型对应的 Cubism Core 文件
 func findCoreForModel(modelRootDir, modelFilePath string) string {
 	if strings.TrimSpace(modelFilePath) == "" {
 		return ""
@@ -283,6 +294,7 @@ func findCoreForModel(modelRootDir, modelFilePath string) string {
 	return ""
 }
 
+// listModelCandidates 列出可用模型
 func listModelCandidates(rootDir string) ([]map[string]any, error) {
 	rootDir = strings.TrimSpace(rootDir)
 	if rootDir == "" {
@@ -332,6 +344,7 @@ func listModelCandidates(rootDir string) ([]map[string]any, error) {
 	return out, nil
 }
 
+// isModelCompatible 检查模型兼容性
 func isModelCompatible(modelDir string) (bool, string) {
 	maxVer, hasMoc3 := maxMoc3Version(modelDir)
 	if !hasMoc3 {
@@ -343,6 +356,7 @@ func isModelCompatible(modelDir string) (bool, string) {
 	return true, ""
 }
 
+// maxMoc3Version 获取最大 moc3 版本号
 func maxMoc3Version(dir string) (int, bool) {
 	maxVer := 0
 	found := false
@@ -366,6 +380,7 @@ func maxMoc3Version(dir string) (int, bool) {
 	return maxVer, found
 }
 
+// readMoc3Version 读取 moc3 文件版本号
 func readMoc3Version(path string) (int, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) < 8 {
@@ -381,6 +396,7 @@ func readMoc3Version(path string) (int, bool) {
 	return ver, true
 }
 
+// itoa 整数转字符串
 func itoa(v int) string {
 	if v == 0 {
 		return "0"
@@ -400,6 +416,7 @@ func itoa(v int) string {
 	return string(buf)
 }
 
+// modelURLToAbsPath 将模型 URL 转换为绝对路径
 func modelURLToAbsPath(modelRootDir, modelURL string) (string, error) {
 	marker := "/static/model/"
 	idx := strings.Index(modelURL, marker)
@@ -422,6 +439,7 @@ func modelURLToAbsPath(modelRootDir, modelURL string) (string, error) {
 	return abs, nil
 }
 
+// loadPoseGroups 加载姿势组配置
 func loadPoseGroups(modelFilePath string) (string, []map[string]any, error) {
 	modelDir := filepath.Dir(modelFilePath)
 	base := strings.TrimSuffix(filepath.Base(modelFilePath), filepath.Ext(modelFilePath))

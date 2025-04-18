@@ -1,13 +1,15 @@
+// Package llm LLM 接口
 package llm
 
 import "context"
 
-// FallbackStreamer tries primary first, then fallback on error.
+// FallbackStreamer 降级流式响应器
 type FallbackStreamer struct {
 	Primary  Streamer
 	Fallback Streamer
 }
 
+// Stream 流式调用，优先主用，失败时降级
 func (f FallbackStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	if f.Primary == nil {
 		return f.Fallback.Stream(ctx, req, onToken)

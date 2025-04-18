@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -11,26 +12,28 @@ import (
 	"norma/backend/core/model"
 )
 
-// Sink persists index chunks.
+// Sink 索引块存储接口
 type Sink interface {
 	Upsert(path string, chunks []string) error
 	Delete(path string) error
 }
 
-// SQLiteStore persists chunks and supports FTS5 text search.
+// SQLiteStore SQLite 存储，支持 FTS5 全文搜索
 type SQLiteStore struct {
 	engine *xorm.Engine
 }
 
 var (
-	sqliteFTSPossessivePattern = regexp.MustCompile(`(?i)([\p{L}\p{N}_]+)['’]s\b`)
+	sqliteFTSPossessivePattern = regexp.MustCompile(`(?i)([\p{L}\p{N}_]+)['\u2019]s\b`)
 	sqliteFTSTokenPattern      = regexp.MustCompile(`[\p{L}\p{N}_]+`)
 )
 
+// NewSQLiteStore 创建 SQLite 存储
 func NewSQLiteStore(engine *xorm.Engine) *SQLiteStore {
 	return &SQLiteStore{engine: engine}
 }
 
+// Upsert 插入或更新
 func (s *SQLiteStore) Upsert(path string, chunks []string) error {
 	if strings.TrimSpace(path) == "" {
 		return nil

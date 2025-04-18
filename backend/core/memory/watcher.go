@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -11,12 +12,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watcher monitors file changes and enqueues indexing tasks.
+// Watcher 文件变化监控器
 type Watcher struct {
 	watcher *fsnotify.Watcher
 	queue   Queue
 }
 
+// NewWatcher 创建 Watcher
 func NewWatcher(queue Queue) (*Watcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -25,6 +27,7 @@ func NewWatcher(queue Queue) (*Watcher, error) {
 	return &Watcher{watcher: w, queue: queue}, nil
 }
 
+// Close 关闭 Watcher
 func (w *Watcher) Close() error {
 	if w == nil || w.watcher == nil {
 		return nil
@@ -32,6 +35,7 @@ func (w *Watcher) Close() error {
 	return w.watcher.Close()
 }
 
+// AddRecursive 递归添加监控目录
 func (w *Watcher) AddRecursive(root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -50,7 +54,7 @@ func (w *Watcher) AddRecursive(root string) error {
 	})
 }
 
-// EnqueueInitial enqueues all indexable files under root for upsert.
+// EnqueueInitial 初始入队所有可索引文件
 func (w *Watcher) EnqueueInitial(ctx context.Context, root string) error {
 	if w.queue == nil {
 		return errors.New("watcher queue is nil")
@@ -75,6 +79,7 @@ func (w *Watcher) EnqueueInitial(ctx context.Context, root string) error {
 	})
 }
 
+// Run 运行监控
 func (w *Watcher) Run(ctx context.Context) error {
 	if w.queue == nil {
 		return errors.New("watcher queue is nil")
@@ -97,6 +102,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 	}
 }
 
+// handleEvent 处理文件事件
 func (w *Watcher) handleEvent(ctx context.Context, ev fsnotify.Event) {
 	if w.queue == nil || shouldSkipPath(ev.Name) {
 		return
@@ -117,10 +123,12 @@ func (w *Watcher) handleEvent(ctx context.Context, ev fsnotify.Event) {
 	}
 }
 
+// isCreateOrWrite 检查是否为创建或写入操作
 func isCreateOrWrite(op fsnotify.Op) bool {
 	return op&fsnotify.Create == fsnotify.Create || op&fsnotify.Write == fsnotify.Write
 }
 
+// isIndexable 检查是否可索引
 func isIndexable(path string) bool {
 	if shouldSkipPath(path) {
 		return false

@@ -1,3 +1,4 @@
+// Package llm LLM 接口
 package llm
 
 import (
@@ -14,6 +15,7 @@ import (
 	"norma/backend/utils"
 )
 
+// OllamaStreamer Ollama 流式响应器
 type OllamaStreamer struct {
 	endpoint string
 	model    string
@@ -21,51 +23,62 @@ type OllamaStreamer struct {
 	client   *http.Client
 }
 
+// openAIChatRequest OpenAI 聊天请求
 type openAIChatRequest struct {
 	Model    string          `json:"model"`
 	Messages []openAIMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
 }
 
+// openAIMessage OpenAI 消息
 type openAIMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
+// openAIChatChunk OpenAI 聊天块
 type openAIChatChunk struct {
 	Choices []openAIChatChoice `json:"choices"`
 	Error   *openAIError       `json:"error"`
 }
 
+// openAIChatChoice OpenAI 聊天选择
 type openAIChatChoice struct {
 	Delta        openAIChatDelta `json:"delta"`
 	FinishReason string          `json:"finish_reason"`
 }
 
+// openAIChatDelta OpenAI 聊天增量
 type openAIChatDelta struct {
 	Content string `json:"content"`
 }
 
+// openAIError OpenAI 错误
 type openAIError struct {
 	Message string `json:"message"`
 }
 
+// openAIModelsResponse OpenAI 模型列表响应
 type openAIModelsResponse struct {
 	Data []openAIModel `json:"data"`
 }
 
+// openAIModel OpenAI 模型
 type openAIModel struct {
 	ID string `json:"id"`
 }
 
+// ollamaTagsResponse Ollama 标签响应
 type ollamaTagsResponse struct {
 	Models []ollamaModel `json:"models"`
 }
 
+// ollamaModel Ollama 模型
 type ollamaModel struct {
 	Name string `json:"name"`
 }
 
+// NewOllamaStreamer 创建 Ollama 流式响应器
 func NewOllamaStreamer(endpoint, model, apiKey string, timeout time.Duration) *OllamaStreamer {
 	if strings.TrimSpace(endpoint) == "" {
 		endpoint = "http://127.0.0.1:11434/v1"
@@ -81,11 +94,13 @@ func NewOllamaStreamer(endpoint, model, apiKey string, timeout time.Duration) *O
 	}
 }
 
+// PingOllama 检查 Ollama 是否可用
 func PingOllama(endpoint, apiKey string, timeout time.Duration) error {
 	_, err := listModels(endpoint, apiKey, timeout)
 	return err
 }
 
+// DiscoverFirstLLMModel 发现第一个 LLM 模型
 func DiscoverFirstLLMModel(endpoint, apiKey string, timeout time.Duration) (string, error) {
 	models, err := listModels(endpoint, apiKey, timeout)
 	if err != nil {
@@ -102,6 +117,7 @@ func DiscoverFirstLLMModel(endpoint, apiKey string, timeout time.Duration) (stri
 	return "", fmt.Errorf("no ollama models found")
 }
 
+// listModels 列出模型
 func listModels(endpoint, apiKey string, timeout time.Duration) ([]ollamaModel, error) {
 	endpoint = normalizeOpenAIEndpoint(endpoint)
 	if endpoint == "" {
@@ -145,6 +161,7 @@ func listModels(endpoint, apiKey string, timeout time.Duration) ([]ollamaModel, 
 	return models, nil
 }
 
+// isLikelyLLM 检查是否可能是 LLM 模型
 func isLikelyLLM(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if n == "" {
@@ -156,6 +173,7 @@ func isLikelyLLM(name string) bool {
 	return true
 }
 
+// Stream 流式调用
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	prompt := buildPrompt(req)
 	body, err := json.Marshal(openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true})
@@ -214,6 +232,7 @@ func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(s
 	return nil
 }
 
+// normalizeOpenAIEndpoint 标准化 OpenAI 端点
 func normalizeOpenAIEndpoint(endpoint string) string {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if endpoint == "" {
@@ -225,6 +244,7 @@ func normalizeOpenAIEndpoint(endpoint string) string {
 	return endpoint
 }
 
+// buildPrompt 构建提示词
 func buildPrompt(req Request) string {
 	persona := strings.TrimSpace(req.Persona)
 	if persona == "" {

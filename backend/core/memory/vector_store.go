@@ -1,3 +1,4 @@
+// Package memory 记忆服务
 package memory
 
 import (
@@ -27,7 +28,7 @@ type vectorDoc struct {
 	Vec     []float64 `json:"vec"`
 }
 
-// DiskVectorStore persists vector metadata and serves ANN search with HNSW.
+// DiskVectorStore 持久化向量存储，使用 HNSW 进行近似最近邻搜索
 type DiskVectorStore struct {
 	mu           sync.RWMutex
 	path         string
@@ -39,10 +40,12 @@ type DiskVectorStore struct {
 	hnswEFSearch int
 }
 
+// NewDiskVectorStore 创建向量存储
 func NewDiskVectorStore(path string) (*DiskVectorStore, error) {
 	return NewDiskVectorStoreWithEmbedder(path, HashEmbedder{})
 }
 
+// NewDiskVectorStoreWithEmbedder 创建带 Embedder 的向量存储
 func NewDiskVectorStoreWithEmbedder(path string, embedder Embedder) (*DiskVectorStore, error) {
 	if embedder == nil {
 		embedder = HashEmbedder{}

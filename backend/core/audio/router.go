@@ -1,7 +1,9 @@
+// Package audio 音频处理
 package audio
 
 import "context"
 
+// RoutedTTS 路由 TTS
 type RoutedTTS struct {
 	Primary     TTS
 	Degraded    TTS
@@ -9,6 +11,7 @@ type RoutedTTS struct {
 	UseDegraded func() bool
 }
 
+// Stream 流式合成
 func (r *RoutedTTS) Stream(ctx context.Context, text string, onChunk func([]byte)) error {
 	if r != nil && r.UseDegraded != nil && r.UseDegraded() && r.Degraded != nil {
 		if err := r.Degraded.Stream(ctx, text, onChunk); err == nil {
@@ -26,6 +29,7 @@ func (r *RoutedTTS) Stream(ctx context.Context, text string, onChunk func([]byte
 	return nil
 }
 
+// Stop 停止播放
 func (r *RoutedTTS) Stop(sessionID string) error {
 	if r == nil {
 		return nil
@@ -42,6 +46,7 @@ func (r *RoutedTTS) Stop(sessionID string) error {
 	return nil
 }
 
+// SampleRate 获取采样率
 func (r *RoutedTTS) SampleRate() int {
 	if provider, ok := r.selected().(AudioFormatProvider); ok {
 		return provider.SampleRate()
@@ -49,6 +54,7 @@ func (r *RoutedTTS) SampleRate() int {
 	return 22050
 }
 
+// Channels 获取声道数
 func (r *RoutedTTS) Channels() int {
 	if provider, ok := r.selected().(AudioFormatProvider); ok {
 		return provider.Channels()
@@ -56,6 +62,7 @@ func (r *RoutedTTS) Channels() int {
 	return 1
 }
 
+// Encoding 获取编码格式
 func (r *RoutedTTS) Encoding() string {
 	if provider, ok := r.selected().(AudioFormatProvider); ok {
 		return provider.Encoding()
@@ -63,6 +70,7 @@ func (r *RoutedTTS) Encoding() string {
 	return "pcm_s16le"
 }
 
+// selected 获取当前选中的 TTS
 func (r *RoutedTTS) selected() TTS {
 	if r == nil {
 		return nil
@@ -76,6 +84,7 @@ func (r *RoutedTTS) selected() TTS {
 	return r.Fallback
 }
 
+// SupportsProsodyHints 是否支持韵律提示
 func (r *RoutedTTS) SupportsProsodyHints() bool {
 	if provider, ok := r.selected().(ProsodyHintProvider); ok {
 		return provider.SupportsProsodyHints()

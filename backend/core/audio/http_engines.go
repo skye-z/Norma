@@ -1,3 +1,4 @@
+// Package audio 音频处理
 package audio
 
 import (
@@ -12,23 +13,26 @@ import (
 	"time"
 )
 
-// HTTPASR calls a local ASR HTTP service.
+// HTTPASR HTTP ASR 客户端
 type HTTPASR struct {
 	Endpoint       string
 	StreamEndpoint string
 	Client         *http.Client
 }
 
+// asrRequest ASR 请求
 type asrRequest struct {
 	SessionID string `json:"session_id"`
 }
 
+// asrResponse ASR 响应
 type asrResponse struct {
 	Text     string   `json:"text"`
 	Partials []string `json:"partials"`
 	Final    string   `json:"final"`
 }
 
+// NewHTTPASR 创建 HTTP ASR
 func NewHTTPASR(endpoint string, timeout time.Duration) *HTTPASR {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -39,6 +43,7 @@ func NewHTTPASR(endpoint string, timeout time.Duration) *HTTPASR {
 	}
 }
 
+// Stream 流式识别
 func (a *HTTPASR) Stream(ctx context.Context, onPartial func(string), onFinal func(string)) error {
 	if a.Endpoint == "" {
 		return fmt.Errorf("asr endpoint is empty")
