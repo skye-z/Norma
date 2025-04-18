@@ -1,5 +1,4 @@
-// Package live2d 提供Live2D虚拟形象的事件桥接功能
-// 将运行时事件转换为Live2D模型的动作、表情和参数事件
+// Package live2d Live2D虚拟形象事件桥接
 package live2d
 
 import (
@@ -11,15 +10,13 @@ import (
 )
 
 // Bridge 运行时事件到Live2D事件的桥接器
-// 订阅各类运行时事件（ASR、LLM、TTS等），转换为Live2D模型可理解的事件
 type Bridge struct {
 	b     *bus.Bus // 事件总线
 	mu    sync.Mutex
 	state map[string]motionState // 会话ID -> 动作状态
 }
 
-// motionState 保存会话的动作状态
-// 用于动作优先级管理和冷却时间控制
+// motionState 会话动作状态
 type motionState struct {
 	Group       string    // 动作组名称
 	Priority    int       // 优先级，数值越大优先级越高
@@ -27,9 +24,7 @@ type motionState struct {
 	IdleAfterMs int       // 空闲恢复延迟（毫秒）
 }
 
-// NewBridge 创建新的Live2D桥接器
-// 参数：b-事件总线实例
-// 返回：配置好的桥接器，已自动订阅所需事件
+// NewBridge 创建Live2D桥接器
 func NewBridge(b *bus.Bus) *Bridge {
 	br := &Bridge{b: b, state: make(map[string]motionState)}
 	br.bind()
@@ -37,7 +32,6 @@ func NewBridge(b *bus.Bus) *Bridge {
 }
 
 // bind 绑定事件订阅
-// 订阅各类运行时事件并注册相应的处理函数
 func (br *Bridge) bind() {
 	// ASR识别完成时，触发思考动作
 	br.b.Subscribe("asr.final", func(evt bus.Event) {
@@ -96,7 +90,6 @@ func (br *Bridge) bind() {
 }
 
 // publishScheduledMotion 发布调度动作事件
-// 根据优先级和冷却时间决定是否发布，支持动作插队和空闲恢复
 func (br *Bridge) publishScheduledMotion(evt bus.Event, payload map[string]any) {
 	group, _ := payload["group"].(string)
 	priority, _ := payload["priority"].(int)
@@ -143,7 +136,6 @@ func (br *Bridge) publishScheduledMotion(evt bus.Event, payload map[string]any) 
 }
 
 // scheduleIdle 调度空闲恢复动作
-// 延迟后自动切换到idle动作，用于动作播放完毕后恢复空闲状态
 func (br *Bridge) scheduleIdle(sessionID, traceID string, delayMs int, parentPriority int) {
 	if delayMs <= 0 {
 		return
@@ -162,8 +154,6 @@ func (br *Bridge) scheduleIdle(sessionID, traceID string, delayMs int, parentPri
 }
 
 // normalizeEmotionPayload 标准化情感负载
-// 将不同形式的情感规范转换为统一的map格式
-// 支持EmotionSpec结构体指针、值和普通map
 func normalizeEmotionPayload(value any) map[string]any {
 	switch payload := value.(type) {
 	case companion.EmotionSpec:
