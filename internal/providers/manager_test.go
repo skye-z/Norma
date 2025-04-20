@@ -41,3 +41,27 @@ func TestManagerManifestRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected providers: %+v", loaded.Providers)
 	}
 }
+
+func TestEnsureWakeKeywordsFileCreatesDefaultKeyword(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	path, err := EnsureWakeKeywordsFile(root, "")
+	if err != nil {
+		t.Fatalf("ensure wake keywords: %v", err)
+	}
+	if filepath.Base(path) != "keywords.txt" {
+		t.Fatalf("unexpected keywords path: %s", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read keywords: %v", err)
+	}
+	if string(data) != "n uò m ǎ @诺玛\n" {
+		t.Fatalf("unexpected keywords content: %q", string(data))
+	}
+}

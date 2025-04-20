@@ -3,12 +3,12 @@
 ## 1. 产品说明
 
 Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
-- Wake：`sherpa-onnx`
-- ASR：`whisper.cpp`
+- Wake：`sherpa-onnx`（内嵌唤醒词链路）
+- ASR：`whisper.cpp`（内嵌识别）
 - TTS：`Sherpa ONNX Kokoro`
-- Embedding：`Ollama`
+- Embedding / LLM：`Ollama`
 
-这些 Provider 会尽量纳入 Norma 统一管理，避免用户自行下载安装、手工改路径和分散排障。
+当前版本已经移除自动降级和模块管理页面，运行时以固定策略、控制台配置和日志观测为主。
 
 ## 2. 安装前准备
 
@@ -16,12 +16,12 @@ Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
 - Windows 10/11 64 位
 - 建议 16GB 以上内存
 - 建议预留 8GB 以上磁盘空间给模型、日志和索引
-- 首次安装建议联网，用于下载 Provider 和模型
+- 首次安装建议联网，用于准备 Ollama 模型和语音资源
 
 ### 2.2 关键目录
 - `config.yaml`：当前运行配置
 - `config.example.yaml`：配置模板
-- `resource/runtime/providers/`：受管 Provider 与模型目录
+- `resource/runtime/providers/`：运行时语音资源目录
 - `resource/data/`：数据库、向量索引、记忆数据
 - `resource/logs/`：运行日志
 - `resource/diagnostics/`：诊断包、设备矩阵、删除证明、验收结果
@@ -35,14 +35,9 @@ Norma 是一个本地优先的桌面伴侣产品。当前默认链路为：
 powershell -ExecutionPolicy Bypass -File scripts/check-utf8.ps1 -Root .
 ```
 
-2. 检查 Provider 根目录：
+2. 如需准备内嵌语音依赖，可直接执行开发启动脚本：
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-manage.ps1 -Action status
-```
-
-3. 如果 Provider 目录尚未初始化，可在设置页点击“初始化 Provider 目录”，或调用：
-```powershell
-curl -X POST http://127.0.0.1:8090/providers/init
+powershell -ExecutionPolicy Bypass -File scripts/wails-dev-embedded.ps1
 ```
 
 ### 3.2 使用构建产物
@@ -58,41 +53,23 @@ powershell -ExecutionPolicy Bypass -File scripts/check-release-layout.ps1 -OutDi
 
 3. 阅读 `dist/INSTALL.md` 后启动。
 
-## 4. 安装 Provider 与模型
+## 4. 资源准备
 
-### 4.1 通过设置页安装
+### 4.1 控制台配置
 1. 启动桌面应用，应用会自动拉起本地 API 服务。
-2. 打开 [frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1)。
-3. 在“Provider 面板”中依次安装：
-   - `wake-sherpa-onnx-windows-x64-shared`
-   - `wake-sherpa-kws-zh-en-model`
-   - `asr-whispercpp-windows-x64`
-   - `asr-whisper-model-base`
-   - `tts-sherpa-kokoro-multi-lang-v1_1`
-   - `llm-ollama-windows-x64`
-4. 点击“应用受管 Provider”，把路径和默认值自动回填到 `config.yaml`。
+2. 打开 [frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)。
+3. 在控制台中确认以下配置：
+   - 唤醒词与麦克风设备
+   - Whisper 语言、线程数
+   - Ollama endpoint 与模型
+   - Kokoro 声线
+   - Live2D 模型与动作组
 
-### 4.2 通过脚本安装
-安装示例：
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath build/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers
-```
-
-卸载示例：
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/provider-install.ps1 -CatalogPath build/provider-catalog.json -ProviderId asr-whispercpp-windows-x64 -ProvidersRoot resource/runtime/providers -Uninstall
-```
-
-### 4.3 来源与校验说明
-- `sherpa-onnx` 已接入官方 `checksum.txt` 校验，安装时会自动解析并验证 SHA256。
-- `whisper.cpp / sherpa-onnx / Ollama` 当前只能确认“官方来源”，尚不能确认上游发布了可直接接入的 checksum 清单。
-- 对于没有官方 checksum 的 Provider，Norma 会在安装时记录：
-  - 下载来源 URL
-  - 安装时间
-  - 主文件本地 SHA256
-  - 额外文件本地 SHA256
-- 设置页会明确区分“已接入官方 SHA256 校验”和“仅官方来源 + 本地 SHA256 留档”，不要把两者视为同一等级。
-- 就绪报告导出后，同样会包含这些来源审计字段，便于排障和归档。
+### 4.2 推荐资源位置
+- Wake 关键词与模型：`resource/runtime/providers/wake/current/`
+- Whisper 模型：`resource/runtime/providers/asr/current/`
+- Kokoro 模型：`resource/runtime/providers/tts/current/`
+- Live2D 模型：`resource/model/`
 
 ## 5. 配置说明
 
@@ -116,13 +93,13 @@ asr:
   provider: whispercpp
 tts:
   provider: sherpa-onnx
-  voice: zh_CN-huayan-medium
+  voice: zf_xiaobei
 rag:
   embed_provider: ollama
 ```
 
-### 5.3 高负载策略
-当前版本移除了自动降级配置，默认依赖固定策略与日志观测。
+### 5.3 负载策略
+当前版本移除了自动降级配置，默认依赖固定策略、日志观测和手动调参。
 
 ## 6. 启动方式
 
@@ -149,13 +126,11 @@ go run . -config config.yaml -demo
 
 ## 7. 首次启动推荐流程
 1. 打开 [frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)。
-2. 在控制台先检查以下项目是否就绪：
-   - Wake / ASR / TTS Provider
-   - Live2D 模型
-   - 配置文件
-   - 数据目录
-   - 设备探测矩阵脚本
-3. 如果有缺失，先到 [frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1) 安装并应用受管 Provider。
+2. 在控制台确认模型、麦克风、唤醒词、Ollama 和 Kokoro 配置均已填写。
+3. 如需排查音频设备，先运行设备矩阵脚本：
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/detect-audio-devices.ps1
+```
 4. 回到控制台确认状态，再启动主程序。
 
 ## 8. 如何使用
@@ -179,19 +154,17 @@ go run . -config config.yaml -demo
 ### 8.4 调试页面
 - 控制台：[frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)
 - 诊断：[frontend/public/console/index.html](D:/Project/AI/Norma/frontend/public/console/index.html)
-- 设置：[frontend/public/console/index.html?settings=1](D:/Project/AI/Norma/frontend/public/console/index.html?settings=1)
 
 ## 9. 常见排障
 
 ### 9.1 唤醒词不工作
-1. 先看设置页中 Wake 是否为 `ready` 或 `partial`。
-2. 检查 `keywords.txt` 是否存在。
-3. 检查 Wake 模型目录内是否同时包含 `encoder / decoder / joiner / tokens.txt`。
-4. 如需先排除录音链路问题，可切换为 `vad_only`。
+1. 检查 `keywords.txt` 是否存在。
+2. 检查 Wake 模型目录内是否同时包含 `encoder / decoder / joiner / tokens.txt`。
+3. 如需先排除录音链路问题，可切换为 `vad_only`。
 
 ### 9.2 识别不出字
-1. 检查 `whisper-cli.exe` 和 `ggml-base.bin` 是否都已安装。
-2. 检查 `asr.binary_path / asr.model_path` 是否已自动回填。
+1. 检查 `ggml` 模型是否已放到 ASR 目录。
+2. 检查 `asr.model_path` 是否正确。
 3. 运行设备探测脚本采集矩阵：
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/detect-audio-devices.ps1
@@ -208,23 +181,17 @@ powershell -ExecutionPolicy Bypass -File scripts/detect-audio-devices.ps1
 
 ## 10. 诊断、清理与验收
 
-### 10.1 导出 Provider 就绪报告
-可在设置页点击“导出就绪报告”，或调用：
-```powershell
-curl -X POST http://127.0.0.1:8090/providers/export-readiness
-```
-
-### 10.2 采集设备矩阵
+### 10.1 采集设备矩阵
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/detect-audio-devices.ps1
 ```
 
-### 10.3 一键清理数据与删除证明
+### 10.2 一键清理数据与删除证明
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/purge-data.ps1
 ```
 
-### 10.4 阶段验收
+### 10.3 阶段验收
 Alpha：
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/alpha-smoke.ps1 -Root .

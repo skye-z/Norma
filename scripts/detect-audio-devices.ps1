@@ -26,7 +26,7 @@ $report = [ordered]@{
     'wake_mode=vad_only',
     'audio.scene=headset',
     'audio.aec_enabled=false + audio.ns_enabled=false',
-    'perf.degraded_tts_voice=zh_CN-huayan-x_low'
+    'tts.voice=zf_xiaobei'
   )
 }
 $report | ConvertTo-Json -Depth 5 | Set-Content -Path $outFile -Encoding utf8

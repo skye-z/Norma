@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"norma/internal/bootstrap"
 	"norma/internal/config"
 	"norma/internal/errs"
 	"norma/internal/providers"
@@ -145,6 +147,10 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	if err := syncWakeKeywordArtifacts(&cfg); err != nil {
+		writeAPIError(w, errs.Internal("wake_keywords_sync_failed", err.Error()))
+		return
+	}
 	if err := config.Save(h.configPath, &cfg); err != nil {
 		writeAPIError(w, errs.Internal("config_save_failed", err.Error()))
 		return
@@ -205,4 +211,40 @@ func normalizeTTSToSherpa(cfg *config.Config) bool {
 		}
 	}
 	return changed
+}
+
+func syncWakeKeywordArtifacts(cfg *config.Config) error {
+	if cfg == nil {
+		return nil
+	}
+	mgr := providers.NewManager(cfg.Providers.Root)
+	if err := mgr.EnsureLayout(); err != nil {
+		return err
+	}
+	keywordsPath, err := bootstrap.EnsureWakeKeywordsForConfig(cfg, mgr)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(keywordsPath) == "" {
+		keywordsPath = strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath)
+	}
+	if strings.TrimSpace(keywordsPath) == "" {
+		modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
+		if modelDir == "" {
+			modelDir = filepath.Join(mgr.Root(), "wake", "current")
+		}
+		keywordsPath = filepath.Join(modelDir, "keywords.txt")
+	}
+	if err := os.MkdirAll(filepath.Dir(keywordsPath), 0o755); err != nil {
+		return err
+	}
+	formatted, err := providers.FormatWakeKeyword(filepath.Dir(keywordsPath), cfg.Audio.WakeKeyword)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(keywordsPath, []byte(formatted), 0o644); err != nil {
+		return err
+	}
+	cfg.Audio.WakeKeywordsFilePath = filepath.ToSlash(keywordsPath)
+	return nil
 }

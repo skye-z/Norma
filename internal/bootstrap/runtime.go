@@ -54,6 +54,9 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	if err := providerMgr.EnsureLayout(); err != nil {
 		return nil, err
 	}
+	if _, err := EnsureWakeKeywordsForConfig(cfg, providerMgr); err != nil {
+		log.Printf("[wake] ensure keywords failed: %v", err)
+	}
 	log.Printf("[build] embedded whisper: %v", audio.EmbeddedWhisperEnabled())
 	log.Printf("[build] embedded sherpa: %v", audio.EmbeddedSherpaEnabled())
 
@@ -170,7 +173,14 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 		tokens = firstExistingPath(filepath.Join(modelDir, "tokens.txt"))
 	}
 	if keywords == "" {
-		keywords = firstExistingPath(filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+		if created, err := EnsureWakeKeywordsForConfig(cfg, mgr); err == nil && created != "" {
+			keywords = created
+		} else if err != nil {
+			log.Printf("[wake] ensure keywords failed: %v", err)
+		}
+		if keywords == "" {
+			keywords = firstExistingPath(filepath.Join(modelDir, "keywords.txt"), filepath.Join(modelDir, "test_keywords.txt"))
+		}
 	}
 	status.KeywordsFile = keywords
 	missing := make([]string, 0, 5)
@@ -400,6 +410,24 @@ func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) index.Embedder {
 	default:
 		return index.HashEmbedder{}
 	}
+}
+
+func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (string, error) {
+	if cfg == nil {
+		return "", nil
+	}
+	keyword := strings.TrimSpace(cfg.Audio.WakeKeyword)
+	if keyword == "" {
+		keyword = "诺玛"
+	}
+	modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
+	if modelDir != "" {
+		return providers.EnsureWakeKeywordsFile(modelDir, keyword)
+	}
+	if mgr == nil {
+		return "", nil
+	}
+	return mgr.EnsureWakeKeywords(keyword)
 }
 
 func firstExistingPath(paths ...string) string {

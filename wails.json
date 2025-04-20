@@ -6,6 +6,9 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "postBuildHooks": {
+    "windows/*": "powershell -ExecutionPolicy Bypass -File ../../scripts/copy-sherpa-runtime.ps1 ${bin}"
+  },
   "author": {
     "name": "Skye",
     "email": "skai-zhang@hotmail.com"

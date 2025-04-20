@@ -23,6 +23,6 @@ OUT_FILE="$OUT_DIR/audio-devices-$(date +%Y%m%d-%H%M%S).txt"
     echo "No supported audio inventory command found."
   fi
   echo
-  echo "fallback_modes=wake_mode=vad_only,audio.scene=headset,audio.aec_enabled=false,audio.ns_enabled=false,perf.degraded_tts_voice=zh_CN-huayan-x_low"
+  echo "fallback_modes=wake_mode=vad_only,audio.scene=headset,audio.aec_enabled=false,audio.ns_enabled=false,tts.voice=zf_xiaobei"
 } > "$OUT_FILE"
 echo "$OUT_FILE"

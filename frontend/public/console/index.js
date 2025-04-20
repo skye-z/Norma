@@ -420,7 +420,7 @@ function ensureDebugDraft() {
   draftSettings.asr.provider = 'whispercpp';
   draftSettings.asr.endpoint = '';
   draftSettings.asr.stream_endpoint = '';
-  if (!draftSettings.tts.provider) draftSettings.tts.provider = 'piper';
+  if (!draftSettings.tts.provider) draftSettings.tts.provider = 'sherpa-onnx';
   if (!draftSettings.llm.provider) draftSettings.llm.provider = 'ollama';
   if (!draftSettings.llm.endpoint) draftSettings.llm.endpoint = 'http://127.0.0.1:11434/v1';
   if (!draftSettings.llm.model) draftSettings.llm.model = '';
@@ -444,49 +444,24 @@ function ensureDebugDraft() {
   if (typeof draftSettings.debug.motion_index !== 'number') draftSettings.debug.motion_index = 0;
 }
 
-function providerHealthStatus(providerName) {
-  if (!providerName || providerName === 'mock') return null;
-  const normalized = String(providerName).trim().toLowerCase();
-  if (['sherpa-onnx', 'kokoro', 'piper', 'tts'].includes(normalized)) {
-    const node = currentProviderStatus?.health?.tts;
-    if (!node) return 'missing';
-    return node.status || 'missing';
-  }
-  const node = currentProviderStatus?.health?.[providerName];
-  if (!node) return 'missing';
-  return node.status || 'missing';
-}
-
 function moduleIndicatorColor(moduleKey) {
   if (!currentSettings) return 'gray';
-  const stack = currentProviderStatus?.stack || {};
   switch (moduleKey) {
     case 'model': {
       if (!draftSettings?.debug?.model_url) return 'gray';
-      if (!modelMotionGroups.length) return 'yellow';
-      return 'green';
+      return modelMotionGroups.length ? 'green' : 'yellow';
     }
     case 'input': {
-      if (currentProviderStatus?.health?.wake?.status === 'ready') return 'green';
-      if (currentProviderStatus?.health?.wake?.status === 'partial') return 'yellow';
-      if (!currentSettings.audio?.wake_provider) return 'gray';
-      if (!currentSettings.audio?.enable_wake_word) return 'red';
-      const st = providerHealthStatus(stack.wake || 'sherpa-onnx');
-      if (st === 'ready') return 'green';
-      if (st === 'partial') return 'yellow';
-      if (st === 'missing') return 'gray';
-      return 'yellow';
+      if (!currentSettings.audio?.mic_device_id) return 'gray';
+      if (!currentSettings.audio?.enable_wake_word) return 'green';
+      if (!currentSettings.audio?.wake_keyword) return 'yellow';
+      return String(currentSettings.audio?.wake_provider || '').trim() ? 'green' : 'yellow';
     }
     case 'asr': {
-      if (currentProviderStatus?.health?.asr?.status === 'ready') return 'green';
-      if (currentProviderStatus?.health?.asr?.status === 'partial') return 'yellow';
       if (!currentSettings.asr?.provider) return 'gray';
       if (currentSettings.asr.provider === 'mock') return 'red';
-      const st = providerHealthStatus(stack.asr || 'whispercpp');
-      if (st === 'ready') return 'green';
-      if (st === 'partial') return 'yellow';
-      if (st === 'missing') return 'gray';
-      return 'yellow';
+      if (!currentSettings.asr?.language) return 'yellow';
+      return 'green';
     }
     case 'rag': {
       if (!currentSettings.rag?.embed_provider) return 'gray';
@@ -494,31 +469,24 @@ function moduleIndicatorColor(moduleKey) {
       if (currentSettings.rag.embed_provider === 'hash') return 'green';
       const endpoint = String(currentSettings.rag?.embed_endpoint || '').trim();
       const model = String(currentSettings.rag?.embed_model || '').trim();
-      console.log('[debug-console] status:rag', { endpoint, model, provider: currentSettings.rag?.embed_provider, topK: currentSettings.rag?.top_k });
       if (!endpoint) return 'red';
       if (!model) return 'yellow';
-      if (String(currentSettings.rag?.embed_provider || '').trim().toLowerCase() === 'ollama') return 'green';
-      return 'yellow';
+      return 'green';
     }
     case 'llm': {
       if (!currentSettings.llm?.provider) return 'gray';
       if (currentSettings.llm.provider === 'mock') return 'red';
       const endpoint = String(currentSettings.llm?.endpoint || '').trim();
       const model = String(currentSettings.llm?.model || '').trim();
-      console.log('[debug-console] status:llm', { endpoint, model, provider: currentSettings.llm?.provider });
       if (!endpoint) return 'red';
       if (!model) return 'yellow';
-      if (String(currentSettings.llm.provider || '').trim().toLowerCase() === 'ollama') return 'green';
-      return 'yellow';
+      return 'green';
     }
     case 'tts': {
       if (!currentSettings.tts?.provider) return 'gray';
       if (currentSettings.tts.provider === 'mock') return 'red';
-      const st = providerHealthStatus('tts');
-      if (st === 'ready') return 'green';
-      if (st === 'partial') return 'yellow';
-      if (st === 'missing') return 'gray';
-      return 'yellow';
+      if (!String(currentSettings.tts?.voice || '').trim()) return 'yellow';
+      return 'green';
     }
     default:
       return 'gray';
@@ -549,19 +517,17 @@ function renderSidebarIndicators() {
   applyIndicator(statusTtsEl, statusTextTtsEl, moduleIndicatorColor('tts'), '输出状态');
 }
 
-function renderSidebarText(settings, providerStatus) {
-  const stack = providerStatus?.stack || {};
+function renderSidebarText(settings) {
   const activeURL = getValueByPath(draftSettings, 'debug.model_url') || (modelCatalog[0]?.url || '');
   const hit = modelCatalog.find((item) => item.url === activeURL);
   if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
-  if (textInputEl) textInputEl.textContent = `${settings?.audio?.enable_wake_word ? '唤醒词' : '持续监听'} / ${stack.wake || settings?.audio?.wake_provider || '-'}`;
+  if (textInputEl) textInputEl.textContent = `${settings?.audio?.enable_wake_word ? '唤醒词' : '持续监听'} / ${settings?.audio?.wake_provider || '-'}`;
   if (textAsrEl) textAsrEl.textContent = `内嵌 Whisper / ${settings?.asr?.language || 'zh'}`;
   if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
-  if (textLlmEl) textLlmEl.textContent = `${stack.llm || settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
-  const ttsProvider = settings?.tts?.provider ? String(settings.tts.provider) : (stack.tts || '-');
+  if (textLlmEl) textLlmEl.textContent = `${settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
+  const ttsProvider = settings?.tts?.provider ? String(settings.tts.provider) : '-';
   const ttsVoice = settings?.tts?.voice || '默认声线';
   if (textTtsEl) textTtsEl.textContent = `${ttsProvider} / ${ttsVoice}`;
-  // perf removed
 }
 
 async function loadMotionGroups(modelURL) {
@@ -998,7 +964,7 @@ async function bindDetailFieldChange(event) {
     }
     }
     if (!path.startsWith('debug.')) setDirty(true);
-    renderSidebarText(currentSettings, currentProviderStatus);
+    renderSidebarText(currentSettings);
     renderSidebarIndicators();
     renderDetailPanel();
 }
@@ -1091,22 +1057,16 @@ async function resolveRuntimeModelURL() {
 
 async function loadAll(appendLog = true) {
   let settingsResp;
-  let providerResp;
   try {
-    [settingsResp, providerResp] = await Promise.all([
-      fetch(`${api}/settings/runtime`),
-      fetch(`${api}/providers/status`)
-    ]);
+    settingsResp = await fetch(`${api}/settings/runtime`);
   } catch (error) {
-    logError('拉取运行时配置或 Provider 状态失败', error);
+    logError('拉取运行时配置失败', error);
     throw error;
   }
   if (!settingsResp.ok) throw new Error(`读取配置失败: ${settingsResp.status}`);
-  if (!providerResp.ok) throw new Error(`读取 Provider 状态失败: ${providerResp.status}`);
 
   const settings = normalizeRuntimeSettings(await settingsResp.json());
   sanitizeSettingsForSave.base = sanitizeSettingsForSave(settings);
-  currentProviderStatus = await providerResp.json();
   console.log('[debug-console] loadAll:settings', { rag: settings?.rag, llm: settings?.llm });
   await loadModelCatalog();
   await loadDiscoverOnly();
@@ -1135,7 +1095,7 @@ async function loadAll(appendLog = true) {
   }
   await loadMotionGroups(getValueByPath(draftSettings, 'debug.model_url'));
 
-  renderSidebarText(currentSettings, currentProviderStatus);
+  renderSidebarText(currentSettings);
   renderSidebarIndicators();
   renderDetailPanel();
 

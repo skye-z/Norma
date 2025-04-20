@@ -1,12 +1,14 @@
 package providers
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"norma/pkg/layout"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 type Manager struct {
@@ -62,6 +64,10 @@ func (m *Manager) EnsureLayout() error {
 		}
 	}
 	return nil
+}
+
+func (m *Manager) EnsureWakeKeywords(keyword string) (string, error) {
+	return EnsureWakeKeywordsFile(m.currentDir("wake"), keyword)
 }
 
 func (m *Manager) ResolveBinary(kind, version, explicit string, candidates ...string) string {
@@ -224,4 +230,124 @@ func findRecursive(root string, match func(path string) bool) string {
 		return nil
 	})
 	return found
+}
+
+func EnsureWakeKeywordsFile(modelDir, keyword string) (string, error) {
+	modelDir = strings.TrimSpace(modelDir)
+	if modelDir == "" {
+		return "", nil
+	}
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		return "", err
+	}
+
+	required := []string{
+		firstExistingInDir(modelDir, "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx"),
+		firstExistingInDir(modelDir, "decoder-epoch-*.onnx", "decoder.int8.onnx", "decoder.onnx"),
+		firstExistingInDir(modelDir, "joiner-epoch-*.onnx", "joiner.int8.onnx", "joiner.onnx"),
+		cleanIfExists(filepath.Join(modelDir, "tokens.txt")),
+	}
+	for _, path := range required {
+		if strings.TrimSpace(path) == "" {
+			return "", nil
+		}
+	}
+
+	formatted, err := FormatWakeKeyword(modelDir, keyword)
+	if err != nil {
+		return "", err
+	}
+	keywordsPath := filepath.Join(modelDir, "keywords.txt")
+	if err := os.WriteFile(keywordsPath, []byte(formatted), 0o644); err != nil {
+		return "", err
+	}
+	return filepath.Clean(keywordsPath), nil
+}
+
+func FormatWakeKeyword(modelDir, keyword string) (string, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		keyword = "诺玛"
+	}
+	if mapped := builtinWakeKeywordTokens(keyword); mapped != "" {
+		return mapped + "\n", nil
+	}
+	if !isASCIIWakeKeyword(keyword) {
+		return "", fmt.Errorf("wake keyword %q is not supported by the current phone+ppinyin model; use 诺玛 or an English keyword from en.phone", keyword)
+	}
+	phones, err := lookupWakeKeywordPhones(filepath.Join(modelDir, "en.phone"), keyword)
+	if err != nil {
+		return "", err
+	}
+	return phones + " @" + strings.ToUpper(keyword) + "\n", nil
+}
+
+func builtinWakeKeywordTokens(keyword string) string {
+	switch strings.TrimSpace(keyword) {
+	case "诺玛":
+		return "n uò m ǎ @诺玛"
+	default:
+		return ""
+	}
+}
+
+func isASCIIWakeKeyword(keyword string) bool {
+	for _, r := range keyword {
+		if r > unicode.MaxASCII {
+			return false
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || r == '-' || r == '_' || r == '\'' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func lookupWakeKeywordPhones(dictPath, keyword string) (string, error) {
+	file, err := os.Open(dictPath)
+	if err != nil {
+		return "", fmt.Errorf("open wake lexicon: %w", err)
+	}
+	defer file.Close()
+
+	target := strings.ToUpper(strings.Join(strings.Fields(keyword), " "))
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		if strings.ToUpper(parts[0]) == target {
+			return strings.Join(parts[1:], " "), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read wake lexicon: %w", err)
+	}
+	return "", fmt.Errorf("wake keyword %q not found in %s", keyword, filepath.Base(dictPath))
+}
+
+func firstExistingInDir(root string, patterns ...string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		matches, _ := filepath.Glob(filepath.Join(root, pattern))
+		for _, match := range matches {
+			if p := cleanIfExists(match); p != "" {
+				return p
+			}
+		}
+	}
+	return ""
 }

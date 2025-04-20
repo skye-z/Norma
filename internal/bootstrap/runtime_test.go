@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -38,6 +39,38 @@ func TestResolveWakeConfigRequiresAssets(t *testing.T) {
 	}
 	if status.Reason == "" {
 		t.Fatalf("expected missing asset reason")
+	}
+}
+
+func TestResolveWakeConfigCreatesMissingKeywordsFile(t *testing.T) {
+	root := t.TempDir()
+	wakeDir := filepath.Join(root, "wake")
+	if err := os.MkdirAll(wakeDir, 0o755); err != nil {
+		t.Fatalf("mkdir wake dir: %v", err)
+	}
+	for _, name := range []string{"encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"} {
+		if err := os.WriteFile(filepath.Join(wakeDir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	cfg := &config.Config{}
+	cfg.Audio.EnableWakeWord = true
+	cfg.Audio.WakeMode = audio.WakeModeWakeWordVAD
+	cfg.Audio.WakeProvider = "sherpa-onnx"
+	cfg.Audio.WakeModelPath = wakeDir
+	cfg.Audio.WakeKeyword = "诺玛"
+
+	status := ResolveWakeConfig(cfg, providers.NewManager(root))
+	if !status.Ready {
+		t.Fatalf("expected wake assets to be ready, got reason=%s", status.Reason)
+	}
+	data, err := os.ReadFile(filepath.Join(wakeDir, "keywords.txt"))
+	if err != nil {
+		t.Fatalf("read keywords: %v", err)
+	}
+	if string(data) != "n uò m ǎ @诺玛\n" {
+		t.Fatalf("unexpected keywords content: %q", string(data))
 	}
 }
 

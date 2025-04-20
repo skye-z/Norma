@@ -49,6 +49,7 @@ func (s *SherpaKokoroTTS) Encoding() string { return "pcm_s16le" }
 func (s *SherpaKokoroTTS) SupportsProsodyHints() bool { return false }
 
 func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {
+	ensureSherpaDLLPath()
 	if s.ModelDir == "" {
 		return fmt.Errorf("kokoro model dir empty")
 	}

@@ -85,6 +85,7 @@ func (s *SherpaEmbeddedWakeWord) Detect(frame []int16) (bool, error) {
 }
 
 func (s *SherpaEmbeddedWakeWord) ensureRuntime() error {
+	ensureSherpaDLLPath()
 	if s.spotter != nil && s.stream != nil {
 		return nil
 	}

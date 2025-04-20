@@ -28,6 +28,7 @@ type ConversationHandler struct {
 	sources    map[string]audio.FrameSource
 	capture    map[string]string
 	modes      map[string]string
+	frameSeen  map[string]bool
 
 	mu     sync.RWMutex
 	active bool
@@ -55,7 +56,7 @@ type conversationState struct {
 var conversationSeq uint64
 
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
-	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string), modes: make(map[string]string)}
+	return &ConversationHandler{configPath: configPath, bus: b, inspector: inspector, providers: providerMgr, streams: make(map[string]*audio.PushFrameSource), sources: make(map[string]audio.FrameSource), capture: make(map[string]string), modes: make(map[string]string), frameSeen: make(map[string]bool)}
 }
 
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
@@ -106,14 +107,15 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	}
 	delete(h.capture, sid)
 	delete(h.modes, sid)
+	delete(h.frameSeen, sid)
 	ctx, cancel := context.WithCancel(context.Background())
 	var source audio.FrameSource
 	mode := strings.TrimSpace(req.Mode)
 	if mode == "" {
-		mode = "manual"
+		mode = "direct"
 	}
 	captureMode := "native"
-	if strings.EqualFold(mode, "manual") {
+	if strings.EqualFold(mode, "manual") || strings.EqualFold(mode, "direct") || strings.EqualFold(mode, "wake") {
 		stream := audio.NewPushFrameSource(64)
 		h.streams[sid] = stream
 		source = stream
@@ -176,6 +178,7 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 	}
 	delete(h.capture, sid)
 	delete(h.modes, sid)
+	delete(h.frameSeen, sid)
 	h.active = false
 	h.mu.Unlock()
 
@@ -217,6 +220,7 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 		delete(h.capture, sid)
 	}
 	delete(h.modes, sid)
+	delete(h.frameSeen, sid)
 	h.active = false
 	h.mu.Unlock()
 
@@ -297,6 +301,18 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 	accepted := false
 	if len(req.Frames) > 0 {
 		accepted = stream.Push(req.Frames)
+		if accepted {
+			h.mu.Lock()
+			firstFrame := !h.frameSeen[sid]
+			if firstFrame {
+				h.frameSeen[sid] = true
+			}
+			mode = h.modes[sid]
+			h.mu.Unlock()
+			if firstFrame {
+				log.Printf("[conversation] mic frame stream active session=%s trace=%s mode=%s frames=%d", sid, tid, mode, len(req.Frames))
+			}
+		}
 	}
 	if req.EOF {
 		stream.Close()
@@ -359,11 +375,12 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		_ = providerMgr.EnsureLayout()
 	}
 	pipeMode := ""
-	if strings.EqualFold(strings.TrimSpace(mode), "manual") {
+	if strings.EqualFold(mode, "direct") {
 		pipeMode = audio.WakeModeVADOnly
 	}
 	pipe := bootstrap.BuildVoicePipelineForMode(cfg, providerMgr, pipeMode)
 	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)
+	log.Printf("[conversation] pipeline init session=%s trace=%s mode=%s wake_enabled=%v wake_ready=%v wake_mode=%s provider=%s keyword=%s keywords=%s model=%s reason=%s", sessionID, traceID, mode, wakeStatus.Enabled, wakeStatus.Ready, wakeStatus.EffectiveMode, wakeStatus.Provider, wakeStatus.Keyword, wakeStatus.KeywordsFile, wakeStatus.ModelDir, wakeStatus.Reason)
 	if wakeStatus.Enabled && !wakeStatus.Ready {
 		h.bus.Publish(bus.Event{Name: "error", SessionID: sessionID, TraceID: traceID, Payload: map[string]string{"code": "wake_word_unavailable", "message": wakeStatus.Reason}})
 	}
@@ -404,6 +421,7 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 		delete(h.sources, sessionID)
 		delete(h.capture, sessionID)
 		delete(h.modes, sessionID)
+		delete(h.frameSeen, sessionID)
 	}
 	h.mu.Unlock()
 

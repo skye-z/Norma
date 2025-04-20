@@ -1,4 +1,4 @@
-import './style.css';
+﻿import './style.css';
 import * as PIXI from 'pixi.js';
 
 window.PIXI = PIXI;
@@ -58,13 +58,7 @@ function siblingCoreURL(modelURL) {
 }
 
 const params = new URLSearchParams(window.location.search);
-const mode = params.get('debug') === '1'
-  ? 'debug'
-  : params.get('settings') === '1'
-    ? 'settings'
-    : params.get('onboarding') === '1'
-      ? 'onboarding'
-      : 'companion';
+const mode = params.get('debug') === '1' ? 'debug' : 'companion';
 
 function mount(html) {
   const app = document.querySelector('#app');
@@ -160,7 +154,6 @@ function createRuntimeEventSource(name, onPayload, onError) {
 function navTabs(active) {
   const tabs = [
     ['http://127.0.0.1:8090/static/console/index.html', '控制台', 'home'],
-    ['?settings=1', '设置', 'settings'],
     ['http://127.0.0.1:8090/static/console/index.html', '控制台首页', 'external']
   ];
   return tabs.map(([href, label, key]) => `<a class="${key === active ? 'active' : ''}" href="${href}">${label}</a>`).join('');
@@ -207,135 +200,27 @@ function writeLog(target, message) {
 function renderSettingsPage() {
   mount(renderConsoleShell(
     'settings',
-    'Managed Providers',
-    '运行时设置',
-    '查看当前 provider 栈、安装状态和就绪度，并在这里执行初始化、应用受管 Provider 和导出审计。',
-    '<button id="refresh-settings" class="primary">刷新状态</button><button id="init-providers">初始化 Provider 目录</button><button id="apply-managed">应用受管 Provider</button>',
+    'Console Redirect',
+    '设置页已移除',
+    '模块管理与首启向导已下线，当前仅保留控制台与桌面伴侣主界面。',
+    '<a class="console-button primary" href="http://127.0.0.1:8090/static/console/index.html">打开控制台</a>',
     `
       <section class="console-grid console-grid-settings">
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>当前栈</h2><span class="console-mini">ACTIVE STACK</span></div>
-          <div class="console-panel-body console-stack" id="stack"></div>
-        </aside>
         <section class="console-panel">
-          <div class="console-panel-head"><h2>Provider 就绪度</h2><span class="console-mini">READY / PARTIAL / MISSING</span></div>
-          <div class="console-panel-body console-stack" id="health"></div>
-        </section>
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>操作日志</h2><span class="console-mini">ACTIONS</span></div>
+          <div class="console-panel-head"><h2>当前状态</h2><span class="console-mini">SIMPLIFIED</span></div>
           <div class="console-panel-body console-stack">
-            <div class="console-actions">
-              <button id="export-readiness">导出就绪检查</button>
-              <button id="open-readiness-dir">打开导出目录</button>
-            </div>
-            <pre id="settings-log" class="console-terminal"></pre>
+            <div class="console-foot">模块管理、Provider 初始化和首启向导页面已移除。</div>
+            <div class="console-foot">如需查看或修改运行时配置，请使用控制台页面。</div>
           </div>
-        </aside>
+        </section>
       </section>
     `
   ));
-
-  const stackEl = document.getElementById('stack');
-  const healthEl = document.getElementById('health');
-  const logEl = document.getElementById('settings-log');
-
-  async function refreshStatus() {
-    const data = await fetchJSON('/providers/status');
-    stackEl.innerHTML = Object.entries(data.stack || {}).map(([name, value]) => `
-      <div class="console-stat-line"><strong>${name}</strong><span>${value || '-'}</span></div>
-    `).join('') || '<div class="console-foot">暂无运行栈信息</div>';
-
-    healthEl.innerHTML = Object.entries(data.health || {}).map(([name, item]) => `
-      <div class="console-card">
-        <div class="console-stat-line"><strong>${name}</strong>${statePill(item.status)}</div>
-        <div class="console-foot">找到：${(item.found || []).join('，') || '无'}</div>
-        <div class="console-foot">缺失：${(item.missing || []).join('，') || '无'}</div>
-        ${item?.paths && typeof item.paths === 'object' && Object.keys(item.paths).length ? `<div class="console-foot">路径：${Object.entries(item.paths).map(([key, value]) => `${key}=${String(value).replaceAll('<', '&lt;')}`).join('<br>')}</div>` : ''}
-      </div>
-    `).join('') || '<div class="console-foot">暂无 provider 信息</div>';
-
-    writeLog(logEl, `已刷新 Provider 状态，根目录：${data.root}`);
-  }
-
-  document.getElementById('refresh-settings')?.addEventListener('click', () => refreshStatus().catch((err) => writeLog(logEl, String(err))));
-  document.getElementById('init-providers')?.addEventListener('click', async () => {
-    await postJSON('/providers/init');
-    writeLog(logEl, '已初始化 Provider 目录');
-    await refreshStatus();
-  });
-  document.getElementById('apply-managed')?.addEventListener('click', async () => {
-    await postJSON('/providers/apply-managed');
-    writeLog(logEl, '已应用受管 Provider 到当前配置');
-    await refreshStatus();
-  });
-  document.getElementById('export-readiness')?.addEventListener('click', async () => {
-    const data = await postJSON('/providers/export-readiness');
-    writeLog(logEl, `已导出就绪检查：${data.path}`);
-  });
-  document.getElementById('open-readiness-dir')?.addEventListener('click', async () => {
-    await postJSON('/providers/open-readiness-dir');
-    writeLog(logEl, '已请求打开导出目录');
-  });
-
-  refreshStatus().catch((err) => writeLog(logEl, String(err)));
 }
 
 function renderOnboardingPage() {
-  mount(renderConsoleShell(
-    'onboarding',
-    'First Run Check',
-    '首启向导',
-    '用于首装时检查模型、Provider、配置文件和设备脚本，快速识别是否能直接进入桌面伴侣模式。',
-    '<button id="refresh-onboarding" class="primary">重新检测</button><a class="console-button" href="?settings=1">转到设置</a>',
-    `
-      <section class="console-grid console-grid-onboarding">
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>总体状态</h2><span class="console-mini">SETUP READY</span></div>
-          <div class="console-panel-body console-stack">
-            <div id="overall"></div>
-            <div class="console-card"><div class="console-label">建议动作</div><div id="suggestions" class="console-stack"></div></div>
-          </div>
-        </aside>
-        <section class="console-panel">
-          <div class="console-panel-head"><h2>检查项</h2><span class="console-mini">CHECKLIST</span></div>
-          <div class="console-panel-body console-stack" id="checks"></div>
-        </section>
-        <aside class="console-panel">
-          <div class="console-panel-head"><h2>回退方案</h2><span class="console-mini">FALLBACK MODES</span></div>
-          <div class="console-panel-body console-stack" id="fallbacks"></div>
-        </aside>
-      </section>
-    `
-  ));
-
-  const overallEl = document.getElementById('overall');
-  const suggestionsEl = document.getElementById('suggestions');
-  const checksEl = document.getElementById('checks');
-  const fallbacksEl = document.getElementById('fallbacks');
-
-  async function refreshWizard() {
-    const data = await fetchJSON('/setup/wizard');
-    overallEl.innerHTML = `
-      <div class="console-card">
-        <div class="console-stat-line"><strong>首启状态</strong>${statePill(data.ready ? 'ready' : 'partial')}</div>
-        <div class="console-foot">${data.ready ? '当前配置已可进入桌面伴侣模式。' : '仍有缺项，建议先补齐关键 Provider 或模型资源。'}</div>
-      </div>
-    `;
-    suggestionsEl.innerHTML = (data.suggestions || []).map((item) => `<div class="console-foot">${item}</div>`).join('') || '<div class="console-foot">暂无建议</div>';
-    checksEl.innerHTML = (data.checks || []).map((item) => `
-      <div class="console-card">
-        <div class="console-stat-line"><strong>${item.name}</strong>${statePill(item.status)}</div>
-        <div class="console-foot">${item.detail || '-'}</div>
-        <div class="console-foot">建议：${item.hint || '-'}</div>
-      </div>
-    `).join('') || '<div class="console-foot">暂无检查项</div>';
-    fallbacksEl.innerHTML = (data.fallback_modes || []).map((item) => `<div class="console-card"><div class="console-foot">${item}</div></div>`).join('') || '<div class="console-foot">暂无回退方案</div>';
-  }
-
-  document.getElementById('refresh-onboarding')?.addEventListener('click', () => refreshWizard().catch(console.error));
-  refreshWizard().catch(console.error);
+  renderSettingsPage();
 }
-
 function renderCompanionPage() {
   document.body.classList.remove('console-mode');
   document.addEventListener('contextmenu', (event) => {
@@ -423,6 +308,8 @@ async function initCompanion() {
     mediaProcessor: null,
     captureMode: '',
     sessionMode: '',
+    backgroundWakeActive: false,
+    backgroundWakeStarting: false,
     playbackContext: null,
     playbackQueue: Promise.resolve(),
     audioFormat: { sampleRate: 22050, channels: 1, encoding: 'pcm_s16le' },
@@ -709,6 +596,33 @@ async function initCompanion() {
     }).catch(() => undefined);
   }
 
+  function shouldStreamMicFrames() {
+    return state.speechListening || state.backgroundWakeActive;
+  }
+
+  async function ensureBackgroundWake() {
+    if (state.speechListening || state.backgroundWakeActive || state.backgroundWakeStarting) return;
+    state.backgroundWakeStarting = true;
+    try {
+      const started = await postJSON('/conversation/mic/start', { mode: 'manual' });
+      state.sessionID = String(started?.session_id || '');
+      state.traceID = String(started?.trace_id || started?.session_id || '');
+      state.captureMode = String(started?.capture || '');
+      state.sessionMode = String(started?.mode || 'manual');
+      state.backgroundWakeActive = true;
+      state.useSpeechFallback = false;
+      if (state.captureMode === 'push') {
+        await startMediaCapture();
+      }
+      setStatus('唤醒词待命中：诺玛', 'info', true);
+    } catch (error) {
+      state.backgroundWakeActive = false;
+      console.warn('[wake] background session failed', error);
+    } finally {
+      state.backgroundWakeStarting = false;
+    }
+  }
+
   async function stopMediaCapture(eof = true) {
     if (state.mediaProcessor) {
       try { state.mediaProcessor.disconnect(); } catch (_) {}
@@ -737,7 +651,7 @@ async function initCompanion() {
     const source = audioCtx.createMediaStreamSource(stream);
     const processor = audioCtx.createScriptProcessor(2048, 1, 1);
     processor.onaudioprocess = (event) => {
-      if (!state.speechListening) return;
+      if (!shouldStreamMicFrames()) return;
       const input = event.inputBuffer.getChannelData(0);
       const downsampled = downsampleBuffer(input, audioCtx.sampleRate, 16000);
       sendMicFrame(downsampled, false).catch(() => undefined);
@@ -892,6 +806,8 @@ async function initCompanion() {
     stopMediaCapture(false).catch(() => undefined);
     resetPlaybackState();
     state.captureMode = '';
+    state.backgroundWakeActive = false;
+    state.backgroundWakeStarting = false;
     state.speechRecognition = null;
     setMicListening(false);
     if (state.resizeObserver) {
@@ -938,8 +854,13 @@ async function initCompanion() {
         state.sessionMode = '';
         state.sessionID = '';
         state.traceID = '';
+        window.setTimeout(() => {
+          ensureBackgroundWake().catch(() => undefined);
+        }, 250);
       } else {
-        postJSON('/conversation/mic/start', { mode: 'manual' }).then((started) => {
+        state.backgroundWakeActive = false;
+        state.backgroundWakeStarting = false;
+        postJSON('/conversation/mic/start', { mode: 'direct' }).then((started) => {
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
           state.captureMode = String(started?.capture || '');
@@ -947,12 +868,12 @@ async function initCompanion() {
           setMicListening(true);
           if (state.captureMode === 'native') {
             state.useSpeechFallback = false;
-            setStatus(state.sessionMode === 'manual' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（桌面原生采集）', 'info');
+            setStatus(state.sessionMode === 'direct' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（桌面原生采集）', 'info');
             return;
           }
           startMediaCapture().then(() => {
             state.useSpeechFallback = false;
-            setStatus(state.sessionMode === 'manual' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（真实麦克风）', 'info');
+            setStatus(state.sessionMode === 'direct' ? '语音输入已启动（手动直通识别）' : '语音输入已启动（真实麦克风）', 'info');
           }).catch(async () => {
             if (!state.speechRecognition) throw new Error('native capture unavailable and no browser fallback recognizer');
             state.useSpeechFallback = true;
@@ -962,7 +883,7 @@ async function initCompanion() {
         }).catch(async () => {
           if (!state.speechRecognition) throw new Error('conversation start failed and no browser fallback recognizer');
           state.useSpeechFallback = true;
-          const started = await postJSON('/conversation/mic/start', { mode: 'manual' }).catch(() => ({}));
+          const started = await postJSON('/conversation/mic/start', { mode: 'direct' }).catch(() => ({}));
           state.sessionID = String(started?.session_id || '');
           state.traceID = String(started?.trace_id || started?.session_id || '');
           state.sessionMode = String(started?.mode || 'manual');
@@ -1245,6 +1166,7 @@ async function initCompanion() {
       stage.style.opacity = '1';
     }
     setStatus('Live2D 模型已加载', 'ready', true);
+    ensureBackgroundWake().catch(() => undefined);
 
     state.app.ticker.add(() => {
       const t = performance.now() / 1000;
@@ -1314,3 +1236,9 @@ async function boot() {
 boot().catch((err) => {
   console.error(err);
 });
+
+
+
+
+
+
