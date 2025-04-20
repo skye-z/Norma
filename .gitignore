@@ -47,3 +47,6 @@ fumadocs-docs.png
 # Docs app artifacts
 docs/.next/
 docs/.content-collections/
+docs/.yarn/
+docs/node_modules/
+.pnp.*
