@@ -46,6 +46,7 @@ type audioPlayback interface {
 	Queue(sessionID, traceID string, chunk []byte) error
 	Complete(sessionID, traceID string)
 	Stop(sessionID, traceID, reason string)
+	Drain(ctx context.Context, sessionID string) error
 	Wait(ctx context.Context, sessionID string) error
 }
 

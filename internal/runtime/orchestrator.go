@@ -35,6 +35,7 @@ type playbackSink interface {
 	Queue(sessionID, traceID string, chunk []byte) error
 	Complete(sessionID, traceID string)
 	Stop(sessionID, traceID, reason string)
+	Drain(ctx context.Context, sessionID string) error
 	Wait(ctx context.Context, sessionID string) error
 }
 
@@ -195,9 +196,17 @@ func (o *Orchestrator) handleAssistantSay(sessionID, traceID, text string, inter
 	}
 }
 
-func (o *Orchestrator) currentPersona() string {
+func (o *Orchestrator) currentConfig() *config.Config {
 	cfg, err := config.Load(layout.ConfigFileName)
 	if err != nil || cfg == nil {
+		return nil
+	}
+	return cfg
+}
+
+func (o *Orchestrator) currentPersona() string {
+	cfg := o.currentConfig()
+	if cfg == nil {
 		return config.DefaultLLMPersona
 	}
 	persona := strings.TrimSpace(cfg.LLM.Persona)
@@ -208,14 +217,24 @@ func (o *Orchestrator) currentPersona() string {
 }
 
 func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, answer string) error {
+	cfg := o.currentConfig()
+	sentenceFirstEnabled := cfg == nil || cfg.TTS.SentenceFirstEnabled
 	plan := companion.PlanReply(answer)
+	if !sentenceFirstEnabled {
+		cleaned := strings.TrimSpace(answer)
+		if cleaned == "" {
+			cleaned = "???????????????"
+		}
+		plan = companion.ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: cleaned, Segments: []string{cleaned}}
+	}
 	if len(plan.Segments) == 0 {
-		plan = companion.PlanReply("先给结论：当前没有可播报内容。")
+		plan = companion.PlanReply("???????????????")
 	}
 	emotion := companion.AnalyzeEmotion(answer)
 	plan.Delivery = companion.BuildDeliveryPlan(plan, emotion)
 	plan.Styled = answer
 	runtimeHints := companion.BuildPersonaRuntimeConfig(plan.Delivery, true)
+	log.Printf("[tts] runtime config session=%s trace=%s sentence_first_enabled=%v segments=%d", sessionID, traceID, sentenceFirstEnabled, len(plan.Segments))
 	o.rt.Bus.Publish(bus.Event{Name: "assistant.reply.plan", SessionID: sessionID, TraceID: traceID, Payload: plan})
 	o.rt.Bus.Publish(bus.Event{Name: "assistant.runtime.hints", SessionID: sessionID, TraceID: traceID, Payload: runtimeHints})
 	o.rt.Bus.Publish(bus.Event{Name: "live2d.emotion", SessionID: sessionID, TraceID: traceID, Payload: emotion})
@@ -269,6 +288,13 @@ func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, ans
 			return err
 		}
 		log.Printf("[tts] segment done session=%s trace=%s index=%d", sessionID, traceID, index)
+		if o.playback != nil && sentenceFirstEnabled && index < len(plan.Segments)-1 {
+			start := time.Now()
+			if err := o.playback.Drain(ctx, sessionID); err != nil {
+				return err
+			}
+			log.Printf("[tts] segment playback drained session=%s trace=%s index=%d elapsed_ms=%d", sessionID, traceID, index, time.Since(start).Milliseconds())
+		}
 	}
 	if o.playback != nil {
 		start := time.Now()

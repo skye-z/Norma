@@ -258,10 +258,11 @@ func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Reque
 }
 
 type micFrameReq struct {
-	SessionID string    `json:"session_id"`
-	TraceID   string    `json:"trace_id"`
-	Frames    []float32 `json:"frames"`
-	EOF       bool      `json:"eof"`
+	SessionID  string    `json:"session_id"`
+	TraceID    string    `json:"trace_id"`
+	SampleRate int       `json:"sample_rate"`
+	Frames     []float32 `json:"frames"`
+	EOF        bool      `json:"eof"`
 }
 
 func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Request) {
@@ -363,7 +364,11 @@ func (h *ConversationHandler) ingestMicFrame(sid, tid string, req micFrameReq) (
 	}
 	accepted := false
 	if len(req.Frames) > 0 {
-		accepted = stream.Push(req.Frames)
+		frame := req.Frames
+		if req.SampleRate > 0 && req.SampleRate != 16000 {
+			frame = resampleConversationFrame(req.Frames, req.SampleRate, 16000)
+		}
+		accepted = stream.Push(frame)
 		if accepted {
 			h.mu.Lock()
 			firstFrame := !h.frameSeen[sid]
@@ -387,6 +392,50 @@ func (h *ConversationHandler) ingestMicFrame(sid, tid string, req micFrameReq) (
 		h.mu.Unlock()
 	}
 	return accepted, http.StatusOK, ""
+}
+
+func resampleConversationFrame(frame []float32, inputRate, targetRate int) []float32 {
+	if len(frame) == 0 || inputRate <= 0 || targetRate <= 0 || inputRate == targetRate {
+		return frame
+	}
+	if inputRate < targetRate {
+		return frame
+	}
+	ratio := float64(inputRate) / float64(targetRate)
+	length := int(float64(len(frame)) / ratio)
+	if length <= 0 {
+		length = 1
+	}
+	out := make([]float32, length)
+	offset := 0
+	for i := 0; i < length; i++ {
+		nextOffset := int(float64(i+1) * ratio)
+		if nextOffset > len(frame) {
+			nextOffset = len(frame)
+		}
+		if nextOffset <= offset {
+			nextOffset = offset + 1
+			if nextOffset > len(frame) {
+				nextOffset = len(frame)
+			}
+		}
+		var sum float32
+		count := 0
+		for j := offset; j < nextOffset; j++ {
+			sum += frame[j]
+			count++
+		}
+		if count > 0 {
+			out[i] = sum / float32(count)
+		} else {
+			out[i] = frame[offset]
+		}
+		offset = nextOffset
+		if offset >= len(frame) {
+			offset = len(frame) - 1
+		}
+	}
+	return out
 }
 
 func (h *ConversationHandler) snapshot() conversationState {

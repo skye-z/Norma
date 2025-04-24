@@ -71,6 +71,7 @@ func (w *WhisperEmbeddedASR) TranscribeFrames(ctx context.Context, frames [][]fl
 		log.Printf("[asr] whisper empty audio")
 		return fmt.Errorf("embedded whisper empty audio")
 	}
+	log.Printf("[asr] whisper using raw samples samples=%d", len(samples))
 	if err := whisperCtx.Process(samples, nil, nil, nil); err != nil {
 		log.Printf("[asr] whisper process failed: %v", err)
 		return fmt.Errorf("embedded whisper process failed: %w", err)

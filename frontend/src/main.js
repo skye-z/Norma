@@ -311,6 +311,7 @@ async function initCompanion() {
     micFrameQueue: [],
     micFlushTimer: null,
     micSendInFlight: false,
+    captureSampleRate: 16000,
     micSocket: null,
     micSocketSessionID: '',
     micSocketTraceID: '',
@@ -583,19 +584,6 @@ async function initCompanion() {
     return recognition;
   }
 
-  function downsampleBuffer(input, inputRate, targetRate) {
-    if (!input || !input.length) return new Float32Array(0);
-    if (!inputRate || inputRate === targetRate) return input;
-    const ratio = inputRate / targetRate;
-    const length = Math.max(1, Math.round(input.length / ratio));
-    const output = new Float32Array(length);
-    for (let i = 0; i < length; i += 1) {
-      const idx = Math.min(input.length - 1, Math.round(i * ratio));
-      output[i] = input[idx];
-    }
-    return output;
-  }
-
   function pcm16ToFloat32(buffer) {
     const view = new DataView(buffer);
     const out = new Float32Array(buffer.byteLength / 2);
@@ -660,6 +648,7 @@ async function initCompanion() {
         socket.send(JSON.stringify({
           session_id: state.sessionID,
           trace_id: state.traceID,
+          sample_rate: state.captureSampleRate,
           frames,
           eof
         }));
@@ -669,13 +658,16 @@ async function initCompanion() {
     await postJSON('/conversation/mic/frame', {
       session_id: state.sessionID,
       trace_id: state.traceID,
+      sample_rate: state.captureSampleRate,
       frames,
       eof
     }).catch(() => undefined);
   }
 
   function flushThresholdSamples() {
-    return state.sessionMode === 'wake' ? 5120 : 2048;
+    const baseRate = state.captureSampleRate > 0 ? state.captureSampleRate : 16000;
+    const frameMs = 20;
+    return Math.max(256, Math.round((baseRate * frameMs) / 1000));
   }
 
   async function flushMicFrames(eof = false) {
@@ -697,7 +689,7 @@ async function initCompanion() {
 
   function scheduleMicFlush() {
     if (state.micFlushTimer) return;
-    const delay = state.sessionMode === 'wake' ? 320 : 80;
+    const delay = 20;
     state.micFlushTimer = window.setTimeout(() => {
       state.micFlushTimer = null;
       flushMicFrames(false).catch(() => undefined);
@@ -851,8 +843,7 @@ async function initCompanion() {
     processor.onaudioprocess = (event) => {
       if (!shouldStreamMicFrames()) return;
       const input = event.inputBuffer.getChannelData(0);
-      const downsampled = downsampleBuffer(input, audioCtx.sampleRate, 16000);
-      enqueueMicFrame(downsampled);
+      enqueueMicFrame(new Float32Array(input));
     };
     source.connect(processor);
     processor.connect(sink);
@@ -884,7 +875,7 @@ async function initCompanion() {
       if (data.type !== 'frames' || !data.frames) return;
       enqueueMicFrame(data.frames);
     };
-    processor.port.postMessage({ targetSampleRate: 16000, flushSamples: currentFlushSamples() });
+    processor.port.postMessage({ flushSamples: currentFlushSamples() });
     source.connect(processor);
     processor.connect(sink);
     sink.connect(audioCtx.destination);
@@ -900,7 +891,7 @@ async function initCompanion() {
     }
     if (state.mediaStream && state.mediaContext && state.mediaProcessor) {
       if (state.mediaProcessor?.port) {
-        state.mediaProcessor.port.postMessage({ targetSampleRate: 16000, flushSamples: currentFlushSamples() });
+        state.mediaProcessor.port.postMessage({ flushSamples: currentFlushSamples() });
       }
       return;
     }
@@ -917,6 +908,7 @@ async function initCompanion() {
     const audioCtx = new AudioCtx({ latencyHint: state.sessionMode === 'wake' ? 'playback' : 'interactive' });
     state.mediaStream = stream;
     state.mediaContext = audioCtx;
+    state.captureSampleRate = Number(audioCtx.sampleRate || 16000);
     state.micFrameQueue = [];
     state.micSendInFlight = false;
     try {

@@ -69,24 +69,15 @@ func PlanReply(text string) ReplyPlan {
 func RewritePersona(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "先给结论：我现在没有可用内容。"
+		return "??????????"
 	}
-	text = strings.ReplaceAll(text, "首先，", "先给结论，")
-	text = strings.ReplaceAll(text, "总之", "一句话总结")
-	if !containsAny(text, "先给结论", "一句话总结", "直接说结论") {
-		parts := splitRE.Split(text, -1)
-		first := strings.TrimSpace(parts[0])
-		if first != "" {
-			remainder := strings.TrimSpace(strings.TrimPrefix(text, first))
-			remainder = strings.TrimLeft(remainder, "。！？!?；;，, ")
-			text = "先给结论：" + first
-			if remainder != "" {
-				text += "。" + remainder
-			}
-		}
-	}
-	text = strings.ReplaceAll(text, "你可以", "你可以直接")
-	text = strings.ReplaceAll(text, "建议", "我建议")
+	text = strings.ReplaceAll(text, "???", "?????")
+	text = strings.ReplaceAll(text, "??", "???")
+	text = strings.ReplaceAll(text, "?????", "")
+	text = strings.ReplaceAll(text, "????", "")
+	text = strings.ReplaceAll(text, "??????", "")
+	text = strings.ReplaceAll(text, "?????", "")
+	text = strings.TrimLeft(text, "?:?,? ")
 	return strings.TrimSpace(text)
 }
 

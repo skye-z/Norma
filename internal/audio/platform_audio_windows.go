@@ -319,6 +319,24 @@ func (s *platformPlaybackSink) Complete(sessionID, traceID string) {
 	}
 }
 
+func (s *platformPlaybackSink) Drain(ctx context.Context, sessionID string) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		s.mu.Lock()
+		if s.sessionID != sessionID || s.ended || s.pending == 0 {
+			s.mu.Unlock()
+			return nil
+		}
+		s.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func (s *platformPlaybackSink) Stop(sessionID, traceID, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

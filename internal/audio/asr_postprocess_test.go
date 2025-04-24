@@ -41,3 +41,11 @@ func TestPostProcessASRTextFixesTruncatedIntroSentence(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestPostProcessASRTextFixesWeatherQueryNearMiss(t *testing.T) {
+	got := PostProcessASRText("?????? ????", "??")
+	want := "??????????????"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
