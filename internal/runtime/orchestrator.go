@@ -153,9 +153,14 @@ func (o *Orchestrator) handleFinalText(sessionID, traceID, text string) {
 
 	answer := strings.TrimSpace(sb.String())
 	if answer == "" {
-		answer = "抱歉，我现在没有可用回答。"
+		answer = "\u62b1\u6b49\uff0c\u6211\u73b0\u5728\u6ca1\u6709\u53ef\u7528\u56de\u7b54\u3002"
 	}
 	answer = companion.RewritePersona(answer)
+	answer, controls := companion.ExtractLive2DControls(answer)
+	if answer == "" {
+		answer = "\u6536\u5230\uff0c\u6211\u5728\u3002"
+	}
+	o.publishLive2DControls(sessionID, traceID, controls)
 	log.Printf("[llm] done session=%s trace=%s answer=%q", sessionID, traceID, answer)
 	if err := o.streamAnswer(ctx, sessionID, traceID, answer); err != nil && err != context.Canceled {
 		log.Printf("[orchestrator] stream answer error: %v", err)
@@ -216,6 +221,26 @@ func (o *Orchestrator) currentPersona() string {
 	return persona
 }
 
+func (o *Orchestrator) publishLive2DControls(sessionID, traceID string, controls []companion.Live2DControl) {
+	for _, control := range controls {
+		log.Printf("[llm] live2d control session=%s trace=%s kind=%s name=%s marker=%q", sessionID, traceID, control.Kind, control.Name, control.RawMarker)
+		switch control.Kind {
+		case "motion":
+			payload := map[string]any{"group": control.Name, "priority": 92, "interruptible": true, "source": "llm"}
+			for key, value := range control.Payload {
+				payload[key] = value
+			}
+			o.rt.Bus.Publish(bus.Event{Name: "live2d.motion", SessionID: sessionID, TraceID: traceID, Payload: payload})
+		case "expression":
+			payload := map[string]any{"name": control.Name, "hold_ms": 1400, "source": "llm"}
+			for key, value := range control.Payload {
+				payload[key] = value
+			}
+			o.rt.Bus.Publish(bus.Event{Name: "live2d.expression", SessionID: sessionID, TraceID: traceID, Payload: payload})
+		}
+	}
+}
+
 func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, answer string) error {
 	cfg := o.currentConfig()
 	sentenceFirstEnabled := cfg == nil || cfg.TTS.SentenceFirstEnabled
@@ -223,12 +248,12 @@ func (o *Orchestrator) streamAnswer(ctx context.Context, sessionID, traceID, ans
 	if !sentenceFirstEnabled {
 		cleaned := strings.TrimSpace(answer)
 		if cleaned == "" {
-			cleaned = "???????????????"
+			cleaned = "\u62b1\u6b49\uff0c\u6211\u8fd9\u8fb9\u6682\u65f6\u6ca1\u7ec4\u7ec7\u597d\u56de\u7b54\u3002"
 		}
 		plan = companion.ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: cleaned, Segments: []string{cleaned}}
 	}
 	if len(plan.Segments) == 0 {
-		plan = companion.PlanReply("???????????????")
+		plan = companion.PlanReply("\u62b1\u6b49\uff0c\u6211\u8fd9\u8fb9\u6682\u65f6\u6ca1\u7ec4\u7ec7\u597d\u56de\u7b54\u3002")
 	}
 	emotion := companion.AnalyzeEmotion(answer)
 	plan.Delivery = companion.BuildDeliveryPlan(plan, emotion)

@@ -989,6 +989,14 @@ async function initCompanion() {
     return Math.max(0, Math.min(1.15, rms * 6.5));
   }
 
+  function pcm16Base64ToFloat32(base64Chunk) {
+    if (!base64Chunk) return new Float32Array(0);
+    const binary = atob(base64Chunk);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return pcm16ToFloat32(bytes.buffer);
+  }
+
   function driveMouthFromSamples(samples, sessionID, traceID) {
     const level = computeChunkLevel(samples);
     state.mouthTarget = level;
@@ -1287,24 +1295,28 @@ async function initCompanion() {
       if (typeof payload.audio_base64 !== 'string' || !payload.audio_base64) return;
       const evtSessionID = String(evt?.session_id || state.sessionID || '');
       const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');
-      if (window.__NORMA_NATIVE_AUDIO__) return;
-      markPlaybackStart(evtSessionID, evtTraceID);
-      state.playbackState.pending += 1;
-      state.playbackQueue = state.playbackQueue
-        .then(() => playPCMChunk(payload.audio_base64))
-        .then((samples) => {
-          driveMouthFromSamples(samples, evtSessionID, evtTraceID);
-          return publish('audio.play.progress', {
-            source: 'web-audio',
-            bytes: Number(payload.bytes) || 0,
-            level: computeChunkLevel(samples)
-          }, { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
-        })
-        .finally(() => {
-          state.playbackState.pending = Math.max(0, state.playbackState.pending - 1);
-          finishPlaybackIfIdle(state.playbackState.interrupted ? 'interrupt' : 'done');
-        })
-        .catch((error) => console.error(error));
+      if (window.__NORMA_WEB_AUDIO_PLAYBACK__ === true) {
+        if (window.__NORMA_NATIVE_AUDIO__) return;
+        markPlaybackStart(evtSessionID, evtTraceID);
+        state.playbackState.pending += 1;
+        state.playbackQueue = state.playbackQueue
+          .then(() => playPCMChunk(payload.audio_base64))
+          .then((samples) => {
+            driveMouthFromSamples(samples, evtSessionID, evtTraceID);
+            return publish('audio.play.progress', {
+              source: 'web-audio',
+              bytes: Number(payload.bytes) || 0,
+              level: computeChunkLevel(samples)
+            }, { sessionID: evtSessionID, traceID: evtTraceID }).catch(() => undefined);
+          })
+          .finally(() => {
+            state.playbackState.pending = Math.max(0, state.playbackState.pending - 1);
+            finishPlaybackIfIdle(state.playbackState.interrupted ? 'interrupt' : 'done');
+          })
+          .catch((error) => console.error(error));
+        return;
+      }
+      driveMouthFromSamples(pcm16Base64ToFloat32(payload.audio_base64), evtSessionID, evtTraceID);
     }));
 
     state.eventSources.push(createRuntimeEventSource('audio.play.start', (_payload, evt) => {

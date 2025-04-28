@@ -44,7 +44,48 @@ type VisemeFrame struct {
 	Duration  int     `json:"duration_ms"`
 }
 
-var splitRE = regexp.MustCompile(`[。！？!?；;\n]+`)
+type Live2DControl struct {
+	Kind      string         `json:"kind"`
+	Name      string         `json:"name"`
+	RawMarker string         `json:"raw_marker"`
+	Payload   map[string]any `json:"payload,omitempty"`
+}
+
+var (
+	splitRE          = regexp.MustCompile("[\u3002\uff01\uff1f!??;\n]+")
+	live2dMarkerRE   = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
+	spaceBeforePunct = regexp.MustCompile("\\s+([\uFF0C\u3002\uFF01\uFF1F\uFF1B\uFF1A,.!?;:])")
+	multiSpaceRE     = regexp.MustCompile(`\s{2,}`)
+)
+
+var live2DMotionAliases = map[string]string{
+	"thinking":     "thinking",
+	"think":        "thinking",
+	"\u601d\u8003": "thinking",
+	"idle":         "idle",
+	"\u5f85\u673a": "idle",
+	"tap":          "Tap",
+	"nod":          "Tap",
+	"\u70b9\u5934": "Tap",
+	"flick":        "Flick",
+	"alert":        "Flick",
+	"\u8b66\u89c9": "Flick",
+	"wave":         "Wave",
+	"\u6325\u624b": "Wave",
+}
+
+var live2DExpressionAliases = map[string]string{
+	"smile":        "smile",
+	"\u5fae\u7b11": "smile",
+	"soft":         "soft",
+	"\u6e29\u548c": "soft",
+	"focus":        "focus",
+	"\u4e13\u6ce8": "focus",
+	"alert":        "alert",
+	"\u8b66\u89c9": "alert",
+	"neutral":      "neutral",
+	"\u5e73\u9759": "neutral",
+}
 
 func PlanReply(text string) ReplyPlan {
 	cleaned := strings.TrimSpace(text)
@@ -69,16 +110,74 @@ func PlanReply(text string) ReplyPlan {
 func RewritePersona(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "??????????"
+		return "\u62b1\u6b49\uff0c\u6211\u73b0\u5728\u6ca1\u6709\u53ef\u7528\u56de\u7b54\u3002"
 	}
-	text = strings.ReplaceAll(text, "???", "?????")
-	text = strings.ReplaceAll(text, "??", "???")
-	text = strings.ReplaceAll(text, "?????", "")
-	text = strings.ReplaceAll(text, "????", "")
-	text = strings.ReplaceAll(text, "??????", "")
-	text = strings.ReplaceAll(text, "?????", "")
-	text = strings.TrimLeft(text, "?:?,? ")
-	return strings.TrimSpace(text)
+	replacements := []struct {
+		old string
+		new string
+	}{
+		{"\u5148\u7ed9\u7ed3\u8bba\uff1a", ""},
+		{"\u4e00\u53e5\u8bdd\u603b\u7ed3\uff1a", ""},
+		{"\u7ed3\u8bba\uff1a", ""},
+		{"\u603b\u7ed3\uff1a", ""},
+	}
+	for _, item := range replacements {
+		text = strings.ReplaceAll(text, item.old, item.new)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "\u62b1\u6b49\uff0c\u6211\u73b0\u5728\u6ca1\u6709\u53ef\u7528\u56de\u7b54\u3002"
+	}
+	return text
+}
+
+func ExtractLive2DControls(text string) (string, []Live2DControl) {
+	matches := live2dMarkerRE.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return strings.TrimSpace(text), nil
+	}
+	controls := make([]Live2DControl, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		body := strings.TrimSpace(match[1])
+		if control, ok := parseLive2DControl(body, match[0]); ok {
+			controls = append(controls, control)
+		}
+	}
+	cleaned := live2dMarkerRE.ReplaceAllString(text, " ")
+	cleaned = spaceBeforePunct.ReplaceAllString(cleaned, "$1")
+	cleaned = multiSpaceRE.ReplaceAllString(cleaned, " ")
+	cleaned = strings.TrimSpace(cleaned)
+	return cleaned, controls
+}
+
+func parseLive2DControl(body, raw string) (Live2DControl, bool) {
+	kind := ""
+	name := body
+	if idx := strings.Index(body, ":"); idx >= 0 {
+		kind = strings.ToLower(strings.TrimSpace(body[:idx]))
+		name = strings.TrimSpace(body[idx+1:])
+	}
+	aliasKey := strings.ToLower(strings.TrimSpace(name))
+	aliasKey = strings.ReplaceAll(aliasKey, "\u52a8\u4f5c", "")
+	aliasKey = strings.ReplaceAll(aliasKey, "\u8868\u60c5", "")
+	aliasKey = strings.TrimSpace(aliasKey)
+	if aliasKey == "" {
+		return Live2DControl{}, false
+	}
+	if kind == "" || kind == "motion" || kind == "\u52a8\u4f5c" {
+		if motion, ok := live2DMotionAliases[aliasKey]; ok {
+			return Live2DControl{Kind: "motion", Name: motion, RawMarker: raw, Payload: map[string]any{"group": motion, "priority": 92, "interruptible": true, "source": "llm"}}, true
+		}
+	}
+	if kind == "" || kind == "expression" || kind == "\u8868\u60c5" {
+		if expression, ok := live2DExpressionAliases[aliasKey]; ok {
+			return Live2DControl{Kind: "expression", Name: expression, RawMarker: raw, Payload: map[string]any{"name": expression, "hold_ms": 1400, "source": "llm"}}, true
+		}
+	}
+	return Live2DControl{}, false
 }
 
 func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
@@ -99,7 +198,7 @@ func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
 			pauseMs = 220
 			styleHint = "paced"
 		}
-		if containsAny(segment, "注意", "风险", "不要", "必须") {
+		if containsAny(segment, "\u6ce8\u610f", "\u98ce\u9669", "\u4e0d\u8981", "\u5fc5\u987b") {
 			emphasis = "strong"
 			styleHint = "warning"
 		}
@@ -149,13 +248,13 @@ func AnalyzeEmotion(text string) EmotionSpec {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	spec := EmotionSpec{Emotion: "neutral", Motion: "Idle", Intensity: 0.45}
 	switch {
-	case containsAny(lower, "抱歉", "sorry", "遗憾", "不好意思"):
+	case containsAny(lower, "\u62b1\u6b49", "sorry", "\u9057\u61be", "\u4e0d\u597d\u610f\u601d"):
 		spec = EmotionSpec{Emotion: "apology", Motion: "Idle", Expression: "soft", Intensity: 0.35, Params: map[string]float64{"ParamBrowAngleY": -0.25, "ParamEyeLOpen": 0.85, "ParamEyeROpen": 0.85}}
-	case containsAny(lower, "太好了", "很好", "完成", "成功", "great", "done"):
+	case containsAny(lower, "\u592a\u597d\u4e86", "\u5f88\u597d", "\u5b8c\u6210", "\u6210\u529f", "great", "done"):
 		spec = EmotionSpec{Emotion: "positive", Motion: "Tap", Expression: "smile", Intensity: 0.72, Params: map[string]float64{"ParamMouthForm": 0.55, "ParamCheek": 0.35, "ParamBrowAngleY": 0.18}}
-	case containsAny(lower, "注意", "警告", "风险", "失败", "error", "warning"):
+	case containsAny(lower, "\u6ce8\u610f", "\u8b66\u544a", "\u98ce\u9669", "\u5931\u8d25", "error", "warning"):
 		spec = EmotionSpec{Emotion: "alert", Motion: "Flick", Expression: "alert", Intensity: 0.82, Params: map[string]float64{"ParamEyeBallX": 0.08, "ParamBrowAngleY": 0.32, "ParamMouthForm": -0.18}}
-	case containsAny(lower, "建议", "可以这样", "步骤", "先", "然后"):
+	case containsAny(lower, "\u5efa\u8bae", "\u53ef\u4ee5\u8fd9\u6837", "\u6b65\u9aa4", "\u5148", "\u7136\u540e"):
 		spec = EmotionSpec{Emotion: "guide", Motion: "Tap", Expression: "focus", Intensity: 0.58, Params: map[string]float64{"ParamBrowAngleY": 0.12, "ParamMouthForm": 0.14, "ParamEyeLOpen": 0.96, "ParamEyeROpen": 0.96}}
 	}
 	if utf8.RuneCountInString(lower) > 120 {
@@ -199,15 +298,15 @@ func containsAny(text string, values ...string) bool {
 
 func classifyRune(r rune) string {
 	switch strings.ToLower(string(r)) {
-	case "a", "啊", "呀":
+	case "a", "\u554a", "\u5440":
 		return "a"
-	case "o", "喔", "哦":
+	case "o", "\u5594", "\u54e6":
 		return "o"
-	case "e", "欸", "诶":
+	case "e", "\u6b38", "\u8bf6":
 		return "e"
-	case "i", "y", "衣", "一":
+	case "i", "y", "\u8863", "\u4e00":
 		return "i"
-	case "u", "w", "乌", "呜":
+	case "u", "w", "\u4e4c", "\u545c":
 		return "u"
 	default:
 		return "mid"
