@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$MSYS2Shell = "D:\Environment\MSYS2\msys2_shell.cmd",
   [string]$WhisperCppDir = "D:/Project/AI/Norma/deps/whisper.cpp",
   [string]$Tags = "whisper_embedded,sherpa_embedded"
