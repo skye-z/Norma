@@ -1,5 +1,4 @@
-// Package bootstrap 提供运行时启动和组件初始化的核心功能
-// 负责构建完整的语音交互系统，包括音频处理、LLM、记忆检索等组件
+// Package bootstrap 提供运行时启动和组件初始化功能
 package bootstrap
 
 import (
@@ -26,8 +25,7 @@ import (
 	"xorm.io/xorm"
 )
 
-// Stack 包含运行时所需的所有核心组件
-// 构建整个应用的服务栈，包括运行时、追踪器、提供商管理器、检索器、LLM、TTS和音频播放
+// Stack 运行时组件栈
 type Stack struct {
 	Runtime         *runtime.Runtime
 	Tracker         *config.Tracker
@@ -38,8 +36,7 @@ type Stack struct {
 	Playback        audioPlayback
 }
 
-// WakeConfigStatus 描述唤醒词配置的状态信息
-// 包含启用状态、实际模式、提供商、关键词、就绪状态和原因说明
+// WakeConfigStatus 唤醒词配置状态
 type WakeConfigStatus struct {
 	Enabled       bool
 	EffectiveMode string
@@ -51,8 +48,7 @@ type WakeConfigStatus struct {
 	KeywordsFile  string
 }
 
-// audioPlayback 定义音频播放的接口
-// 用于将TTS生成的音频数据排入队列、播放完成、停止播放、排空缓冲区和等待播放完成
+// audioPlayback 音频播放接口
 type audioPlayback interface {
 	Queue(sessionID, traceID string, chunk []byte) error
 	Complete(sessionID, traceID string)
@@ -61,13 +57,7 @@ type audioPlayback interface {
 	Wait(ctx context.Context, sessionID string) error
 }
 
-// NewStack 创建并初始化完整的运行时栈
-// 1. 初始化提供商管理器并确保布局文件存在
-// 2. 为配置中的唤醒词关键词创建文件（如不存在）
-// 3. 创建运行时实例并附加延迟观察器
-// 4. 创建Live2D桥接器用于动画渲染
-// 5. 选择并初始化TTS、音频播放、LLM流式处理器和检索器
-// 6. 创建编排器协调所有组件
+// NewStack 创建运行时栈
 func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	providerMgr := providers.NewManager(cfg.Providers.Root)
 	if err := providerMgr.EnsureLayout(); err != nil {
@@ -102,14 +92,12 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	}, nil
 }
 
-// BuildVoicePipeline 构建默认的语音处理管道
-// 使用配置中的设置创建完整的语音交互管道
+// BuildVoicePipeline 构建语音管道
 func BuildVoicePipeline(cfg *config.Config, mgr *providers.Manager) audio.Pipeline {
 	return BuildVoicePipelineForMode(cfg, mgr, "")
 }
 
-// BuildVoicePipelineForMode 构建指定模式的语音处理管道
-// 支持覆盖唤醒模式，用于不同的语音交互场景
+// BuildVoicePipelineForMode 构建指定模式的语音管道
 func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overrideMode string) audio.Pipeline {
 	wakeStatus := ResolveWakeConfig(cfg, mgr)
 	effectiveMode := wakeStatus.EffectiveMode
@@ -141,9 +129,7 @@ func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overr
 	return pipe
 }
 
-// ResolveWakeConfig 解析并验证唤醒词配置
-// 检查配置有效性、模式支持、提供商可用性和模型文件完整性
-// 返回详细的配置状态，包括是否就绪及原因
+// ResolveWakeConfig 解析唤醒词配置
 func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigStatus {
 	status := WakeConfigStatus{
 		Enabled:       cfg != nil && cfg.Audio.EnableWakeWord,
@@ -248,8 +234,7 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 	return status
 }
 
-// choosePlayback 根据TTS类型选择合适的音频播放实现
-// 检查TTS是否提供音频格式信息，创建平台原生的播放接收器
+// choosePlayback 选择音频播放实现
 func choosePlayback(b *bus.Bus, tts audio.TTS) audioPlayback {
 	provider, ok := tts.(audio.AudioFormatProvider)
 	if !ok {
@@ -263,8 +248,7 @@ func choosePlayback(b *bus.Bus, tts audio.TTS) audioPlayback {
 	return sink
 }
 
-// chooseWakeWord 根据配置选择唤醒词检测模块
-// 支持sherpa-onnx嵌入式唤醒词检测，返回对应的唤醒词实例或不可用状态
+// chooseWakeWord 选择唤醒词检测模块
 func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 	status := ResolveWakeConfig(cfg, mgr)
 	if !status.Enabled || status.EffectiveMode != audio.WakeModeWakeWordVAD {
@@ -316,8 +300,7 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 	return &audio.UnavailableWakeWord{Reason: "unsupported wake provider: " + provider}
 }
 
-// choosePreprocessors 根据配置选择音频预处理模块
-// 包括回声消除(AEC)和噪声抑制(NS)
+// choosePreprocessors 选择音频预处理模块
 func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
 	if !cfg.Audio.AECEnabled && !cfg.Audio.NSEnabled {
 		return nil
@@ -329,8 +312,7 @@ func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
 	return []audio.Preprocessor{audio.NewPassthroughAECNS(label)}
 }
 
-// chooseASR 根据配置选择自动语音识别(ASR)模块
-// 支持HTTP接口、Whisper和Whisper.cpp等多种提供商
+// chooseASR 选择ASR模块
 func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
 	case "http":
@@ -371,8 +353,7 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 	}
 }
 
-// chooseTTS 根据配置选择文本转语音(TTS)模块
-// 支持HTTP/XTTS、sherpa-onnx和kokoro等提供商
+// chooseTTS 选择TTS模块
 func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 	fallback := &audio.UnavailableTTS{Reason: "tts unavailable"}
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
@@ -407,8 +388,7 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 	}
 }
 
-// chooseLLMStreamer 根据配置选择LLM流式处理器
-// 目前主要支持Ollama提供商，自动发现可用模型
+// chooseLLMStreamer 选择LLM流式处理器
 func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	fallback := llm.UnavailableStreamer{Reason: "llm unavailable"}
 	if cfg.LLM.Provider != "ollama" {
@@ -436,8 +416,7 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 }
 
-// chooseRetriever 根据配置选择记忆检索器
-// 支持混合检索模式，结合向量检索和全文检索
+// chooseRetriever 选择记忆检索器
 func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) memory.Retriever {
 	// 创建基于SQLite的全文搜索存储
 	fts := memory.NewSQLiteStore(engine)
@@ -466,8 +445,7 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 	return memory.NewHybridRetriever(vec, fts, nil)
 }
 
-// chooseEmbedder 根据配置选择嵌入向量生成模块
-// 支持Ollama嵌入和简单的哈希嵌入
+// chooseEmbedder 选择嵌入向量生成模块
 func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) memory.Embedder {
 	_ = mgr
 	switch strings.ToLower(strings.TrimSpace(cfg.RAG.EmbedProvider)) {
@@ -483,8 +461,6 @@ func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) memory.Embedder 
 }
 
 // EnsureWakeKeywordsForConfig 确保唤醒词关键词文件存在
-// 如果配置中指定了模型路径，则在指定目录创建关键词文件
-// 否则使用提供商管理器处理
 func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (string, error) {
 	if cfg == nil {
 		return "", nil
@@ -504,7 +480,6 @@ func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (st
 }
 
 // firstExistingPath 返回第一个存在的文件路径
-// 支持通配符匹配，按顺序尝试每个路径，返回第一个存在的
 func firstExistingPath(paths ...string) string {
 	for _, path := range paths {
 		path = strings.TrimSpace(path)

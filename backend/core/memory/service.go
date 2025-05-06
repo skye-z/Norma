@@ -12,65 +12,62 @@ import (
 	"norma/backend/core/model"
 )
 
-// 记忆类型常量定义
+// 记忆类型
 const (
-	KindFact       = "fact"       // 事实性记忆
-	KindPreference = "preference" // 用户偏好
-	KindEvent      = "event"      // 事件记录
-	KindSummary    = "summary"    // 对话摘要
+	KindFact       = "fact"       // 事实
+	KindPreference = "preference" // 偏好
+	KindEvent      = "event"      // 事件
+	KindSummary    = "summary"    // 摘要
 )
 
-// AddInput 添加记忆的输入参数结构
+// AddInput 添加记忆输入
 type AddInput struct {
-	Kind       string  `json:"kind"`        // 记忆类型
-	Content    string  `json:"content"`     // 记忆内容
-	Importance int     `json:"importance"`  // 重要性等级 (0-10)
-	MemoryType string  `json:"memory_type"` // 记忆子类型
-	Source     string  `json:"source"`      // 来源标识
-	Evidence   string  `json:"evidence"`    // 证据/上下文
+	Kind       string  `json:"kind"`        // 类型
+	Content    string  `json:"content"`     // 内容
+	Importance int     `json:"importance"`  // 重要性 (0-10)
+	MemoryType string  `json:"memory_type"` // 子类型
+	Source     string  `json:"source"`      // 来源
+	Evidence   string  `json:"evidence"`    // 证据
 	Decay      float64 `json:"decay"`       // 衰减系数
-	Summary    bool    `json:"summary"`     // 是否为摘要标记
+	Summary    bool    `json:"summary"`     // 是否摘要
 }
 
-// UpdateInput 更新记忆的输入参数结构
+// UpdateInput 更新记忆输入
 type UpdateInput struct {
-	Kind         string  `json:"kind"`          // 记忆类型
-	Content      string  `json:"content"`       // 记忆内容
-	Importance   int     `json:"importance"`    // 重要性等级
-	MemoryType   string  `json:"memory_type"`   // 记忆子类型
-	Source       string  `json:"source"`        // 来源标识
-	Evidence     string  `json:"evidence"`      // 证据/上下文
+	Kind         string  `json:"kind"`          // 类型
+	Content      string  `json:"content"`       // 内容
+	Importance   int     `json:"importance"`    // 重要性
+	MemoryType   string  `json:"memory_type"`   // 子类型
+	Source       string  `json:"source"`        // 来源
+	Evidence     string  `json:"evidence"`      // 证据
 	Decay        float64 `json:"decay"`         // 衰减系数
 	Disabled     bool    `json:"disabled"`      // 是否禁用
 	ConflictNote string  `json:"conflict_note"` // 冲突说明
-	Summary      bool    `json:"summary"`       // 是否为摘要标记
+	Summary      bool    `json:"summary"`       // 是否摘要
 }
 
-// SummaryResult 摘要操作的结果结构
+// SummaryResult 摘要结果
 type SummaryResult struct {
-	Summary      *model.Memory `json:"summary,omitempty"`       // 生成的摘要记忆
-	ConflictWith []int64       `json:"conflict_with,omitempty"` // 冲突的记忆ID列表
+	Summary      *model.Memory `json:"summary,omitempty"`       // 摘要记忆
+	ConflictWith []int64       `json:"conflict_with,omitempty"` // 冲突记忆ID
 }
 
-// Service 处理长期记忆的读写操作
-// 使用 xorm 作为数据库访问层，支持多种记忆类型的存储和检索
+// Service 记忆服务
 type Service struct {
 	engine *xorm.Engine
 }
 
-// NewService 创建记忆服务实例
+// NewService 创建记忆服务
 func NewService(engine *xorm.Engine) *Service {
 	return &Service{engine: engine}
 }
 
-// Add 添加记忆的简便方法
-// 接受记忆类型、内容和重要性等级，内部调用 AddDetailed 方法
+// Add 添加记忆
 func (s *Service) Add(ctx context.Context, kind, content string, importance int) (*model.Memory, error) {
 	return s.AddDetailed(ctx, AddInput{Kind: kind, Content: content, Importance: importance, MemoryType: kind})
 }
 
-// AddDetailed 添加记忆的详细方法
-// 处理输入验证、格式标准化，并持久化到数据库
+// AddDetailed 添加记忆（详细）
 func (s *Service) AddDetailed(ctx context.Context, input AddInput) (*model.Memory, error) {
 	_ = ctx
 	content := strings.TrimSpace(input.Content)
@@ -101,7 +98,6 @@ func (s *Service) AddDetailed(ctx context.Context, input AddInput) (*model.Memor
 }
 
 // Search 搜索记忆
-// 支持按关键词搜索或获取全部记忆，按重要性、最后访问时间和更新时间排序
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]model.Memory, error) {
 	_ = ctx
 	if limit <= 0 {
@@ -138,7 +134,6 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]model.
 }
 
 // List 列出记忆
-// 支持是否包含已禁用的记忆，按重要性、更新时间排序
 func (s *Service) List(ctx context.Context, includeDisabled bool, limit int) ([]model.Memory, error) {
 	_ = ctx
 	if limit <= 0 {
@@ -156,8 +151,7 @@ func (s *Service) List(ctx context.Context, includeDisabled bool, limit int) ([]
 	return rows, nil
 }
 
-// Update 更新指定ID的记忆
-// 使用输入字段更新记忆属性，保留原值作为默认值
+// Update 更新记忆
 func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*model.Memory, error) {
 	_ = ctx
 	m := new(model.Memory)
@@ -188,21 +182,20 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*mod
 	return m, nil
 }
 
-// Delete 删除指定ID的记忆
+// Delete 删除记忆
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	_ = ctx
 	_, err := s.engine.ID(id).Delete(&model.Memory{})
 	return err
 }
 
-// SetDisabled 设置记忆的禁用状态
+// SetDisabled 设置禁用状态
 func (s *Service) SetDisabled(ctx context.Context, id int64, disabled bool) error {
 	_, err := s.engine.ID(id).Cols("disabled").Update(&model.Memory{Disabled: disabled})
 	return err
 }
 
-// Compact 记忆压缩/去重
-// 根据内容相似性和重要性保留最新最重要的记忆，删除重复或低优先级的记录
+// Compact 记忆去重压缩
 func (s *Service) Compact(ctx context.Context) (int64, error) {
 	_ = ctx
 	rows := make([]model.Memory, 0, 1024)
@@ -251,7 +244,6 @@ func (s *Service) Compact(ctx context.Context) (int64, error) {
 }
 
 // ApplyDecay 应用记忆衰减
-// 根据距离上次访问的时间长度和衰减系数，降低记忆的重要性等级
 func (s *Service) ApplyDecay(ctx context.Context) (int64, error) {
 	_ = ctx
 	rows := make([]model.Memory, 0, 1024)
@@ -282,8 +274,7 @@ func (s *Service) ApplyDecay(ctx context.Context) (int64, error) {
 	return updated, nil
 }
 
-// SummarizeTurn 将对话轮次摘要为记忆
-// 将多轮对话压缩为单条摘要记忆，并检测与现有记忆的潜在冲突
+// SummarizeTurn 对话轮次摘要
 func (s *Service) SummarizeTurn(ctx context.Context, sessionID string, turns []Turn) (*SummaryResult, error) {
 	_ = sessionID
 	// 限制 token 数量，避免过长
@@ -327,8 +318,7 @@ func (s *Service) SummarizeTurn(ctx context.Context, sessionID string, turns []T
 	return &SummaryResult{Summary: summary, ConflictWith: conflicts}, nil
 }
 
-// GovernanceRun 执行记忆治理任务
-// 包括去重压缩和重要性衰减，返回处理的记录数量
+// GovernanceRun 记忆治理任务
 func (s *Service) GovernanceRun(ctx context.Context) (map[string]int64, error) {
 	deleted, err := s.Compact(ctx)
 	if err != nil {
@@ -341,8 +331,7 @@ func (s *Service) GovernanceRun(ctx context.Context) (map[string]int64, error) {
 	return map[string]int64{"dedup_deleted": deleted, "decayed": decayed}, nil
 }
 
-// detectConflicts 检测与现有记忆的潜在冲突
-// 通过计算新摘要与已有记忆的内容重叠度来判断
+// detectConflicts 检测冲突
 func (s *Service) detectConflicts(summary string) ([]int64, error) {
 	rows, err := s.Search(context.Background(), summary, 20)
 	if err != nil {
@@ -366,7 +355,6 @@ func (s *Service) detectConflicts(summary string) ([]int64, error) {
 }
 
 // normalizeKind 标准化记忆类型
-// 将输入转换为小写，验证是否为有效的记忆类型
 func normalizeKind(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case KindFact, KindPreference, KindEvent, KindSummary:
@@ -377,13 +365,11 @@ func normalizeKind(kind string) string {
 }
 
 // normalizedMemoryKey 生成标准化的记忆键
-// 移除标点、转小写、空格分隔，用于去重和冲突检测
 func normalizedMemoryKey(content string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(content))), " ")
 }
 
-// overlapRatio 计算两个字符串的内容重叠度
-// 用于判断新记忆是否与已有记忆存在冲突
+// overlapRatio 计算内容重叠度
 func overlapRatio(a, b string) float64 {
 	if a == "" || b == "" {
 		return 0
@@ -409,8 +395,7 @@ func overlapRatio(a, b string) float64 {
 	return float64(matched) / float64(len(as))
 }
 
-// clampImportance 限制重要性等级在有效范围内
-// 确保重要性值在 0-10 之间
+// clampImportance 限制重要性范围
 func clampImportance(v int) int {
 	if v < 0 {
 		return 0
@@ -422,7 +407,6 @@ func clampImportance(v int) int {
 }
 
 // firstNonEmpty 返回第一个非空字符串
-// 用于在多个可选值中选择有效值
 func firstNonEmpty(items ...string) string {
 	for _, item := range items {
 		if strings.TrimSpace(item) != "" {

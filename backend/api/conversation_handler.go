@@ -1,5 +1,4 @@
-// Package api 提供 HTTP API 处理器
-// 包含对话、健康检查、设置等核心功能的 HTTP 端点
+// Package api 提供 HTTP API
 package api
 
 import (
@@ -25,51 +24,50 @@ import (
 	"norma/backend/utils"
 )
 
-// ConversationHandler 处理实时对话相关的 HTTP 请求
-// 管理麦克风音频流、WebSocket 连接和语音处理管道
+// ConversationHandler 对话处理器
 type ConversationHandler struct {
-	bus        *bus.Bus                          // 事件总线，用于发布/订阅事件
-	inspector  *runtime.Inspector                // 运行时检查器
-	configPath string                            // 配置文件路径
-	providers  *providers.Manager                // AI 提供商管理器
-	streams    map[string]*audio.PushFrameSource // 音频帧推送源
-	sources    map[string]audio.FrameSource      // 音频帧源
-	sockets    map[string]*websocket.Conn        // WebSocket 连接
-	capture    map[string]string                 // 捕获模式 (push/pull)
-	modes      map[string]string                 // 对话模式 (manual/wake)
-	frameSeen  map[string]bool                   // 是否已接收过音频帧
+	bus        *bus.Bus
+	inspector  *runtime.Inspector
+	configPath string
+	providers  *providers.Manager
+	streams    map[string]*audio.PushFrameSource
+	sources    map[string]audio.FrameSource
+	sockets    map[string]*websocket.Conn
+	capture    map[string]string
+	modes      map[string]string
+	frameSeen  map[string]bool
 
-	mu     sync.RWMutex       // 互斥锁，保护并发访问
-	active bool               // 当前是否处于活跃对话状态
-	sid    string             // 当前会话 ID
-	tid    string             // 当前追踪 ID
-	cancel context.CancelFunc // 取消函数，用于停止对话
+	mu     sync.RWMutex
+	active bool
+	sid    string
+	tid    string
+	cancel context.CancelFunc
 }
 
-// conversationReq 对话请求结构
+// conversationReq 对话请求
 type conversationReq struct {
-	SessionID string `json:"session_id"` // 会话 ID
-	TraceID   string `json:"trace_id"`   // 追踪 ID
-	Reason    string `json:"reason"`     // 中断原因
-	Mode      string `json:"mode"`       // 对话模式
+	SessionID string `json:"session_id"`
+	TraceID   string `json:"trace_id"`
+	Reason    string `json:"reason"`
+	Mode      string `json:"mode"`
 }
 
-// conversationState 对话状态结构
+// conversationState 对话状态
 type conversationState struct {
-	Active    bool   `json:"active"`            // 是否活跃
-	SessionID string `json:"session_id"`        // 会话 ID
-	TraceID   string `json:"trace_id"`          // 追踪 ID
-	State     string `json:"state,omitempty"`   // 运行时状态
-	Capture   string `json:"capture,omitempty"` // 捕获模式
-	Mode      string `json:"mode,omitempty"`    // 对话模式
+	Active    bool   `json:"active"`
+	SessionID string `json:"session_id"`
+	TraceID   string `json:"trace_id"`
+	State     string `json:"state,omitempty"`
+	Capture   string `json:"capture,omitempty"`
+	Mode      string `json:"mode,omitempty"`
 }
 
-// conversationPolicy 对话策略配置
+// conversationPolicy 对话策略
 type conversationPolicy struct {
-	AutoWake      bool                       `json:"auto_wake"`       // 自动唤醒
-	WakeReady     bool                       `json:"wake_ready"`      // 唤醒准备就绪
-	ShowMicButton bool                       `json:"show_mic_button"` // 显示麦克风按钮
-	WakeStatus    bootstrap.WakeConfigStatus `json:"wake_status"`     // 唤醒配置状态
+	AutoWake      bool                       `json:"auto_wake"`
+	WakeReady     bool                       `json:"wake_ready"`
+	ShowMicButton bool                       `json:"show_mic_button"`
+	WakeStatus    bootstrap.WakeConfigStatus `json:"wake_status"`
 }
 
 // 全局会话序列号，用于生成唯一 ID
@@ -80,9 +78,7 @@ var conversationWSUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // 允许所有来源
 }
 
-// NewConversationHandler 创建对话处理器实例
-// 参数: configPath - 配置文件路径, b - 事件总线, inspector - 运行时检查器, providerMgr - 提供商管理器
-// 返回: 配置好的 ConversationHandler 指针
+// NewConversationHandler 创建对话处理器
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
 	return &ConversationHandler{
 		configPath: configPath,
@@ -99,8 +95,7 @@ func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.In
 	}
 }
 
-// Register 注册对话相关的 HTTP 路由
-// 添加麦克风控制、状态查询、WebSocket 等端点
+// Register 注册路由
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/start", h.handleMicStart)         // 启动麦克风
 	mux.HandleFunc("/conversation/mic/stop", h.handleMicStop)           // 停止麦克风
@@ -112,8 +107,7 @@ func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/policy", h.handleMicPolicy)       // 获取策略配置
 }
 
-// handleMicPolicy 处理获取对话策略配置的请求
-// 返回当前唤醒词相关的策略设置
+// handleMicPolicy 获取对话策略
 func (h *ConversationHandler) handleMicPolicy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -127,8 +121,7 @@ func (h *ConversationHandler) handleMicPolicy(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, h.resolvePolicy(cfg))
 }
 
-// handleMicStart 处理启动麦克风的请求
-// 创建新的对话会话，初始化音频流和处理管道
+// handleMicStart 启动麦克风
 func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -209,8 +202,7 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, state)
 }
 
-// handleMicStop 处理停止麦克风的请求
-// 发布 VAD 停止事件并清理会话资源
+// handleMicStop 停止麦克风
 func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -228,8 +220,7 @@ func (h *ConversationHandler) handleMicStop(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
-// handleMicInterrupt 处理中断对话的请求
-// 发布中断事件并清理会话资源
+// handleMicInterrupt 中断对话
 func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -252,8 +243,7 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
-// handleMicState 处理获取对话状态的请求
-// 返回当前对话的活跃状态、会话 ID 和运行时状态
+// handleMicState 获取对话状态
 func (h *ConversationHandler) handleMicState(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -262,8 +252,7 @@ func (h *ConversationHandler) handleMicState(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
-// handleMicTest 处理麦克风测试请求
-// 检测麦克风设备是否可用以及 VAD 探针是否正常工作
+// handleMicTest 测试麦克风
 func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -300,17 +289,16 @@ func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// micFrameReq 麦克风音频帧请求结构
+// micFrameReq 麦克风音频帧请求
 type micFrameReq struct {
-	SessionID  string    `json:"session_id"`  // 会话 ID
-	TraceID    string    `json:"trace_id"`    // 追踪 ID
-	SampleRate int       `json:"sample_rate"` // 采样率
-	Frames     []float32 `json:"frames"`      // 音频帧数据
-	EOF        bool      `json:"eof"`         // 是否结束
+	SessionID  string    `json:"session_id"`
+	TraceID    string    `json:"trace_id"`
+	SampleRate int       `json:"sample_rate"`
+	Frames     []float32 `json:"frames"`
+	EOF        bool      `json:"eof"`
 }
 
-// handleMicFrame 处理接收麦克风音频帧的请求
-// 通过 HTTP POST 接收音频数据并推送到处理管道
+// handleMicFrame 接收麦克风音频帧
 func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -330,8 +318,7 @@ func (h *ConversationHandler) handleMicFrame(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": accepted, "session_id": sid, "trace_id": tid})
 }
 
-// handleMicWS 处理 WebSocket 连接请求
-// 通过 WebSocket 协议接收实时音频帧数据
+// handleMicWS WebSocket 连接
 func (h *ConversationHandler) handleMicWS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -405,9 +392,7 @@ func (h *ConversationHandler) handleMicWS(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// ingestMicFrame 将接收到的音频帧推送到流中
-// 处理采样率转换并管理流的状态
-// 返回: 是否被接受、状态码、错误消息
+// ingestMicFrame 推送音频帧到流
 func (h *ConversationHandler) ingestMicFrame(sid, tid string, req micFrameReq) (bool, int, string) {
 	h.mu.RLock()
 	stream := h.streams[sid]
@@ -458,10 +443,7 @@ func (h *ConversationHandler) ingestMicFrame(sid, tid string, req micFrameReq) (
 	return accepted, http.StatusOK, ""
 }
 
-// resampleConversationFrame 对音频帧进行重采样
-// 将输入采样率转换为目标采样率（默认 16kHz）
-// 参数: frame - 原始音频帧, inputRate - 输入采样率, targetRate - 目标采样率
-// 返回: 重采样后的音频帧
+// resampleConversationFrame 音频帧重采样
 func resampleConversationFrame(frame []float32, inputRate, targetRate int) []float32 {
 	// 边界情况检查
 	if len(frame) == 0 || inputRate <= 0 || targetRate <= 0 || inputRate == targetRate {
@@ -510,8 +492,7 @@ func resampleConversationFrame(frame []float32, inputRate, targetRate int) []flo
 	return out
 }
 
-// snapshot 获取当前对话状态的快照
-// 返回包含活跃状态、会话 ID、追踪 ID、捕获模式和运行时状态的对象
+// snapshot 获取状态快照
 func (h *ConversationHandler) snapshot() conversationState {
 	h.mu.RLock()
 	state := conversationState{Active: h.active, SessionID: h.sid, TraceID: h.tid}
@@ -527,10 +508,7 @@ func (h *ConversationHandler) snapshot() conversationState {
 	return state
 }
 
-// resolveIDs 解析并返回会话 ID 和追踪 ID
-// 如果未提供则使用当前活跃会话的 ID
-// 参数: sessionID - 请求中的会话 ID, traceID - 请求中的追踪 ID
-// 返回: 解析后的会话 ID 和追踪 ID
+// resolveIDs 解析会话ID和追踪ID
 func (h *ConversationHandler) resolveIDs(sessionID, traceID string) (string, string) {
 	h.mu.RLock()
 	sid := h.sid
@@ -553,18 +531,13 @@ func (h *ConversationHandler) resolveIDs(sessionID, traceID string) (string, str
 	return sid, tid
 }
 
-// newID 生成唯一的会话或追踪 ID
-// 格式: prefix-timestamp-sequence
-// 参数: prefix - ID 前缀
-// 返回: 唯一 ID 字符串
+// newID 生成唯一ID
 func (h *ConversationHandler) newID(prefix string) string {
 	seq := atomic.AddUint64(&conversationSeq, 1)
 	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixMilli(), seq)
 }
 
-// runMicPipeline 运行麦克风音频处理管道
-// 在后台执行 VAD、ASR 等处理流程
-// 参数: ctx - 上下文, sessionID - 会话 ID, traceID - 追踪 ID, source - 音频源, mode - 对话模式
+// runMicPipeline 运行麦克风处理管道
 func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, traceID string, source audio.FrameSource, mode string) {
 	cfg, err := config.Load(h.configPath)
 	if err != nil {
@@ -653,9 +626,7 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	}
 }
 
-// clearSession 清理指定会话的所有资源
-// 关闭音频流、WebSocket 连接并清除所有相关状态
-// 参数: sessionID - 要清理的会话 ID
+// clearSession 清理会话资源
 func (h *ConversationHandler) clearSession(sessionID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -696,10 +667,7 @@ func (h *ConversationHandler) clearSession(sessionID string) {
 	}
 }
 
-// resolvePolicy 解析并返回对话策略配置
-// 基于配置和提供商状态决定自动唤醒等策略
-// 参数: cfg - 配置文件
-// 返回: 对话策略对象
+// resolvePolicy 解析对话策略
 func (h *ConversationHandler) resolvePolicy(cfg *config.Config) conversationPolicy {
 	providerMgr := h.providers
 	if providerMgr == nil {
@@ -717,9 +685,6 @@ func (h *ConversationHandler) resolvePolicy(cfg *config.Config) conversationPoli
 }
 
 // normalizeConversationMode 规范化对话模式
-// 将各种输入标准化为 internal/wake/manual 模式
-// 参数: mode - 原始模式字符串
-// 返回: 规范化后的模式
 func normalizeConversationMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "manual", "direct":
