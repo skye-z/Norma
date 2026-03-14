@@ -14,7 +14,6 @@ import (
 	"norma/backend/core/providers"
 	"norma/backend/core/runtime/bus"
 	"norma/backend/utils"
-	"norma/pkg/layout"
 )
 
 // SettingsHandler 处理运行时设置相关请求
@@ -93,66 +92,25 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, config.Invalid("llm.endpoint required"))
 		return
 	}
-	// 设置默认请求超时时间 (45秒)
-	if cfg.LLM.RequestTimeoutMs <= 0 {
-		cfg.LLM.RequestTimeoutMs = 45000
-	}
-	// 规范化 API Key
-	cfg.LLM.APIKey = strings.TrimSpace(cfg.LLM.APIKey)
-
-	// 设置默认角色设定
-	if strings.TrimSpace(cfg.LLM.Persona) == "" {
-		cfg.LLM.Persona = config.DefaultLLMPersona
-	}
-	// 设置默认唤醒词提供商
-	if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
-		cfg.Audio.WakeProvider = "sherpa-onnx"
-	}
-	// 配置唤醒模式: 启用唤醒词时使用 wake_word_vad 模式
-	if !cfg.Audio.EnableWakeWord {
-		cfg.Audio.WakeMode = "vad"
-	} else if strings.TrimSpace(cfg.Audio.WakeMode) == "" || strings.EqualFold(strings.TrimSpace(cfg.Audio.WakeMode), "vad") {
-		cfg.Audio.WakeMode = "wake_word_vad"
-	}
 	// 设置默认麦克风设备
 	if strings.TrimSpace(cfg.Audio.MicDeviceID) == "" {
 		cfg.Audio.MicDeviceID = "default"
 	}
 	// 设置默认采样率 (16kHz)
-	if cfg.Audio.MicSampleRate <= 0 {
-		cfg.Audio.MicSampleRate = 16000
+	if cfg.Audio.SampleRate <= 0 {
+		cfg.Audio.SampleRate = 16000
 	}
 	// 设置默认声道数 (单声道)
-	if cfg.Audio.MicChannelCount <= 0 {
-		cfg.Audio.MicChannelCount = 1
+	if cfg.Audio.Channels <= 0 {
+		cfg.Audio.Channels = 1
 	}
 	// 设置默认唤醒词
 	if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
 		cfg.Audio.WakeKeyword = "诺玛"
 	}
-	// 设置唤醒窗口时间 (2秒)
-	if cfg.Audio.WakeWindowMs <= 0 {
-		cfg.Audio.WakeWindowMs = 2000
-	}
-	// 设置唤醒检测间隔 (400ms)
-	if cfg.Audio.WakeDetectIntervalMs <= 0 {
-		cfg.Audio.WakeDetectIntervalMs = 400
-	}
-	// 设置 ASR 请求超时 (10秒)
-	if cfg.ASR.RequestTimeoutMs <= 0 {
-		cfg.ASR.RequestTimeoutMs = 10000
-	}
-	// 设置 TTS 请求超时 (30秒)
-	if cfg.TTS.RequestTimeoutMs <= 0 {
-		cfg.TTS.RequestTimeoutMs = 30000
-	}
 	// 设置默认 TTS 提供商
 	if strings.TrimSpace(cfg.TTS.Provider) == "" {
 		cfg.TTS.Provider = "sherpa-onnx"
-	}
-	// 设置默认 RAG TopK 值
-	if cfg.RAG.TopK <= 0 {
-		cfg.RAG.TopK = 6
 	}
 	// 设置默认 Embedding 提供商
 	if strings.TrimSpace(cfg.RAG.EmbedProvider) == "" {
@@ -162,36 +120,9 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	if strings.TrimSpace(cfg.RAG.EmbedEndpoint) == "" {
 		cfg.RAG.EmbedEndpoint = cfg.LLM.Endpoint
 	}
-	// 设置短期记忆 Token 预算
-	if cfg.Memory.STMTokenBudget <= 0 {
-		cfg.Memory.STMTokenBudget = 2048
-	}
-	// 设置默认 Providers 根目录
-	if strings.TrimSpace(cfg.Providers.Root) == "" {
-		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
-	}
-	// 自动查找 TTS 模型文件
-	if strings.TrimSpace(cfg.TTS.ModelPath) == "" {
-		mgr := providers.NewManager(cfg.Providers.Root)
-		if p := mgr.FindFirst("tts", "model.onnx"); p != "" {
-			cfg.TTS.ModelPath = p
-		}
-	}
-	// 设置默认安全清理目录
-	if cfg.Security.PurgeProofDir == "" {
-		cfg.Security.PurgeProofDir = filepath.ToSlash(layout.PurgeProofDir)
-	}
-	// 设置默认允许的远程主机
-	if len(cfg.Security.AllowedRemoteHosts) == 0 {
-		cfg.Security.AllowedRemoteHosts = []string{"127.0.0.1", "localhost"}
-	}
-	// 设置默认工具白名单
-	if len(cfg.Security.ToolWhitelist) == 0 {
-		cfg.Security.ToolWhitelist = []string{"open_local_file", "open_debug_panel", "export_diagnostics"}
-	}
 
 	// 验证所有配置的端点是否符合安全策略
-	for _, endpoint := range []string{cfg.LLM.Endpoint, cfg.ASR.Endpoint, cfg.ASR.StreamEndpoint, cfg.TTS.Endpoint, cfg.RAG.EmbedEndpoint} {
+	for _, endpoint := range []string{cfg.LLM.Endpoint, cfg.RAG.EmbedEndpoint} {
 		if err := validateEndpointPolicy(endpoint, cfg.Security); err != nil {
 			writeAPIError(w, err)
 			return
@@ -231,11 +162,11 @@ func validateEndpointPolicy(endpoint string, sec config.SecurityConfig) *config.
 	}
 	host := strings.ToLower(u.Hostname())
 	// 如果允许远程提供商，直接通过
-	if sec.AllowRemoteProviders {
+	if sec.AllowRemote {
 		return nil
 	}
 	// 检查主机是否在允许列表中
-	for _, allowed := range sec.AllowedRemoteHosts {
+	for _, allowed := range sec.AllowedIPs {
 		if strings.EqualFold(strings.TrimSpace(allowed), host) {
 			return nil
 		}
@@ -267,14 +198,9 @@ func normalizeTTSToSherpa(cfg *config.Config) bool {
 		cfg.TTS.Voice = "zf_xiaobei"
 		changed = true
 	}
-	// 设置默认 Providers 根目录
-	if strings.TrimSpace(cfg.Providers.Root) == "" {
-		cfg.Providers.Root = filepath.ToSlash(layout.ProvidersDir)
-		changed = true
-	}
 	// 自动查找 TTS 模型
 	if strings.TrimSpace(cfg.TTS.ModelPath) == "" {
-		mgr := providers.NewManager(cfg.Providers.Root)
+		mgr := providers.NewManager("")
 		if p := mgr.FindFirst("tts", "model.onnx"); p != "" {
 			cfg.TTS.ModelPath = p
 			changed = true
@@ -291,7 +217,7 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 	if cfg == nil {
 		return nil
 	}
-	mgr := providers.NewManager(cfg.Providers.Root)
+	mgr := providers.NewManager("")
 	if err := mgr.EnsureLayout(); err != nil {
 		return err
 	}
@@ -301,13 +227,7 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 		return err
 	}
 	if strings.TrimSpace(keywordsPath) == "" {
-		keywordsPath = strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath)
-	}
-	if strings.TrimSpace(keywordsPath) == "" {
-		modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
-		if modelDir == "" {
-			modelDir = filepath.Join(mgr.Root(), "wake", "current")
-		}
+		modelDir := filepath.Join(mgr.Root(), "wake", "current")
 		keywordsPath = filepath.Join(modelDir, "keywords.txt")
 	}
 	// 创建目录并写入唤醒词文件
@@ -321,7 +241,6 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 	if err := os.WriteFile(keywordsPath, []byte(formatted), 0o644); err != nil {
 		return err
 	}
-	cfg.Audio.WakeKeywordsFilePath = filepath.ToSlash(keywordsPath)
 	return nil
 }
 

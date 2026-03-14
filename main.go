@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// 初始化提供者管理器，确保必要的目录布局
-	providerMgr := providers.NewManager(cfg.Providers.Root)
+	providerMgr := providers.NewManager("")
 	if err := providerMgr.EnsureLayout(); err != nil {
 		log.Printf("[providers] ensure layout failed: %v", err)
 	}

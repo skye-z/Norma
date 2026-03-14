@@ -24,7 +24,7 @@ type SQLiteStore struct {
 }
 
 var (
-	sqliteFTSPossessivePattern = regexp.MustCompile(`(?i)([\p{L}\p{N}_]+)['\u2019]s\b`)
+	sqliteFTSPossessivePattern = regexp.MustCompile("(?i)([\\p{L}\\p{N}_]+)['\u2019]s\\b")
 	sqliteFTSTokenPattern      = regexp.MustCompile(`[\p{L}\p{N}_]+`)
 )
 

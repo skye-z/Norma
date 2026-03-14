@@ -59,7 +59,7 @@ type audioPlayback interface {
 
 // NewStack 创建运行时栈
 func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
-	providerMgr := providers.NewManager(cfg.Providers.Root)
+	providerMgr := providers.NewManager(layout.ProvidersDir)
 	if err := providerMgr.EnsureLayout(); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	playback := choosePlayback(rt.Bus, tts)
 	streamer := chooseLLMStreamer(cfg)
 	retriever := chooseRetriever(cfg, engine, providerMgr)
-	_ = runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, cfg.RAG.TopK, playback)
+	_ = runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, 4, playback)
 
 	return &Stack{
 		Runtime:         rt,
@@ -104,13 +104,9 @@ func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overr
 	if strings.TrimSpace(overrideMode) != "" {
 		effectiveMode = strings.TrimSpace(overrideMode)
 	}
-	// 计算唤醒窗口的帧数，每20ms一帧
-	wakeBufferFrames := cfg.Audio.WakeWindowMs / 20
-	if cfg.Audio.WakeWindowMs%20 != 0 {
-		wakeBufferFrames++
-	}
+	wakeBufferFrames := cfg.Audio.WakeBufferFrames
 	if wakeBufferFrames <= 0 {
-		wakeBufferFrames = 1
+		wakeBufferFrames = 10
 	}
 	pipe := audio.Pipeline{
 		VAD:              audioVad.NewEnergyVAD(0.02),
@@ -134,7 +130,7 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 	status := WakeConfigStatus{
 		Enabled:       cfg != nil && cfg.Audio.EnableWakeWord,
 		EffectiveMode: audio.WakeModeVADOnly,
-		Provider:      strings.ToLower(strings.TrimSpace(cfg.Audio.WakeProvider)),
+		Provider:      "sherpa-onnx",
 		Keyword:       strings.TrimSpace(cfg.Audio.WakeKeyword),
 	}
 	if cfg == nil {
@@ -155,17 +151,9 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 		return status
 	}
 	status.EffectiveMode = audio.WakeModeWakeWordVAD
-	if status.Provider == "" {
-		status.Reason = "wake provider is empty"
-		return status
-	}
-	if status.Provider != "sherpa-onnx" {
-		status.Reason = "unsupported wake provider: " + status.Provider
-		return status
-	}
 	// 查找模型文件目录和onnx模型文件
-	modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
-	if modelDir == "" && mgr != nil {
+	modelDir := ""
+	if mgr != nil {
 		modelDir = filepath.Join(mgr.Root(), "wake", "current")
 	}
 	status.ModelDir = modelDir
@@ -173,7 +161,7 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 	decoder := ""
 	joiner := ""
 	tokens := ""
-	keywords := strings.TrimSpace(cfg.Audio.WakeKeywordsFilePath)
+	keywords := ""
 	if mgr != nil {
 		encoder = mgr.FindGlob("wake", "encoder-epoch-*.onnx", "encoder.int8.onnx", "encoder.onnx")
 		decoder = mgr.FindGlob("wake", "decoder-epoch-*.onnx", "decoder.int8.onnx", "decoder.onnx")
@@ -302,26 +290,16 @@ func chooseWakeWord(cfg *config.Config, mgr *providers.Manager) audio.WakeWord {
 
 // choosePreprocessors 选择音频预处理模块
 func choosePreprocessors(cfg *config.Config) []audio.Preprocessor {
-	if !cfg.Audio.AECEnabled && !cfg.Audio.NSEnabled {
+	if cfg.Audio.AEC == "" && cfg.Audio.ANS == "" {
 		return nil
 	}
-	label := cfg.Audio.Scene
-	if label == "" {
-		label = "speaker"
-	}
+	label := "speaker"
 	return []audio.Preprocessor{audio.NewPassthroughAECNS(label)}
 }
 
 // chooseASR 选择ASR模块
 func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 	switch strings.ToLower(strings.TrimSpace(cfg.ASR.Provider)) {
-	case "http":
-		if cfg.ASR.Endpoint == "" {
-			return audio.UnavailableASR{Reason: "asr.endpoint is empty"}
-		}
-		asr := audio.NewHTTPASR(cfg.ASR.Endpoint, time.Duration(cfg.ASR.RequestTimeoutMs)*time.Millisecond)
-		asr.StreamEndpoint = strings.TrimSpace(cfg.ASR.StreamEndpoint)
-		return asr
 	case "whisper", "whispercpp":
 		log.Printf("[asr] embedded whisper enabled=%v", audio.EmbeddedWhisperEnabled())
 		model := mgr.ResolveFile("asr", "", cfg.ASR.ModelPath, "ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3.bin", "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin")
@@ -357,11 +335,6 @@ func chooseASR(cfg *config.Config, mgr *providers.Manager) audio.ASR {
 func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 	fallback := &audio.UnavailableTTS{Reason: "tts unavailable"}
 	switch strings.ToLower(strings.TrimSpace(cfg.TTS.Provider)) {
-	case "http", "xtts":
-		if cfg.TTS.Endpoint == "" {
-			return fallback
-		}
-		return audio.NewXTTSStreamer(cfg.TTS.Endpoint, cfg.TTS.Voice, time.Duration(cfg.TTS.RequestTimeoutMs)*time.Millisecond)
 	case "sherpa", "sherpa-onnx", "kokoro":
 		modelPath := mgr.ResolveFile("tts", "", cfg.TTS.ModelPath, "model.onnx")
 		if modelPath == "" {
@@ -376,7 +349,7 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 		if sid < 0 {
 			sid = 45
 		}
-		speed := cfg.TTS.Speed
+		speed := float32(cfg.TTS.Speed)
 		if speed <= 0 {
 			speed = 1.25
 		}
@@ -398,14 +371,14 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	model := strings.TrimSpace(cfg.LLM.Model)
 	if model == "" {
 		// 自动发现第一个可用的LLM模型
-		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, cfg.LLM.APIKey, 2*time.Second)
+		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, "", 2*time.Second)
 		if derr != nil {
 			log.Printf("[llm] discover model failed: %v", derr)
 			return fallback
 		}
 		model = discovered
 	}
-	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, cfg.LLM.APIKey, time.Duration(cfg.LLM.RequestTimeoutMs)*time.Millisecond)
+	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, "", 15*time.Second)
 	degradedModel := ""
 	if degradedModel == "" || degradedModel == model {
 		log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)
@@ -468,10 +441,6 @@ func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (st
 	keyword := strings.TrimSpace(cfg.Audio.WakeKeyword)
 	if keyword == "" {
 		keyword = "诺玛"
-	}
-	modelDir := strings.TrimSpace(cfg.Audio.WakeModelPath)
-	if modelDir != "" {
-		return providers.EnsureWakeKeywordsFile(modelDir, keyword)
 	}
 	if mgr == nil {
 		return "", nil

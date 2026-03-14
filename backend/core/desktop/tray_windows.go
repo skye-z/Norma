@@ -201,9 +201,6 @@ func toggleWakeMode() (bool, error) {
 	} else {
 		cfg.Audio.EnableWakeWord = true
 		cfg.Audio.WakeMode = audio.WakeModeWakeWordVAD
-		if strings.TrimSpace(cfg.Audio.WakeProvider) == "" {
-			cfg.Audio.WakeProvider = "sherpa-onnx"
-		}
 		if strings.TrimSpace(cfg.Audio.WakeKeyword) == "" {
 			cfg.Audio.WakeKeyword = "诺玛"
 		}

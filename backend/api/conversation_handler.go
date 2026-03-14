@@ -281,8 +281,8 @@ func (h *ConversationHandler) handleMicTest(w http.ResponseWriter, r *http.Reque
 		"ok": ok,
 		"mic": map[string]any{
 			"device_id":     cfg.Audio.MicDeviceID,
-			"sample_rate":   cfg.Audio.MicSampleRate,
-			"channel_count": cfg.Audio.MicChannelCount,
+			"sample_rate":   cfg.Audio.SampleRate,
+			"channel_count": cfg.Audio.Channels,
 			"speech_frames": detected,
 		},
 		"summary": map[bool]string{true: "麦克风配置可用，VAD 探针通过", false: "麦克风配置或 VAD 探针未通过"}[ok],
@@ -548,7 +548,7 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	// 初始化提供商管理器
 	providerMgr := h.providers
 	if providerMgr == nil {
-		providerMgr = providers.NewManager(cfg.Providers.Root)
+		providerMgr = providers.NewManager("")
 		_ = providerMgr.EnsureLayout()
 	}
 	// 根据模式配置管道
@@ -671,7 +671,7 @@ func (h *ConversationHandler) clearSession(sessionID string) {
 func (h *ConversationHandler) resolvePolicy(cfg *config.Config) conversationPolicy {
 	providerMgr := h.providers
 	if providerMgr == nil {
-		providerMgr = providers.NewManager(cfg.Providers.Root)
+		providerMgr = providers.NewManager("")
 		_ = providerMgr.EnsureLayout()
 	}
 	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)

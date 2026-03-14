@@ -10,12 +10,9 @@ import (
 	"time"
 
 	"norma/backend/core/audio"
-	"norma/backend/core/companion"
 	"norma/backend/core/llm"
 	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
-	"norma/backend/utils"
-	"norma/pkg/layout"
 )
 
 // Orchestrator 编排器，连接 ASR/RAG/LLM/TTS 与事件总线
@@ -112,14 +109,16 @@ func (o *Orchestrator) onASRFinal(evt bus.Event) {
 		log.Printf("[orchestrator] retriever search failed: %v", err)
 	}
 
-	// 构建 prompt
+	// 构建 prompt 和 context
 	var prompt string
+	var contextStrings []string
 	if len(chunks) > 0 {
 		var b strings.Builder
 		b.WriteString("相关上下文：\n")
 		for _, c := range chunks {
 			b.WriteString(c.Content)
 			b.WriteString("\n---\n")
+			contextStrings = append(contextStrings, c.Content)
 		}
 		b.WriteString("用户问题：")
 		b.WriteString(text)
@@ -142,19 +141,36 @@ func (o *Orchestrator) onASRFinal(evt bus.Event) {
 	o.cancels[sessionID+"_llm"] = llmCancel
 	o.mu.Unlock()
 
-	err = o.llm.Stream(llmCtx, prompt, func(token string) {
+	req := llm.Request{
+		SessionID: sessionID,
+		Prompt:    prompt,
+		Context:   contextStrings,
+	}
+
+	err = o.llm.Stream(llmCtx, req, func(token string) {
 		o.rt.Bus.Publish(bus.Event{
 			Name:      "llm.token",
 			SessionID: sessionID,
 			TraceID:   traceID,
 			Payload:   token,
 		})
-	}, func() {
+	})
+	if err != nil {
+		log.Printf("[orchestrator] llm stream failed: %v", err)
 		o.rt.Bus.Publish(bus.Event{
-			Name:      "llm.done",
+			Name:      "error",
 			SessionID: sessionID,
 			TraceID:   traceID,
+			Payload:   err.Error(),
 		})
+		return
+	}
+
+	// 发布 LLM 完成事件
+	o.rt.Bus.Publish(bus.Event{
+		Name:      "llm.done",
+		SessionID: sessionID,
+		TraceID:   traceID,
 	})
 	if err != nil {
 		log.Printf("[orchestrator] llm stream failed: %v", err)
@@ -223,14 +239,14 @@ func (o *Orchestrator) onInterrupt(evt bus.Event) {
 
 	// 停止播放
 	if o.playback != nil {
-		_ = o.playback.Stop(sessionID, evt.TraceID, "interrupt")
+		o.playback.Stop(sessionID, evt.TraceID, "interrupt")
 	}
 }
 
 // StartSession 启动新的语音会话
 // 返回会话 ID 和追踪 ID
 func (o *Orchestrator) StartSession() (string, string) {
-	sessionID := utils.RandomID(16)
+	sessionID := fmt.Sprintf("%d", time.Now().UnixNano())
 	traceID := fmt.Sprintf("%s-%d", sessionID, time.Now().UnixMilli())
 	return sessionID, traceID
 }
@@ -249,6 +265,6 @@ func (o *Orchestrator) CancelSession(sessionID string) {
 	o.mu.Unlock()
 
 	if o.playback != nil {
-		_ = o.playback.Stop(sessionID, "", "cancel")
+		o.playback.Stop(sessionID, "", "cancel")
 	}
 }

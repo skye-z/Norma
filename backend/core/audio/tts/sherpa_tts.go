@@ -64,7 +64,7 @@ func (s *SherpaKokoroTTS) refreshVoiceFromConfig() {
 		return
 	}
 	voice := strings.TrimSpace(cfg.TTS.Voice)
-	speed := cfg.TTS.Speed
+	speed := float32(cfg.TTS.Speed)
 	if speed <= 0 {
 		speed = 1.25
 	}

@@ -136,8 +136,7 @@ func (h *DiagnosticsHandler) runTTS(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 	binaryOK := pathExists(cfg.TTS.BinaryPath)
 	modelOK := pathExists(cfg.TTS.ModelPath)
-	endpointOK, endpointDetail := endpointReachable(cfg.TTS.Endpoint)
-	ready := (binaryOK && modelOK) || endpointOK
+	ready := binaryOK && modelOK
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
 		text = "这是后端 TTS 联调测试。"
@@ -148,8 +147,8 @@ func (h *DiagnosticsHandler) runTTS(req diagnosticsRunRequest) diagnosticsRunRes
 	return diagnosticsRunResponse{
 		Target:  "tts",
 		OK:      ready,
-		Summary: map[bool]string{true: "TTS 配置与资源可用，后端已发出联调请求", false: "TTS 缺少可用资源或目标端点不可达"}[ready],
-		Details: map[string]any{"provider": cfg.TTS.Provider, "voice": cfg.TTS.Voice, "binary_ok": binaryOK, "model_ok": modelOK, "endpoint": cfg.TTS.Endpoint, "endpoint_ok": endpointOK, "endpoint_detail": endpointDetail, "text": text},
+		Summary: map[bool]string{true: "TTS 配置与资源可用，后端已发出联调请求", false: "TTS 缺少可用资源"}[ready],
+		Details: map[string]any{"provider": cfg.TTS.Provider, "voice": cfg.TTS.Voice, "binary_ok": binaryOK, "model_ok": modelOK, "text": text},
 	}
 }
 
@@ -161,8 +160,7 @@ func (h *DiagnosticsHandler) runASR(req diagnosticsRunRequest) diagnosticsRunRes
 	}
 	binaryOK := pathExists(cfg.ASR.BinaryPath)
 	modelOK := pathExists(cfg.ASR.ModelPath)
-	endpointOK, endpointDetail := endpointReachable(firstNonEmpty(cfg.ASR.StreamEndpoint, cfg.ASR.Endpoint))
-	ready := (binaryOK && modelOK) || endpointOK
+	ready := binaryOK && modelOK
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
 		text = "这是后端 ASR 联调测试。"
@@ -181,8 +179,8 @@ func (h *DiagnosticsHandler) runASR(req diagnosticsRunRequest) diagnosticsRunRes
 	return diagnosticsRunResponse{
 		Target:  "asr",
 		OK:      ready,
-		Summary: map[bool]string{true: "ASR 配置与资源可用，后端已发出联调请求", false: "ASR 缺少可用资源或目标端点不可达"}[ready],
-		Details: map[string]any{"provider": cfg.ASR.Provider, "binary_ok": binaryOK, "model_ok": modelOK, "endpoint": firstNonEmpty(cfg.ASR.StreamEndpoint, cfg.ASR.Endpoint), "endpoint_ok": endpointOK, "endpoint_detail": endpointDetail, "stage": stage, "text": text},
+		Summary: map[bool]string{true: "ASR 配置与资源可用，后端已发出联调请求", false: "ASR 缺少可用资源"}[ready],
+		Details: map[string]any{"provider": cfg.ASR.Provider, "binary_ok": binaryOK, "model_ok": modelOK, "stage": stage, "text": text},
 	}
 }
 
@@ -241,7 +239,7 @@ func (h *DiagnosticsHandler) runRAG(req diagnosticsRunRequest) diagnosticsRunRes
 	if err != nil {
 		return diagnosticsRunResponse{Target: "rag", OK: false, Summary: "读取配置失败", Details: map[string]any{"error": err.Error()}}
 	}
-	providerMgr := providers.NewManager(cfg.Providers.Root)
+	providerMgr := providers.NewManager("")
 	health := providers.BuildHealth(providerMgr)
 	endpointOK, endpointDetail := endpointReachable(cfg.RAG.EmbedEndpoint)
 	ready := endpointOK || health["embedding"].Status == "ready"
@@ -249,14 +247,15 @@ func (h *DiagnosticsHandler) runRAG(req diagnosticsRunRequest) diagnosticsRunRes
 	if text == "" {
 		text = "知识库联调测试"
 	}
+	topK := 4
 	if ready && h.bus != nil {
-		h.bus.Publish(bus.Event{Name: "diagnostics.rag.requested", SessionID: "diagnostics", TraceID: "diag-rag", Payload: map[string]any{"query": text, "top_k": cfg.RAG.TopK}})
+		h.bus.Publish(bus.Event{Name: "diagnostics.rag.requested", SessionID: "diagnostics", TraceID: "diag-rag", Payload: map[string]any{"query": text, "top_k": topK}})
 	}
 	return diagnosticsRunResponse{
 		Target:  "rag",
 		OK:      ready,
 		Summary: map[bool]string{true: "知识库/检索配置可用，后端已记录联调请求", false: "知识库/检索缺少可用 embedding 资源或端点不可达"}[ready],
-		Details: map[string]any{"embed_provider": cfg.RAG.EmbedProvider, "embed_model": cfg.RAG.EmbedModel, "embed_endpoint": cfg.RAG.EmbedEndpoint, "endpoint_ok": endpointOK, "endpoint_detail": endpointDetail, "embedding_health": health["embedding"].Status, "top_k": cfg.RAG.TopK, "query": text},
+		Details: map[string]any{"embed_provider": cfg.RAG.EmbedProvider, "embed_model": cfg.RAG.EmbedModel, "embed_endpoint": cfg.RAG.EmbedEndpoint, "endpoint_ok": endpointOK, "endpoint_detail": endpointDetail, "embedding_health": health["embedding"].Status, "top_k": topK, "query": text},
 	}
 }
 

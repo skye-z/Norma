@@ -24,7 +24,6 @@ func NewPrivacyHandler(cfgPath string) *PrivacyHandler {
 	cfg, _ := config.Load(cfgPath)
 	h := &PrivacyHandler{purgeProofDir: layout.PurgeProofDir, dbPath: layout.DBPath, logDir: layout.LogsDir}
 	if cfg != nil {
-		h.purgeProofDir = cfg.Security.PurgeProofDir
 		h.dbPath = cfg.Database.Path
 		h.logDir = cfg.App.LogDir
 	}
