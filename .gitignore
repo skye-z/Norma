@@ -24,6 +24,9 @@ coverage.out
 .gocache/
 .gomodcache/
 
+# External dependencies
+deps/
+
 # Runtime data
 /resource/data/
 /resource/logs/
@@ -39,6 +42,8 @@ config.yaml
 # Wails / frontend build outputs
 frontend/dist/
 frontend/node_modules/
+frontend/wailsjs/
+frontend/package.json.md5
 /build/bin/
 
 # Browser automation artifacts
