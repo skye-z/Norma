@@ -12,7 +12,7 @@ import (
 	"unicode"
 )
 
-// Manager 提供商管理器
+// 提供商管理器
 type Manager struct {
 	root string
 }
@@ -20,13 +20,13 @@ type Manager struct {
 // KnownKinds 已知的提供商类型
 var KnownKinds = []string{"wake", "asr", "tts", "embedding", "llm"}
 
-// Manifest 提供商清单
+// 提供商清单
 type Manifest struct {
 	Version   int              `json:"version"`
 	Providers []ManifestRecord `json:"providers"`
 }
 
-// ManifestRecord 提供商记录
+// 提供商记录
 type ManifestRecord struct {
 	ID               string `json:"id,omitempty"`
 	Name             string `json:"name"`
@@ -44,7 +44,7 @@ type ManifestRecord struct {
 	InstalledAt      string `json:"installed_at,omitempty"`
 }
 
-// NewManager 创建提供商管理器
+// 创建提供商管理器
 func NewManager(root string) *Manager {
 	root = strings.TrimSpace(root)
 	if root == "" {
@@ -53,12 +53,12 @@ func NewManager(root string) *Manager {
 	return &Manager{root: filepath.Clean(root)}
 }
 
-// Root 获取根目录
+// 获取根目录
 func (m *Manager) Root() string {
 	return m.root
 }
 
-// EnsureLayout 确保目录结构
+// 确保目录结构
 func (m *Manager) EnsureLayout() error {
 	if err := os.MkdirAll(m.root, 0o755); err != nil {
 		return err
@@ -74,12 +74,12 @@ func (m *Manager) EnsureLayout() error {
 	return nil
 }
 
-// EnsureWakeKeywords 确保唤醒词文件
+// 确保唤醒词文件
 func (m *Manager) EnsureWakeKeywords(keyword string) (string, error) {
 	return EnsureWakeKeywordsFile(m.currentDir("wake"), keyword)
 }
 
-// ResolveBinary 解析二进制文件路径
+// 解析二进制文件路径
 func (m *Manager) ResolveBinary(kind, version, explicit string, candidates ...string) string {
 	if p := cleanIfExists(explicit); p != "" {
 		return p
@@ -95,7 +95,7 @@ func (m *Manager) ResolveBinary(kind, version, explicit string, candidates ...st
 	return ""
 }
 
-// ResolveFile 解析文件路径
+// 解析文件路径
 func (m *Manager) ResolveFile(kind, version, explicit string, candidates ...string) string {
 	if p := cleanIfExists(explicit); p != "" {
 		return p
@@ -111,7 +111,7 @@ func (m *Manager) ResolveFile(kind, version, explicit string, candidates ...stri
 	return ""
 }
 
-// FindFirst 查找第一个匹配的文件
+// 查找第一个匹配的文件
 func (m *Manager) FindFirst(kind string, candidates ...string) string {
 	root := m.currentDir(kind)
 	for _, candidate := range candidates {
@@ -127,7 +127,7 @@ func (m *Manager) FindFirst(kind string, candidates ...string) string {
 	return ""
 }
 
-// FindGlob 查找匹配 glob 模式的所有文件
+// 查找匹配 glob 模式的所有文件
 func (m *Manager) FindGlob(kind string, patterns ...string) string {
 	root := m.currentDir(kind)
 	for _, pattern := range patterns {
@@ -151,7 +151,7 @@ func (m *Manager) FindGlob(kind string, patterns ...string) string {
 	return ""
 }
 
-// CurrentFiles 获取当前版本的所有文件
+// 获取当前版本的所有文件
 func (m *Manager) CurrentFiles(kind string) ([]string, error) {
 	entries, err := os.ReadDir(m.currentDir(kind))
 	if err != nil {
@@ -182,12 +182,12 @@ func (m *Manager) providerDir(kind, version string) string {
 	return filepath.Join(m.root, kind, version)
 }
 
-// ManifestPath 获取清单文件路径
+// 获取清单文件路径
 func (m *Manager) ManifestPath() string {
 	return filepath.Join(m.root, "manifest.json")
 }
 
-// LoadManifest 加载清单
+// 加载清单
 func (m *Manager) LoadManifest() (Manifest, error) {
 	var out Manifest
 	path := m.ManifestPath()
@@ -207,7 +207,7 @@ func (m *Manager) LoadManifest() (Manifest, error) {
 	return out, nil
 }
 
-// SaveManifest 保存清单
+// 保存清单
 func (m *Manager) SaveManifest(manifest Manifest) error {
 	if manifest.Version == 0 {
 		manifest.Version = 1
@@ -253,7 +253,7 @@ func findRecursive(root string, match func(path string) bool) string {
 	return found
 }
 
-// EnsureWakeKeywordsFile 确保唤醒词文件存在
+// 确保唤醒词文件存在
 func EnsureWakeKeywordsFile(modelDir, keyword string) (string, error) {
 	modelDir = strings.TrimSpace(modelDir)
 	if modelDir == "" {
@@ -286,7 +286,7 @@ func EnsureWakeKeywordsFile(modelDir, keyword string) (string, error) {
 	return filepath.Clean(keywordsPath), nil
 }
 
-// FormatWakeKeyword 格式化唤醒词
+// 格式化唤醒词
 func FormatWakeKeyword(modelDir, keyword string) (string, error) {
 	keyword = strings.TrimSpace(keyword)
 	if keyword == "" {

@@ -15,7 +15,7 @@ import (
 	"norma/backend/utils"
 )
 
-// OllamaStreamer Ollama 流式响应器
+// 流式响应器
 type OllamaStreamer struct {
 	endpoint string
 	model    string
@@ -78,7 +78,7 @@ type ollamaModel struct {
 	Name string `json:"name"`
 }
 
-// NewOllamaStreamer 创建 Ollama 流式响应器
+// 创建 Ollama 流式响应器
 func NewOllamaStreamer(endpoint, model, apiKey string, timeout time.Duration) *OllamaStreamer {
 	if strings.TrimSpace(endpoint) == "" {
 		endpoint = "http://127.0.0.1:11434/v1"
@@ -94,13 +94,13 @@ func NewOllamaStreamer(endpoint, model, apiKey string, timeout time.Duration) *O
 	}
 }
 
-// PingOllama 检查 Ollama 是否可用
+// 检查 Ollama 是否可用
 func PingOllama(endpoint, apiKey string, timeout time.Duration) error {
 	_, err := listModels(endpoint, apiKey, timeout)
 	return err
 }
 
-// DiscoverFirstLLMModel 发现第一个 LLM 模型
+// 发现第一个 LLM 模型
 func DiscoverFirstLLMModel(endpoint, apiKey string, timeout time.Duration) (string, error) {
 	models, err := listModels(endpoint, apiKey, timeout)
 	if err != nil {
@@ -173,7 +173,7 @@ func isLikelyLLM(name string) bool {
 	return true
 }
 
-// Stream 流式调用
+// 流式调用
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	prompt := buildPrompt(req)
 	body, err := json.Marshal(openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true})

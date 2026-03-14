@@ -74,7 +74,7 @@ func (a *App) onSecondInstanceLaunch(secondInstanceData options.SecondInstanceDa
 	go a.openExternalURL(debugURL())
 }
 
-// App struct
+// struct
 type App struct {
 	ctx              context.Context
 	mu               sync.RWMutex
@@ -90,7 +90,7 @@ type App struct {
 	eyeLastAt        time.Time
 }
 
-// NewApp creates a new App application struct
+// creates a new App application struct
 func NewApp() *App {
 	return &App{alwaysOnTop: true, notificationsOn: true, notificationMode: "important", visible: true}
 }
@@ -248,12 +248,12 @@ func (a *App) applyForcePassthrough(enabled bool) bool {
 	return a.isForcePassthrough()
 }
 
-// Greet returns a greeting for the given name
+// returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-// SetMousePassthrough toggles click-through mode for the floating window.
+// toggles click-through mode for the floating window.
 func (a *App) SetMousePassthrough(enabled bool) string {
 	if err := setMousePassthroughByTitle(appTitle, enabled); err != nil {
 		return "error: " + err.Error()

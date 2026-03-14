@@ -24,7 +24,7 @@ import (
 	"norma/backend/utils"
 )
 
-// ConversationHandler 对话处理器
+// 对话处理器
 type ConversationHandler struct {
 	bus        *bus.Bus
 	inspector  *runtime.Inspector
@@ -78,7 +78,7 @@ var conversationWSUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // 允许所有来源
 }
 
-// NewConversationHandler 创建对话处理器
+// 创建对话处理器
 func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.Inspector, providerMgr *providers.Manager) *ConversationHandler {
 	return &ConversationHandler{
 		configPath: configPath,
@@ -95,7 +95,7 @@ func NewConversationHandler(configPath string, b *bus.Bus, inspector *runtime.In
 	}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *ConversationHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/conversation/mic/start", h.handleMicStart)         // 启动麦克风
 	mux.HandleFunc("/conversation/mic/stop", h.handleMicStop)           // 停止麦克风

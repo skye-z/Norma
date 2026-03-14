@@ -10,7 +10,7 @@ import (
 	"unicode"
 )
 
-// RetrieverPostProcessOptions 检索后处理选项
+// 检索后处理选项
 type RetrieverPostProcessOptions struct {
 	EnableDedup         bool
 	EnableAdjacentMerge bool
@@ -19,7 +19,7 @@ type RetrieverPostProcessOptions struct {
 	RerankWeight        float64
 }
 
-// RetrieverHybrid 向量+全文混合检索
+// 向量+全文混合检索
 type RetrieverHybrid struct {
 	vector VectorSearcher
 	text   FullTextSearcher
@@ -27,7 +27,7 @@ type RetrieverHybrid struct {
 	opts   RetrieverPostProcessOptions
 }
 
-// NewHybridRetriever 创建混合检索器
+// 创建混合检索器
 func NewHybridRetriever(vector VectorSearcher, text FullTextSearcher, fuser RankFuser) *RetrieverHybrid {
 	if fuser == nil {
 		fuser = NewRRFFuser(60)
@@ -40,17 +40,17 @@ func NewHybridRetriever(vector VectorSearcher, text FullTextSearcher, fuser Rank
 	}
 }
 
-// SetPostProcessOptions 设置后处理选项
+// 设置后处理选项
 func (r *RetrieverHybrid) SetPostProcessOptions(opts RetrieverPostProcessOptions) {
 	r.opts = normalizeRetrieverPostProcessOptions(opts)
 }
 
-// Search 搜索
+// 搜索
 func (r *RetrieverHybrid) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
 	return r.SearchTuned(ctx, query, topK, DefaultSearchTuning(topK))
 }
 
-// SearchTuned 调优搜索
+// 调优搜索
 func (r *RetrieverHybrid) SearchTuned(ctx context.Context, query string, topK int, tuning SearchTuning) ([]Chunk, error) {
 	tuning = normalizeSearchTuning(tuning, topK)
 	topK = tuning.TopK

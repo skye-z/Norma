@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-// PiperTTS Piper TTS
+// TTS
 type PiperTTS struct {
 	BinaryPath string
 	ModelPath  string
@@ -21,19 +21,19 @@ type PiperTTS struct {
 	cancel context.CancelFunc
 }
 
-// SampleRate 获取采样率
+// 获取采样率
 func (p *PiperTTS) SampleRate() int { return 22050 }
 
-// Channels 获取声道数
+// 获取声道数
 func (p *PiperTTS) Channels() int { return 1 }
 
-// Encoding 获取编码格式
+// 获取编码格式
 func (p *PiperTTS) Encoding() string { return "pcm_s16le" }
 
-// SupportsProsodyHints 是否支持韵律提示
+// 是否支持韵律提示
 func (p *PiperTTS) SupportsProsodyHints() bool { return false }
 
-// NewPiperTTS 创建 Piper TTS
+// 创建 Piper TTS
 func NewPiperTTS(binaryPath, modelPath, speaker string) *PiperTTS {
 	return &PiperTTS{
 		BinaryPath: strings.TrimSpace(binaryPath),
@@ -42,7 +42,7 @@ func NewPiperTTS(binaryPath, modelPath, speaker string) *PiperTTS {
 	}
 }
 
-// Stream 流式合成
+// 流式合成
 func (p *PiperTTS) Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error {
 	if p.BinaryPath == "" || p.ModelPath == "" {
 		return fmt.Errorf("piper binary/model path is empty")

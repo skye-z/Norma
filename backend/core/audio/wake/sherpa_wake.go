@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// SherpaWakeWord Sherpa 唤醒词检测器
+// 唤醒词检测器
 type SherpaWakeWord struct {
 	BinaryPath       string
 	EncoderPath      string
@@ -39,7 +39,7 @@ type sherpaKWSEvent struct {
 	Keyword string `json:"keyword"`
 }
 
-// NewSherpaWakeWord 创建 Sherpa 唤醒词检测器
+// 创建 Sherpa 唤醒词检测器
 func NewSherpaWakeWord(binaryPath, encoderPath, decoderPath, joinerPath, tokensPath, keywordsFilePath, keyword string) *SherpaWakeWord {
 	return &SherpaWakeWord{
 		BinaryPath:       strings.TrimSpace(binaryPath),

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// HTTPASR HTTP ASR 客户端
+// ASR 客户端
 type HTTPASR struct {
 	Endpoint       string
 	StreamEndpoint string
@@ -32,7 +32,7 @@ type asrResponse struct {
 	Final    string   `json:"final"`
 }
 
-// NewHTTPASR 创建 HTTP ASR
+// 创建 HTTP ASR
 func NewHTTPASR(endpoint string, timeout time.Duration) *HTTPASR {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -43,7 +43,7 @@ func NewHTTPASR(endpoint string, timeout time.Duration) *HTTPASR {
 	}
 }
 
-// Stream 流式识别
+// 流式识别
 func (a *HTTPASR) Stream(ctx context.Context, onPartial func(string), onFinal func(string)) error {
 	if a.Endpoint == "" {
 		return fmt.Errorf("asr endpoint is empty")
@@ -91,7 +91,7 @@ func (a *HTTPASR) post(ctx context.Context, url string, body []byte) (*http.Resp
 	return a.Client.Do(req)
 }
 
-// XTTSStreamer calls a local XTTS-like HTTP service and streams by sentence.
+// calls a local XTTS-like HTTP service and streams by sentence.
 type XTTSStreamer struct {
 	Endpoint string
 	Voice    string

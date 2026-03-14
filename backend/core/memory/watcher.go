@@ -12,13 +12,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watcher 文件变化监控器
+// 文件变化监控器
 type Watcher struct {
 	watcher *fsnotify.Watcher
 	queue   Queue
 }
 
-// NewWatcher 创建 Watcher
+// 创建 Watcher
 func NewWatcher(queue Queue) (*Watcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -27,7 +27,7 @@ func NewWatcher(queue Queue) (*Watcher, error) {
 	return &Watcher{watcher: w, queue: queue}, nil
 }
 
-// Close 关闭 Watcher
+// 关闭 Watcher
 func (w *Watcher) Close() error {
 	if w == nil || w.watcher == nil {
 		return nil
@@ -35,7 +35,7 @@ func (w *Watcher) Close() error {
 	return w.watcher.Close()
 }
 
-// AddRecursive 递归添加监控目录
+// 递归添加监控目录
 func (w *Watcher) AddRecursive(root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -54,7 +54,7 @@ func (w *Watcher) AddRecursive(root string) error {
 	})
 }
 
-// EnqueueInitial 初始入队所有可索引文件
+// 初始入队所有可索引文件
 func (w *Watcher) EnqueueInitial(ctx context.Context, root string) error {
 	if w.queue == nil {
 		return errors.New("watcher queue is nil")
@@ -79,7 +79,7 @@ func (w *Watcher) EnqueueInitial(ctx context.Context, root string) error {
 	})
 }
 
-// Run 运行监控
+// 运行监控
 func (w *Watcher) Run(ctx context.Context) error {
 	if w.queue == nil {
 		return errors.New("watcher queue is nil")

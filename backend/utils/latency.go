@@ -15,20 +15,20 @@ type marks struct {
 	ttsFirstChunk time.Time // TTS生成首个音频块的时间
 }
 
-// Latency 单次请求的延迟数据
+// 单次请求的延迟数据
 type Latency struct {
 	ASRToLLMFirstTokenMs int64 `json:"asr_to_llm_first_token_ms"` // ASR完成到LLM首个token的毫秒数
 	ASRToTTSFirstChunkMs int64 `json:"asr_to_tts_first_chunk_ms"` // ASR完成到TTS首个音频块的毫秒数
 }
 
-// EventMetric 事件计数器
+// 事件计数器
 type EventMetric struct {
 	Name      string `json:"name"`       // 事件名称
 	Count     int64  `json:"count"`      // 事件发生次数
 	LastValue int64  `json:"last_value"` // 最近一次的值
 }
 
-// Snapshot 延迟追踪器快照
+// 延迟追踪器快照
 type Snapshot struct {
 	Counters     []EventMetric `json:"counters"`      // 所有事件计数器
 	Recent       []Latency     `json:"recent"`        // 最近50次延迟记录
@@ -36,7 +36,7 @@ type Snapshot struct {
 	ActiveTraces int           `json:"active_traces"` // 正在进行的追踪数量
 }
 
-// Tracker 延迟追踪器
+// 延迟追踪器
 type Tracker struct {
 	mu       sync.Mutex
 	data     map[string]*marks       // sessionID|traceID -> 时间标记
@@ -45,7 +45,7 @@ type Tracker struct {
 	alerts   []string                // 告警信息
 }
 
-// NewTracker 创建新的延迟追踪器实例
+// 创建新的延迟追踪器实例
 func NewTracker() *Tracker {
 	return &Tracker{data: make(map[string]*marks), counters: make(map[string]*EventMetric)}
 }
@@ -53,7 +53,7 @@ func NewTracker() *Tracker {
 // key 生成会话和追踪的唯一键名
 func key(sessionID, traceID string) string { return fmt.Sprintf("%s|%s", sessionID, traceID) }
 
-// MarkASRFinal 标记ASR完成时间
+// 标记ASR完成时间
 func (t *Tracker) MarkASRFinal(sessionID, traceID string, at time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -67,7 +67,7 @@ func (t *Tracker) MarkASRFinal(sessionID, traceID string, at time.Time) {
 	t.bumpLocked("asr.final", 0)
 }
 
-// MarkLLMFirstToken 标记LLM首个token时间
+// 标记LLM首个token时间
 func (t *Tracker) MarkLLMFirstToken(sessionID, traceID string, at time.Time) (int64, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -82,7 +82,7 @@ func (t *Tracker) MarkLLMFirstToken(sessionID, traceID string, at time.Time) (in
 	return ms, true
 }
 
-// MarkTTSFirstChunk 标记TTS首个音频块时间
+// 标记TTS首个音频块时间
 func (t *Tracker) MarkTTSFirstChunk(sessionID, traceID string, at time.Time) (int64, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -97,14 +97,14 @@ func (t *Tracker) MarkTTSFirstChunk(sessionID, traceID string, at time.Time) (in
 	return ms, true
 }
 
-// RecordValue 记录任意事件数值
+// 记录任意事件数值
 func (t *Tracker) RecordValue(name string, value int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.bumpLocked(name, value)
 }
 
-// AddAlert 添加告警信息
+// 添加告警信息
 func (t *Tracker) AddAlert(msg string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -114,7 +114,7 @@ func (t *Tracker) AddAlert(msg string) {
 	t.alerts = append(t.alerts, msg)
 }
 
-// SnapshotAndClear 获取延迟快照并清除追踪数据
+// 获取延迟快照并清除追踪数据
 func (t *Tracker) SnapshotAndClear(sessionID, traceID string) (Latency, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -139,7 +139,7 @@ func (t *Tracker) SnapshotAndClear(sessionID, traceID string) (Latency, bool) {
 	return out, true
 }
 
-// Snapshot 获取追踪器完整快照
+// 获取追踪器完整快照
 func (t *Tracker) Snapshot() Snapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()

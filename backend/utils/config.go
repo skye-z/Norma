@@ -62,7 +62,7 @@ type AudioConfig struct {
 	AGC                   string `mapstructure:"agc"`
 }
 
-// ASR 配置
+// 配置
 type ASRConfig struct {
 	Provider   string `mapstructure:"provider"`
 	Language   string `mapstructure:"language"`
@@ -71,7 +71,7 @@ type ASRConfig struct {
 	Threads    int    `mapstructure:"threads"`
 }
 
-// LLM 配置
+// 配置
 type LLMConfig struct {
 	Provider    string  `mapstructure:"provider"`
 	Endpoint    string  `mapstructure:"endpoint"`
@@ -80,7 +80,7 @@ type LLMConfig struct {
 	Temperature float64 `mapstructure:"temperature"`
 }
 
-// TTS 配置
+// 配置
 type TTSConfig struct {
 	Provider   string  `mapstructure:"provider"`
 	BinaryPath string  `mapstructure:"binary_path"`
@@ -89,7 +89,7 @@ type TTSConfig struct {
 	Speed      float64 `mapstructure:"speed"`
 }
 
-// RAG 配置
+// 配置
 type RAGConfig struct {
 	Provider        string `mapstructure:"provider"`
 	EmbedEndpoint   string `mapstructure:"embed_endpoint"`
@@ -111,7 +111,7 @@ type SecurityConfig struct {
 	AllowedIPs  []string `mapstructure:"allowed_ips"`
 }
 
-// Provider 配置
+// 配置
 type ProvidersConfig struct {
 	InstallMode string `mapstructure:"install_mode"`
 }

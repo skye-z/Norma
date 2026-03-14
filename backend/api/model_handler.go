@@ -12,18 +12,18 @@ import (
 	"norma/backend/utils"
 )
 
-// ModelHandler 模型处理器
+// 模型处理器
 type ModelHandler struct {
 	configPath string
 	modelDir   string
 }
 
-// NewModelHandler 创建模型处理器
+// 创建模型处理器
 func NewModelHandler(configPath, modelDir string) *ModelHandler {
 	return &ModelHandler{configPath: configPath, modelDir: modelDir}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *ModelHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/model/resolve", h.handleResolve)
 	mux.HandleFunc("/runtime/model/list", h.handleList)

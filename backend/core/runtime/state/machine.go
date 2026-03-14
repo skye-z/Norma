@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// State 运行时全局状态
+// 运行时全局状态
 type State string
 
 // 状态常量
@@ -18,7 +18,7 @@ const (
 	Error       State = "Error"       // 错误
 )
 
-// Transition 状态转换记录
+// 状态转换记录
 type Transition struct {
 	From     State // 转换前
 	To       State // 转换后
@@ -28,26 +28,26 @@ type Transition struct {
 
 const historyLimit = 256
 
-// Machine 线程安全的状态机
+// 线程安全的状态机
 type Machine struct {
 	mu      sync.RWMutex
 	state   State        // 当前状态
 	history []Transition // 转换历史
 }
 
-// NewMachine 创建状态机
+// 创建状态机
 func NewMachine() *Machine {
 	return &Machine{state: Idle}
 }
 
-// Get 获取当前状态
+// 获取当前状态
 func (m *Machine) Get() State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.state
 }
 
-// Set 设置新状态
+// 设置新状态
 func (m *Machine) Set(next State) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -63,7 +63,7 @@ func (m *Machine) Set(next State) {
 	m.state = next
 }
 
-// GetHistory 获取转换历史
+// 获取转换历史
 func (m *Machine) GetHistory() []Transition {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

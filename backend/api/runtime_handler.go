@@ -13,7 +13,7 @@ import (
 	"norma/backend/core/runtime/bus"
 )
 
-// RuntimeHandler 运行时处理器
+// 运行时处理器
 type RuntimeHandler struct {
 	bus       *bus.Bus
 	inspector *runtime.Inspector
@@ -23,7 +23,7 @@ var runtimeWSUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// NewRuntimeHandler 创建运行时处理器
+// 创建运行时处理器
 func NewRuntimeHandler(b *bus.Bus, inspector *runtime.Inspector) *RuntimeHandler {
 	return &RuntimeHandler{bus: b, inspector: inspector}
 }
@@ -36,7 +36,7 @@ type publishReq struct {
 	Payload   any    `json:"payload"`
 }
 
-// Register 注册路由
+// 注册路由
 func (h *RuntimeHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/runtime/publish", h.handlePublish)
 	mux.HandleFunc("/runtime/events/ws", h.handleEventsWS)

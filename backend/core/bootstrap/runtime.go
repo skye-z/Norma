@@ -25,7 +25,7 @@ import (
 	"xorm.io/xorm"
 )
 
-// Stack 运行时组件栈
+// 运行时组件栈
 type Stack struct {
 	Runtime         *runtime.Runtime
 	Tracker         *config.Tracker
@@ -36,7 +36,7 @@ type Stack struct {
 	Playback        audioPlayback
 }
 
-// WakeConfigStatus 唤醒词配置状态
+// 唤醒词配置状态
 type WakeConfigStatus struct {
 	Enabled       bool
 	EffectiveMode string
@@ -57,7 +57,7 @@ type audioPlayback interface {
 	Wait(ctx context.Context, sessionID string) error
 }
 
-// NewStack 创建运行时栈
+// 创建运行时栈
 func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	providerMgr := providers.NewManager(layout.ProvidersDir)
 	if err := providerMgr.EnsureLayout(); err != nil {
@@ -92,12 +92,12 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	}, nil
 }
 
-// BuildVoicePipeline 构建语音管道
+// 构建语音管道
 func BuildVoicePipeline(cfg *config.Config, mgr *providers.Manager) audio.Pipeline {
 	return BuildVoicePipelineForMode(cfg, mgr, "")
 }
 
-// BuildVoicePipelineForMode 构建指定模式的语音管道
+// 构建指定模式的语音管道
 func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overrideMode string) audio.Pipeline {
 	wakeStatus := ResolveWakeConfig(cfg, mgr)
 	effectiveMode := wakeStatus.EffectiveMode
@@ -125,7 +125,7 @@ func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overr
 	return pipe
 }
 
-// ResolveWakeConfig 解析唤醒词配置
+// 解析唤醒词配置
 func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigStatus {
 	status := WakeConfigStatus{
 		Enabled:       cfg != nil && cfg.Audio.EnableWakeWord,
@@ -433,7 +433,7 @@ func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) memory.Embedder 
 	}
 }
 
-// EnsureWakeKeywordsForConfig 确保唤醒词关键词文件存在
+// 确保唤醒词关键词文件存在
 func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (string, error) {
 	if cfg == nil {
 		return "", nil

@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// EmotionSpec 情感规格
+// 情感规格
 type EmotionSpec struct {
 	Emotion    string             `json:"emotion"`
 	Motion     string             `json:"motion"`
@@ -17,7 +17,7 @@ type EmotionSpec struct {
 	Params     map[string]float64 `json:"params,omitempty"`
 }
 
-// ReplyPlan 回复计划
+// 回复计划
 type ReplyPlan struct {
 	Raw        string         `json:"raw"`
 	Styled     string         `json:"styled"`
@@ -26,7 +26,7 @@ type ReplyPlan struct {
 	Delivery   []DeliverySpec `json:"delivery,omitempty"`
 }
 
-// DeliverySpec 投递规格
+// 投递规格
 type DeliverySpec struct {
 	Text      string  `json:"text"`
 	Phase     string  `json:"phase"`
@@ -37,13 +37,13 @@ type DeliverySpec struct {
 	StyleHint string  `json:"style_hint"`
 }
 
-// PersonaRuntimeConfig 角色运行时配置
+// 角色运行时配置
 type PersonaRuntimeConfig struct {
 	KeepMicCaptureAlive bool `json:"keep_mic_capture_alive"`
 	NeedRealAECNS       bool `json:"need_real_aec_ns"`
 }
 
-// VisemeFrame 视素帧
+// 视素帧
 type VisemeFrame struct {
 	Phoneme   string  `json:"phoneme"`
 	Intensity float64 `json:"intensity"`
@@ -94,7 +94,7 @@ var live2DExpressionAliases = map[string]string{
 	"\u5e73\u9759": "neutral",
 }
 
-// PlanReply 生成回复计划
+// 生成回复计划
 func PlanReply(text string) ReplyPlan {
 	cleaned := strings.TrimSpace(text)
 	if cleaned == "" {
@@ -115,7 +115,7 @@ func PlanReply(text string) ReplyPlan {
 	return ReplyPlan{Raw: cleaned, Styled: cleaned, Conclusion: segments[0], Segments: segments}
 }
 
-// RewritePersona 重写角色设定
+// 重写角色设定
 func RewritePersona(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -191,7 +191,7 @@ func parseLive2DControl(body, raw string) (Live2DControl, bool) {
 	return Live2DControl{}, false
 }
 
-// BuildDeliveryPlan 构建投递计划
+// 构建投递计划
 func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
 	out := make([]DeliverySpec, 0, len(plan.Segments))
 	for index, segment := range plan.Segments {
@@ -225,7 +225,7 @@ func BuildDeliveryPlan(plan ReplyPlan, emotion EmotionSpec) []DeliverySpec {
 	return out
 }
 
-// ApplyDeliveryStyle 应用投递风格
+// 应用投递风格
 func ApplyDeliveryStyle(text string, spec DeliverySpec, supportsProsody bool) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -246,7 +246,7 @@ func ApplyDeliveryStyle(text string, spec DeliverySpec, supportsProsody bool) st
 	return prefix + text + suffix
 }
 
-// BuildPersonaRuntimeConfig 构建角色运行时配置
+// 构建角色运行时配置
 func BuildPersonaRuntimeConfig(delivery []DeliverySpec, interruptDuringSpeak bool) PersonaRuntimeConfig {
 	keepAlive := interruptDuringSpeak
 	needAECNS := false
@@ -258,7 +258,7 @@ func BuildPersonaRuntimeConfig(delivery []DeliverySpec, interruptDuringSpeak boo
 	return PersonaRuntimeConfig{KeepMicCaptureAlive: keepAlive, NeedRealAECNS: needAECNS}
 }
 
-// AnalyzeEmotion 分析情感
+// 分析情感
 func AnalyzeEmotion(text string) EmotionSpec {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	spec := EmotionSpec{Emotion: "neutral", Motion: "Idle", Intensity: 0.45}
@@ -284,7 +284,7 @@ func AnalyzeEmotion(text string) EmotionSpec {
 	return spec
 }
 
-// EstimateVisemes 估算视素
+// 估算视素
 func EstimateVisemes(text string) []VisemeFrame {
 	frames := make([]VisemeFrame, 0, utf8.RuneCountInString(text))
 	for _, r := range text {

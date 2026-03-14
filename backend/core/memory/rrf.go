@@ -3,12 +3,12 @@ package memory
 
 import "sort"
 
-// RRFFuser 倒数排名融合
+// 倒数排名融合
 type RRFFuser struct {
 	K int
 }
 
-// NewRRFFuser 创建 RRF 融合器
+// 创建 RRF 融合器
 func NewRRFFuser(k int) *RRFFuser {
 	if k <= 0 {
 		k = 60
@@ -16,7 +16,7 @@ func NewRRFFuser(k int) *RRFFuser {
 	return &RRFFuser{K: k}
 }
 
-// Fuse 融合向量搜索和文本搜索结果
+// 融合向量搜索和文本搜索结果
 func (f *RRFFuser) Fuse(vectorHits, textHits []Chunk, topK int) []Chunk {
 	if topK <= 0 {
 		topK = 5

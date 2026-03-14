@@ -11,21 +11,21 @@ import (
 	"time"
 )
 
-// Embedder 文本向量嵌入接口
+// 文本向量嵌入接口
 type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-// HashEmbedder 哈希嵌入器（本地确定性回退）
+// 哈希嵌入器（本地确定性回退）
 type HashEmbedder struct{}
 
-// Embed 生成嵌入向量
+// 生成嵌入向量
 func (h HashEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	_ = ctx
 	return embedF32(text), nil
 }
 
-// HTTPEmbedder HTTP 嵌入服务客户端
+// 嵌入服务客户端
 type HTTPEmbedder struct {
 	Endpoint string
 	Client   *http.Client
@@ -41,7 +41,7 @@ type embedResp struct {
 	Vector []float32 `json:"vector"`
 }
 
-// NewHTTPEmbedder 创建 HTTP 嵌入器
+// 创建 HTTP 嵌入器
 func NewHTTPEmbedder(endpoint string, timeout time.Duration) *HTTPEmbedder {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -52,7 +52,7 @@ func NewHTTPEmbedder(endpoint string, timeout time.Duration) *HTTPEmbedder {
 	}
 }
 
-// Embed 生成嵌入向量
+// 生成嵌入向量
 func (e *HTTPEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	if strings.TrimSpace(e.Endpoint) == "" {
 		return nil, fmt.Errorf("embed endpoint empty")
@@ -83,7 +83,7 @@ func (e *HTTPEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	return out.Vector, nil
 }
 
-// OllamaEmbedder Ollama 嵌入服务客户端
+// 嵌入服务客户端
 type OllamaEmbedder struct {
 	Endpoint string
 	Model    string
@@ -102,7 +102,7 @@ type ollamaEmbedResp struct {
 	Embeddings [][]float32 `json:"embeddings"`
 }
 
-// NewOllamaEmbedder 创建 Ollama 嵌入器
+// 创建 Ollama 嵌入器
 func NewOllamaEmbedder(endpoint, model string, timeout time.Duration) *OllamaEmbedder {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -118,7 +118,7 @@ func NewOllamaEmbedder(endpoint, model string, timeout time.Duration) *OllamaEmb
 	}
 }
 
-// Embed 生成嵌入向量
+// 生成嵌入向量
 func (e *OllamaEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	if e.Model == "" {
 		return nil, fmt.Errorf("ollama embed model empty")

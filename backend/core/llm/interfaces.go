@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Request LLM请求结构
+// LLM请求结构
 type Request struct {
 	SessionID string   // 会话唯一标识符
 	Prompt    string   // 用户输入的提示词
@@ -16,17 +16,17 @@ type Request struct {
 	Persona   string   // 角色设定
 }
 
-// Streamer 流式输出接口
+// 流式输出接口
 type Streamer interface {
 	// Stream 执行流式推理
 	// ctx-上下文，req-LLM请求，onToken-每个token生成时的回调函数
 	Stream(ctx context.Context, req Request, onToken func(string)) error
 }
 
-// MockStreamer 开发用模拟LLM流处理器
+// 开发用模拟LLM流处理器
 type MockStreamer struct{}
 
-// Stream 模拟流式输出
+// 模拟流式输出
 func (m MockStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	_ = m
 	text := "收到，我先给你结论：这是一个可运行的 mock 语音链路。"
@@ -53,12 +53,12 @@ func (m MockStreamer) Stream(ctx context.Context, req Request, onToken func(stri
 	return nil
 }
 
-// UnavailableStreamer 不可用的流处理器
+// 不可用的流处理器
 type UnavailableStreamer struct {
 	Reason string // 不可用原因
 }
 
-// Stream 返回LLM不可用的错误
+// 返回LLM不可用的错误
 func (u UnavailableStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	_ = ctx
 	_ = req

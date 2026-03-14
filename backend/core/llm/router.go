@@ -3,7 +3,7 @@ package llm
 
 import "context"
 
-// RoutedStreamer 路由流式响应器
+// 路由流式响应器
 type RoutedStreamer struct {
 	Primary      Streamer
 	Degraded     Streamer
@@ -12,7 +12,7 @@ type RoutedStreamer struct {
 	CurrentRoute func() string
 }
 
-// Stream 流式调用，自动路由
+// 流式调用，自动路由
 func (r RoutedStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	if r.UseDegraded != nil && r.UseDegraded() && r.Degraded != nil {
 		if err := r.Degraded.Stream(ctx, req, onToken); err == nil {

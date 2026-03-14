@@ -14,7 +14,7 @@ import (
 
 var timeTagRe = regexp.MustCompile(`\[[^\]]+\]`)
 
-// WhisperCPPASR transcribes frames by invoking whisper.cpp CLI.
+// transcribes frames by invoking whisper.cpp CLI.
 type WhisperCPPASR struct {
 	BinaryPath string
 	ModelPath  string

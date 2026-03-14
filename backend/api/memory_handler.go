@@ -11,17 +11,17 @@ import (
 	"norma/backend/core/memory"
 )
 
-// MemoryHandler 记忆处理器
+// 记忆处理器
 type MemoryHandler struct {
 	svc *memory.Service
 }
 
-// NewMemoryHandler 创建记忆处理器
+// 创建记忆处理器
 func NewMemoryHandler(svc *memory.Service) *MemoryHandler {
 	return &MemoryHandler{svc: svc}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *MemoryHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/memory", h.handleMemory)
 	mux.HandleFunc("/memory/", h.handleMemoryByID)

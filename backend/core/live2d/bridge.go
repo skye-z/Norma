@@ -9,7 +9,7 @@ import (
 	"norma/backend/core/runtime/bus"
 )
 
-// Bridge 运行时事件到Live2D事件的桥接器
+// 运行时事件到Live2D事件的桥接器
 type Bridge struct {
 	b     *bus.Bus // 事件总线
 	mu    sync.Mutex
@@ -24,7 +24,7 @@ type motionState struct {
 	IdleAfterMs int       // 空闲恢复延迟（毫秒）
 }
 
-// NewBridge 创建Live2D桥接器
+// 创建Live2D桥接器
 func NewBridge(b *bus.Bus) *Bridge {
 	br := &Bridge{b: b, state: make(map[string]motionState)}
 	br.bind()

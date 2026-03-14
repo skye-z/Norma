@@ -14,15 +14,15 @@ import (
 	"unicode"
 )
 
-// Extractor 文件内容提取器接口
+// 文件内容提取器接口
 type Extractor interface {
 	Extract(path string) (string, error)
 }
 
-// TextExtractor 文本文件提取器
+// 文本文件提取器
 type TextExtractor struct{}
 
-// Extract 提取文本内容
+// 提取文本内容
 func (e TextExtractor) Extract(path string) (string, error) {
 	if shouldSkipPath(path) {
 		return "", fmt.Errorf("path ignored by filter")

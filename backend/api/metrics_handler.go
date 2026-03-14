@@ -7,15 +7,15 @@ import (
 	config "norma/backend/utils"
 )
 
-// MetricsHandler 指标处理器
+// 指标处理器
 type MetricsHandler struct{ tracker *config.Tracker }
 
-// NewMetricsHandler 创建指标处理器
+// 创建指标处理器
 func NewMetricsHandler(tracker *config.Tracker) *MetricsHandler {
 	return &MetricsHandler{tracker: tracker}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *MetricsHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/metrics/summary", h.handleSummary)
 }

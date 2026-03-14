@@ -3,24 +3,24 @@ package memory
 
 import "context"
 
-// Task 索引任务
+// 索引任务
 type Task struct {
 	Path string
 	Kind string
 }
 
-// Queue 异步索引队列接口
+// 异步索引队列接口
 type Queue interface {
 	Enqueue(ctx context.Context, t Task) error
 	Dequeue(ctx context.Context) (Task, error)
 }
 
-// MemoryQueue 内存队列（开发用）
+// 内存队列（开发用）
 type MemoryQueue struct {
 	ch chan Task
 }
 
-// NewMemoryQueue 创建内存队列
+// 创建内存队列
 func NewMemoryQueue(size int) *MemoryQueue {
 	if size <= 0 {
 		size = 64
@@ -28,7 +28,7 @@ func NewMemoryQueue(size int) *MemoryQueue {
 	return &MemoryQueue{ch: make(chan Task, size)}
 }
 
-// Enqueue 入队
+// 入队
 func (q *MemoryQueue) Enqueue(ctx context.Context, t Task) error {
 	select {
 	case <-ctx.Done():
@@ -38,7 +38,7 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, t Task) error {
 	}
 }
 
-// Dequeue 出队
+// 出队
 func (q *MemoryQueue) Dequeue(ctx context.Context) (Task, error) {
 	select {
 	case <-ctx.Done():

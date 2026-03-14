@@ -3,7 +3,7 @@ package memory
 
 import "context"
 
-// SearchTuning 搜索调优参数
+// 搜索调优参数
 type SearchTuning struct {
 	TopK                 int
 	VectorEFSearch       int
@@ -13,22 +13,22 @@ type SearchTuning struct {
 	MinFusionCandidates  int
 }
 
-// TunedRetriever 调优检索器接口
+// 调优检索器接口
 type TunedRetriever interface {
 	SearchTuned(ctx context.Context, query string, topK int, tuning SearchTuning) ([]Chunk, error)
 }
 
-// TunedVectorSearcher 调优向量搜索器接口
+// 调优向量搜索器接口
 type TunedVectorSearcher interface {
 	SearchVectorTuned(ctx context.Context, queryEmbedding []float32, topK int, opts VectorSearchOptions) ([]Chunk, error)
 }
 
-// VectorSearchOptions 向量搜索选项
+// 向量搜索选项
 type VectorSearchOptions struct {
 	EFSearch int
 }
 
-// DefaultSearchTuning 默认搜索调优
+// 默认搜索调优
 func DefaultSearchTuning(topK int) SearchTuning {
 	if topK <= 0 {
 		topK = 5

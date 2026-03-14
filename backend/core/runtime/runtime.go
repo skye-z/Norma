@@ -7,14 +7,14 @@ import (
 	"norma/backend/core/runtime/state"
 )
 
-// Runtime 运行时核心组件
+// 运行时核心组件
 type Runtime struct {
 	Bus       *bus.Bus       // 事件总线
 	State     *state.Machine // 状态机
 	Inspector *Inspector     // 诊断
 }
 
-// New 创建运行时实例
+// 创建运行时实例
 func New() *Runtime {
 	inspector := NewInspector(80)
 	rt := &Runtime{

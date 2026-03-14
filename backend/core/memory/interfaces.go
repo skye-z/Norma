@@ -2,7 +2,7 @@ package memory
 
 import "context"
 
-// Chunk 可检索的内容单元
+// 可检索的内容单元
 type Chunk struct {
 	DocID   string
 	ChunkID string
@@ -10,15 +10,15 @@ type Chunk struct {
 	Content string
 }
 
-// Retriever 混合检索接口
+// 混合检索接口
 type Retriever interface {
 	Search(ctx context.Context, query string, topK int) ([]Chunk, error)
 }
 
-// MockRetriever 开发用模拟检索器
+// 开发用模拟检索器
 type MockRetriever struct{}
 
-// Search 实现 Retriever 接口
+// 实现 Retriever 接口
 func (m MockRetriever) Search(ctx context.Context, query string, topK int) ([]Chunk, error) {
 	_ = ctx
 	if topK <= 0 {

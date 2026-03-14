@@ -2,7 +2,7 @@ package audio
 
 import "math"
 
-// EnergyVAD is a lightweight amplitude-based VAD.
+// is a lightweight amplitude-based VAD.
 type EnergyVAD struct {
 	threshold float64
 }

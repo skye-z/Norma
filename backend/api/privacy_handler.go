@@ -12,14 +12,14 @@ import (
 	"norma/pkg/layout"
 )
 
-// PrivacyHandler 隐私处理器
+// 隐私处理器
 type PrivacyHandler struct {
 	purgeProofDir string
 	dbPath        string
 	logDir        string
 }
 
-// NewPrivacyHandler 创建隐私处理器
+// 创建隐私处理器
 func NewPrivacyHandler(cfgPath string) *PrivacyHandler {
 	cfg, _ := config.Load(cfgPath)
 	h := &PrivacyHandler{purgeProofDir: layout.PurgeProofDir, dbPath: layout.DBPath, logDir: layout.LogsDir}
@@ -30,7 +30,7 @@ func NewPrivacyHandler(cfgPath string) *PrivacyHandler {
 	return h
 }
 
-// Register 注册路由
+// 注册路由
 func (h *PrivacyHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/privacy/purge", h.handlePurge)
 }

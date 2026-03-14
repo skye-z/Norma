@@ -7,7 +7,7 @@ import (
 	asrAudio "norma/backend/core/audio/asr"
 )
 
-// Health 提供商健康状态
+// 提供商健康状态
 type Health struct {
 	Status   string            `json:"status"`
 	Required []string          `json:"required"`
@@ -16,7 +16,7 @@ type Health struct {
 	Paths    map[string]string `json:"paths,omitempty"`
 }
 
-// BuildHealth 构建健康检查状态
+// 构建健康检查状态
 func BuildHealth(mgr *Manager) map[string]Health {
 	return map[string]Health{
 		"wake": classifyHealth([]string{"encoder", "decoder", "joiner", "tokens", "keywords"}, map[string]string{

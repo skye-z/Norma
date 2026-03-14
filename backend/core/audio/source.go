@@ -9,19 +9,19 @@ import (
 
 var ErrEndOfStream = errors.New("end of stream")
 
-// FrameSource 提供 PCM float 音频帧
+// 提供 PCM float 音频帧
 type FrameSource interface {
 	Next(ctx context.Context) ([]float32, error)
 }
 
-// MockFrameSource 模拟帧源，按固定间隔发送预制帧
+// 模拟帧源，按固定间隔发送预制帧
 type MockFrameSource struct {
 	frames   [][]float32
 	idx      int
 	interval time.Duration
 }
 
-// NewMockFrameSource 创建模拟帧源
+// 创建模拟帧源
 func NewMockFrameSource(frames [][]float32, interval time.Duration) *MockFrameSource {
 	if interval <= 0 {
 		interval = 40 * time.Millisecond
@@ -29,7 +29,7 @@ func NewMockFrameSource(frames [][]float32, interval time.Duration) *MockFrameSo
 	return &MockFrameSource{frames: frames, interval: interval}
 }
 
-// Next 获取下一帧
+// 获取下一帧
 func (m *MockFrameSource) Next(ctx context.Context) ([]float32, error) {
 	if m.idx >= len(m.frames) {
 		return nil, ErrEndOfStream
@@ -46,7 +46,7 @@ func (m *MockFrameSource) Next(ctx context.Context) ([]float32, error) {
 	return frame, nil
 }
 
-// DefaultDemoFrames 生成演示用音频帧（语音+静音模式）
+// 生成演示用音频帧（语音+静音模式）
 func DefaultDemoFrames() [][]float32 {
 	frames := make([][]float32, 0, 40)
 

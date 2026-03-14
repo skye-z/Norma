@@ -7,7 +7,7 @@ import (
 	"norma/backend/utils"
 )
 
-// ToolDecision 工具决策
+// 工具决策
 type ToolDecision struct {
 	ToolName             string `json:"tool_name"`
 	Allowed              bool   `json:"allowed"`
@@ -15,17 +15,17 @@ type ToolDecision struct {
 	Reason               string `json:"reason,omitempty"`
 }
 
-// ToolPolicy 工具策略
+// 工具策略
 type ToolPolicy struct {
 	cfg config.SecurityConfig
 }
 
-// NewToolPolicy 创建工具策略
+// 创建工具策略
 func NewToolPolicy(cfg config.SecurityConfig) ToolPolicy {
 	return ToolPolicy{cfg: cfg}
 }
 
-// Check 检查工具是否允许执行
+// 检查工具是否允许执行
 func (p ToolPolicy) Check(toolName string, highRisk bool) ToolDecision {
 	name := strings.TrimSpace(toolName)
 	if name == "" {

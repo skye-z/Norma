@@ -22,7 +22,7 @@ import (
 	"norma/pkg/layout"
 )
 
-// DiagnosticsHandler 诊断处理器
+// 诊断处理器
 type DiagnosticsHandler struct {
 	configPath string
 	modelDir   string
@@ -49,12 +49,12 @@ type diagnosticsRunResponse struct {
 	State   string         `json:"state,omitempty"`
 }
 
-// NewDiagnosticsHandler 创建诊断处理器
+// 创建诊断处理器
 func NewDiagnosticsHandler(configPath, modelDir string, b *bus.Bus, inspector *runtime.Inspector, memorySvc *memory.Service) *DiagnosticsHandler {
 	return &DiagnosticsHandler{configPath: configPath, modelDir: modelDir, bus: b, inspector: inspector, memorySvc: memorySvc}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *DiagnosticsHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/diagnostics/run/", h.handleRun)
 }

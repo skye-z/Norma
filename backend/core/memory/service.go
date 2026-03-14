@@ -20,7 +20,7 @@ const (
 	KindSummary    = "summary"    // 摘要
 )
 
-// AddInput 添加记忆输入
+// 添加记忆输入
 type AddInput struct {
 	Kind       string  `json:"kind"`        // 类型
 	Content    string  `json:"content"`     // 内容
@@ -32,7 +32,7 @@ type AddInput struct {
 	Summary    bool    `json:"summary"`     // 是否摘要
 }
 
-// UpdateInput 更新记忆输入
+// 更新记忆输入
 type UpdateInput struct {
 	Kind         string  `json:"kind"`          // 类型
 	Content      string  `json:"content"`       // 内容
@@ -46,28 +46,28 @@ type UpdateInput struct {
 	Summary      bool    `json:"summary"`       // 是否摘要
 }
 
-// SummaryResult 摘要结果
+// 摘要结果
 type SummaryResult struct {
 	Summary      *model.Memory `json:"summary,omitempty"`       // 摘要记忆
 	ConflictWith []int64       `json:"conflict_with,omitempty"` // 冲突记忆ID
 }
 
-// Service 记忆服务
+// 记忆服务
 type Service struct {
 	engine *xorm.Engine
 }
 
-// NewService 创建记忆服务
+// 创建记忆服务
 func NewService(engine *xorm.Engine) *Service {
 	return &Service{engine: engine}
 }
 
-// Add 添加记忆
+// 添加记忆
 func (s *Service) Add(ctx context.Context, kind, content string, importance int) (*model.Memory, error) {
 	return s.AddDetailed(ctx, AddInput{Kind: kind, Content: content, Importance: importance, MemoryType: kind})
 }
 
-// AddDetailed 添加记忆（详细）
+// 添加记忆（详细）
 func (s *Service) AddDetailed(ctx context.Context, input AddInput) (*model.Memory, error) {
 	_ = ctx
 	content := strings.TrimSpace(input.Content)
@@ -97,7 +97,7 @@ func (s *Service) AddDetailed(ctx context.Context, input AddInput) (*model.Memor
 	return m, nil
 }
 
-// Search 搜索记忆
+// 搜索记忆
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]model.Memory, error) {
 	_ = ctx
 	if limit <= 0 {
@@ -133,7 +133,7 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]model.
 	return rows, nil
 }
 
-// List 列出记忆
+// 列出记忆
 func (s *Service) List(ctx context.Context, includeDisabled bool, limit int) ([]model.Memory, error) {
 	_ = ctx
 	if limit <= 0 {
@@ -151,7 +151,7 @@ func (s *Service) List(ctx context.Context, includeDisabled bool, limit int) ([]
 	return rows, nil
 }
 
-// Update 更新记忆
+// 更新记忆
 func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*model.Memory, error) {
 	_ = ctx
 	m := new(model.Memory)
@@ -182,20 +182,20 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*mod
 	return m, nil
 }
 
-// Delete 删除记忆
+// 删除记忆
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	_ = ctx
 	_, err := s.engine.ID(id).Delete(&model.Memory{})
 	return err
 }
 
-// SetDisabled 设置禁用状态
+// 设置禁用状态
 func (s *Service) SetDisabled(ctx context.Context, id int64, disabled bool) error {
 	_, err := s.engine.ID(id).Cols("disabled").Update(&model.Memory{Disabled: disabled})
 	return err
 }
 
-// Compact 记忆去重压缩
+// 记忆去重压缩
 func (s *Service) Compact(ctx context.Context) (int64, error) {
 	_ = ctx
 	rows := make([]model.Memory, 0, 1024)
@@ -243,7 +243,7 @@ func (s *Service) Compact(ctx context.Context) (int64, error) {
 	return deleted, nil
 }
 
-// ApplyDecay 应用记忆衰减
+// 应用记忆衰减
 func (s *Service) ApplyDecay(ctx context.Context) (int64, error) {
 	_ = ctx
 	rows := make([]model.Memory, 0, 1024)
@@ -274,7 +274,7 @@ func (s *Service) ApplyDecay(ctx context.Context) (int64, error) {
 	return updated, nil
 }
 
-// SummarizeTurn 对话轮次摘要
+// 对话轮次摘要
 func (s *Service) SummarizeTurn(ctx context.Context, sessionID string, turns []Turn) (*SummaryResult, error) {
 	_ = sessionID
 	// 限制 token 数量，避免过长
@@ -318,7 +318,7 @@ func (s *Service) SummarizeTurn(ctx context.Context, sessionID string, turns []T
 	return &SummaryResult{Summary: summary, ConflictWith: conflicts}, nil
 }
 
-// GovernanceRun 记忆治理任务
+// 记忆治理任务
 func (s *Service) GovernanceRun(ctx context.Context) (map[string]int64, error) {
 	deleted, err := s.Compact(ctx)
 	if err != nil {

@@ -6,14 +6,14 @@ import (
 	"sync"
 )
 
-// PushFrameSource 推送帧源
+// 推送帧源
 type PushFrameSource struct {
 	frames chan []float32
 	done   chan struct{}
 	once   sync.Once
 }
 
-// NewPushFrameSource 创建推送帧源
+// 创建推送帧源
 func NewPushFrameSource(buffer int) *PushFrameSource {
 	if buffer <= 0 {
 		buffer = 32
@@ -24,7 +24,7 @@ func NewPushFrameSource(buffer int) *PushFrameSource {
 	}
 }
 
-// Next 获取下一帧
+// 获取下一帧
 func (s *PushFrameSource) Next(ctx context.Context) ([]float32, error) {
 	select {
 	case <-ctx.Done():
@@ -39,7 +39,7 @@ func (s *PushFrameSource) Next(ctx context.Context) ([]float32, error) {
 	}
 }
 
-// Push 推送帧
+// 推送帧
 func (s *PushFrameSource) Push(frame []float32) bool {
 	if len(frame) == 0 {
 		return false
@@ -56,7 +56,7 @@ func (s *PushFrameSource) Push(frame []float32) bool {
 	}
 }
 
-// Close 关闭
+// 关闭
 func (s *PushFrameSource) Close() {
 	s.once.Do(func() {
 		close(s.done)

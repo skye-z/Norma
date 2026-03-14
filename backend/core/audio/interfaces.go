@@ -11,57 +11,57 @@ const (
 	WakeModeWakeWordVAD = "wake_word_vad" // 唤醒词+VAD模式，需要唤醒词触发
 )
 
-// VAD 检测音频帧中的语音活动
+// 检测音频帧中的语音活动
 type VAD interface {
 	Detect(frame []float32) (bool, error)
 }
 
-// WakeWord 从PCM流中检测唤醒词/短语
+// 从PCM流中检测唤醒词/短语
 type WakeWord interface {
 	Detect(frame []int16) (bool, error)
 }
 
-// Preprocessor 在VAD/ASR之前进行预处理，可应用AEC(回声消除)/NS(噪声抑制)
+// 在VAD/ASR之前进行预处理，可应用AEC(回声消除)/NS(噪声抑制)
 type Preprocessor interface {
 	Process(frame []float32) []float32
 	Name() string
 }
 
-// ASR 流式输出转录结果
+// 流式输出转录结果
 type ASR interface {
 	Stream(ctx context.Context, onPartial func(text string), onFinal func(text string)) error
 }
 
-// FrameASR 可以直接转录语音片段
+// 可以直接转录语音片段
 type FrameASR interface {
 	ASR
 	TranscribeFrames(ctx context.Context, frames [][]float32, onPartial func(text string), onFinal func(text string)) error
 }
 
-// TTS 流式合成音频块，支持中断
+// 流式合成音频块，支持中断
 type TTS interface {
 	Stream(ctx context.Context, text string, onChunk func(chunk []byte)) error
 	Stop(sessionID string) error
 }
 
-// AudioFormatProvider 提供音频格式信息
+// 提供音频格式信息
 type AudioFormatProvider interface {
 	SampleRate() int
 	Channels() int
 	Encoding() string
 }
 
-// ProsodyHintProvider 指示是否支持韵律提示
+// 指示是否支持韵律提示
 type ProsodyHintProvider interface {
 	SupportsProsodyHints() bool
 }
 
-// BackgroundCaptureController 控制后台音频捕获
+// 控制后台音频捕获
 type BackgroundCaptureController interface {
 	EnableBackgroundCapture(sessionID string, enabled bool)
 }
 
-// Pipeline 协调语音相关组件的执行
+// 协调语音相关组件的执行
 type Pipeline struct {
 	VAD              VAD            // 语音活动检测器
 	WakeWord         WakeWord       // 唤醒词检测器
@@ -74,7 +74,7 @@ type Pipeline struct {
 	AllowBargeIn     bool           // 是否允许打断
 }
 
-// UnavailableASR 不可用的ASR实现，返回错误信息
+// 不可用的ASR实现，返回错误信息
 type UnavailableASR struct {
 	Reason string // 不可用原因
 }
@@ -89,7 +89,7 @@ func (u UnavailableASR) Stream(ctx context.Context, onPartial func(string), onFi
 	return errors.New("asr unavailable: " + u.Reason)
 }
 
-// UnavailableWakeWord 不可用的唤醒词检测器实现
+// 不可用的唤醒词检测器实现
 type UnavailableWakeWord struct {
 	Reason string // 不可用原因
 }
@@ -102,7 +102,7 @@ func (u *UnavailableWakeWord) Detect(frame []int16) (bool, error) {
 	return false, errors.New("wake word unavailable: " + u.Reason)
 }
 
-// UnavailableTTS 不可用的TTS实现
+// 不可用的TTS实现
 type UnavailableTTS struct {
 	Reason string // 不可用原因
 }

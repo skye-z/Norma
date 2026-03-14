@@ -13,7 +13,7 @@ import (
 	"norma/backend/core/model"
 )
 
-// NewEngine 创建 xorm 引擎
+// 创建 xorm 引擎
 func NewEngine(dbPath string, enableSQLLog bool) (*xorm.Engine, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create db dir: %w", err)

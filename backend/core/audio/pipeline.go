@@ -9,7 +9,7 @@ import (
 
 const minPostWakeHoldFrames = 75
 
-// Run 消费音频帧，端点检测时触发ASR回调
+// 消费音频帧，端点检测时触发ASR回调
 func (p *Pipeline) Run(
 	ctx context.Context,
 	source FrameSource,

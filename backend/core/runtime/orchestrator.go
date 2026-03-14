@@ -38,7 +38,7 @@ type playbackSink interface {
 	Wait(ctx context.Context, sessionID string) error    // 等待播放完成
 }
 
-// NewOrchestrator 创建新的编排器（简化版本，使用默认播放接收器）
+// 创建新的编排器（简化版本，使用默认播放接收器）
 func NewOrchestrator(
 	rt *Runtime,
 	retriever memory.Retriever,
@@ -49,7 +49,7 @@ func NewOrchestrator(
 	return NewOrchestratorWithPlayback(rt, retriever, llm, tts, ragTopK, nil)
 }
 
-// NewOrchestratorWithPlayback 创建带播放接收器的编排器
+// 创建带播放接收器的编排器
 func NewOrchestratorWithPlayback(
 	rt *Runtime,
 	retriever memory.Retriever,
@@ -251,7 +251,7 @@ func (o *Orchestrator) StartSession() (string, string) {
 	return sessionID, traceID
 }
 
-// CancelSession 取消指定会话
+// 取消指定会话
 func (o *Orchestrator) CancelSession(sessionID string) {
 	o.mu.Lock()
 	if cancel, ok := o.cancels[sessionID]; ok {

@@ -6,7 +6,7 @@ import (
 	"norma/backend/core/runtime/bus"
 )
 
-// DiagnosticSnapshot 暴露开发面板所需的最新运行时状态
+// 暴露开发面板所需的最新运行时状态
 type DiagnosticSnapshot struct {
 	State      string      `json:"state"`       // 当前运行时状态
 	QueueDepth int         `json:"queue_depth"` // 队列深度
@@ -15,7 +15,7 @@ type DiagnosticSnapshot struct {
 	Sessions   []string    `json:"sessions"`    // 活跃的会话ID列表
 }
 
-// Inspector 记录最近的运行时活动，用于调试和问题排查
+// 记录最近的运行时活动，用于调试和问题排查
 type Inspector struct {
 	mu         sync.RWMutex
 	maxEvents  int                 // 最大记录的事件数量
@@ -65,14 +65,14 @@ func (i *Inspector) Record(evt bus.Event) {
 	}
 }
 
-// SetState 设置当前运行时状态
+// 设置当前运行时状态
 func (i *Inspector) SetState(state string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.state = state
 }
 
-// SetQueueDepth 设置当前队列深度
+// 设置当前队列深度
 func (i *Inspector) SetQueueDepth(depth int) {
 	i.mu.Lock()
 	defer i.mu.Unlock()

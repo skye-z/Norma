@@ -7,24 +7,24 @@ import (
 	"strings"
 )
 
-// Worker 索引任务消费者
+// 索引任务消费者
 type Worker struct {
 	queue     Queue
 	extractor Extractor
 	sink      Sink
 }
 
-// NewWorker 创建 Worker
+// 创建 Worker
 func NewWorker(queue Queue, extractor Extractor) *Worker {
 	return &Worker{queue: queue, extractor: extractor}
 }
 
-// NewWorkerWithSink 创建带 Sink 的 Worker
+// 创建带 Sink 的 Worker
 func NewWorkerWithSink(queue Queue, extractor Extractor, sink Sink) *Worker {
 	return &Worker{queue: queue, extractor: extractor, sink: sink}
 }
 
-// Run 运行 Worker
+// 运行 Worker
 func (w *Worker) Run(ctx context.Context) error {
 	for {
 		task, err := w.queue.Dequeue(ctx)

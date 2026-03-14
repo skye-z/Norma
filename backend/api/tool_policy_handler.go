@@ -9,7 +9,7 @@ import (
 	"norma/backend/utils"
 )
 
-// ToolPolicyHandler 工具策略处理器
+// 工具策略处理器
 type ToolPolicyHandler struct {
 	configPath string
 }
@@ -20,12 +20,12 @@ type toolPolicyReq struct {
 	HighRisk bool   `json:"high_risk"`
 }
 
-// NewToolPolicyHandler 创建工具策略处理器
+// 创建工具策略处理器
 func NewToolPolicyHandler(configPath string) *ToolPolicyHandler {
 	return &ToolPolicyHandler{configPath: configPath}
 }
 
-// Register 注册路由
+// 注册路由
 func (h *ToolPolicyHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/tools/policy/check", h.handleCheck)
 }

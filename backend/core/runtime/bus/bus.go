@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Event 运行时事件
+// 运行时事件
 type Event struct {
 	Name      string `json:"name"`                 // 事件名称
 	SessionID string `json:"session_id,omitempty"` // 会话ID
@@ -15,7 +15,7 @@ type Event struct {
 	TsUnixMs  int64  `json:"ts_unix_ms"`           // 时间戳（毫秒）
 }
 
-// Handler 事件处理函数
+// 事件处理函数
 type Handler func(Event)
 
 // subscription 订阅记录
@@ -24,7 +24,7 @@ type subscription struct {
 	h  Handler // 处理函数
 }
 
-// Bus 轻量级进程内发布-订阅总线
+// 轻量级进程内发布-订阅总线
 type Bus struct {
 	mu        sync.RWMutex
 	handlers  map[string][]subscription // 事件名 -> 订阅者列表
@@ -32,12 +32,12 @@ type Bus struct {
 	seq       uint64                    // 订阅序号
 }
 
-// New 创建事件总线
+// 创建事件总线
 func New() *Bus {
 	return &Bus{handlers: make(map[string][]subscription)}
 }
 
-// Publish 发布事件
+// 发布事件
 func (b *Bus) Publish(evt Event) {
 	if evt.TsUnixMs == 0 {
 		evt.TsUnixMs = time.Now().UnixMilli()
@@ -56,7 +56,7 @@ func (b *Bus) Publish(evt Event) {
 	}
 }
 
-// Subscribe 订阅事件，返回取消函数
+// 订阅事件，返回取消函数
 func (b *Bus) Subscribe(name string, h Handler) func() {
 	b.mu.Lock()
 	b.seq++
@@ -80,7 +80,7 @@ func (b *Bus) Subscribe(name string, h Handler) func() {
 	}
 }
 
-// SubscribeAll 订阅所有事件
+// 订阅所有事件
 func (b *Bus) SubscribeAll(h Handler) func() {
 	b.mu.Lock()
 	b.seq++

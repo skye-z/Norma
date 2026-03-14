@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Turn 对话轮次，用于 STM 预算修剪
+// 对话轮次，用于 STM 预算修剪
 type Turn struct {
 	Role       string
 	Content    string
@@ -14,7 +14,7 @@ type Turn struct {
 	Pinned     bool
 }
 
-// TrimToTokenBudget 修剪对话历史以适应 Token 预算
+// 修剪对话历史以适应 Token 预算
 func TrimToTokenBudget(turns []Turn, maxTokens int) []Turn {
 	if maxTokens <= 0 || len(turns) == 0 {
 		return nil
