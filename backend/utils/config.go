@@ -98,6 +98,25 @@ type TTSConfig struct {
 	ModelPath  string  `mapstructure:"model_path"`
 	Voice      string  `mapstructure:"voice"`
 	Speed      float64 `mapstructure:"speed"`
+	// provider 为 genie 时使用；binary_path 是 python 解释器或已打包好的工作进程可执行文件
+	Genie TTSGenieConfig `mapstructure:"genie"`
+}
+
+// Genie-TTS 配置：由应用拉起的子进程，经标准输入输出通信，不监听端口
+type TTSGenieConfig struct {
+	// 工作进程脚本；binary_path 已是打包好的可执行文件时留空
+	Script       string `mapstructure:"script"`
+	DataDir      string `mapstructure:"data_dir"`
+	CharacterDir string `mapstructure:"character_dir"`
+	Language     string `mapstructure:"language"`
+	// 情绪名（对应 {{smile}} 之类的动作标记）到参考音频；default 缺省时取角色目录里 prompt_wav.json 的第一项
+	References map[string]TTSGenieRef `mapstructure:"references"`
+}
+
+// 参考音频及其对应文本
+type TTSGenieRef struct {
+	Audio string `mapstructure:"audio"`
+	Text  string `mapstructure:"text"`
 }
 
 // 配置

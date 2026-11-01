@@ -367,6 +367,8 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 		primary := audioTts.NewSherpaKokoroTTS(modelDir, cfg.TTS.Voice, sid, speed, 2)
 		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s speed=%.2f", modelDir, sid, cfg.TTS.Voice, speed)
 		return primary
+	case "genie":
+		return newGenieTTS(cfg, fallback)
 	case "system", "say", "macos":
 		voice := strings.TrimSpace(cfg.TTS.Voice)
 		rate := 0
@@ -540,4 +542,40 @@ func firstExistingPath(paths ...string) string {
 		}
 	}
 	return ""
+}
+
+// newGenieTTS 创建 Genie 合成器并在后台预热子进程，避免第一句话承担模型加载耗时
+func newGenieTTS(cfg *config.Config, fallback audio.TTS) audio.TTS {
+	g := cfg.TTS.Genie
+	bin := strings.TrimSpace(cfg.TTS.BinaryPath)
+	if bin == "" || strings.TrimSpace(g.DataDir) == "" || strings.TrimSpace(g.CharacterDir) == "" {
+		log.Printf("[tts] genie needs tts.binary_path, tts.genie.data_dir and tts.genie.character_dir")
+		return fallback
+	}
+	command := []string{bin}
+	if script := strings.TrimSpace(g.Script); script != "" {
+		command = append(command, script)
+	}
+	refs := map[string]audioTts.GenieRef{}
+	for name, r := range g.References {
+		refs[strings.ToLower(strings.TrimSpace(name))] = audioTts.GenieRef{Audio: r.Audio, Text: r.Text}
+	}
+	if _, ok := refs["default"]; !ok {
+		def, err := audioTts.DefaultGenieRef(g.CharacterDir)
+		if err != nil {
+			log.Printf("[tts] genie has no default reference audio: %v", err)
+			return fallback
+		}
+		refs["default"] = def
+	}
+	tts := audioTts.NewGenieTTS(audioTts.GenieConfig{
+		Command: command, DataDir: g.DataDir, CharacterDir: g.CharacterDir, Language: g.Language, Refs: refs,
+	})
+	go func() {
+		if err := tts.Warmup(); err != nil {
+			log.Printf("[tts] genie warmup failed: %v", err)
+		}
+	}()
+	log.Printf("[tts] use genie worker=%s character=%s refs=%d", bin, g.CharacterDir, len(refs))
+	return tts
 }

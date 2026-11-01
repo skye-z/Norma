@@ -40,6 +40,9 @@ func main() {
 	whisperBin := flag.String("whisper-bin", "", "whisper-cli path")
 	whisperModel := flag.String("whisper-model", "", "ggml model path")
 	staticDir := flag.String("static-model", "", "Model2Vec dir")
+	genieBin := flag.String("genie-bin", "", "python executable or packaged worker for the genie TTS provider")
+	genieScript := flag.String("genie-script", "", "worker.py path (empty when -genie-bin is a packaged worker)")
+	genieRoot := flag.String("genie-root", "", "dir holding GenieData and CharacterModels")
 	out := flag.String("out", "", "json output")
 	flag.Parse()
 	key := os.Getenv("NORMA_LLM_API_KEY")
@@ -54,6 +57,14 @@ func main() {
 		c := &config.Config{}
 		c.LLM = config.LLMConfig{Provider: "deepseek", Endpoint: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: key, MaxTokens: 120, Temperature: 0.7}
 		c.TTS = config.TTSConfig{Provider: "system", Voice: "Tingting", Speed: 1.2}
+		if *genieBin != "" {
+			c.TTS = config.TTSConfig{Provider: "genie", BinaryPath: *genieBin, Genie: config.TTSGenieConfig{
+				Script:       *genieScript,
+				DataDir:      filepath.Join(*genieRoot, "GenieData"),
+				CharacterDir: filepath.Join(*genieRoot, "CharacterModels/v2ProPlus/feibi"),
+				Language:     "zh",
+			}}
+		}
 		c.RAG = config.RAGConfig{Provider: "hybrid", EmbedProvider: "static", EmbedModelDir: *staticDir, VectorIndexPath: filepath.Join(work, filepath.Base(filepath.Dir(memPath))+"-vec.json"), TopK: 4}
 		c.Memory.MarkdownPath = memPath
 		return c
