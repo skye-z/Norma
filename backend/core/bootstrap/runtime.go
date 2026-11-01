@@ -362,6 +362,14 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 		primary := audioTts.NewSherpaKokoroTTS(modelDir, cfg.TTS.Voice, sid, speed, 2)
 		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s speed=%.2f", modelDir, sid, cfg.TTS.Voice, speed)
 		return primary
+	case "system", "say", "macos":
+		voice := strings.TrimSpace(cfg.TTS.Voice)
+		rate := 0
+		if cfg.TTS.Speed > 0 {
+			rate = int(180 * cfg.TTS.Speed)
+		}
+		log.Printf("[tts] use macOS say voice=%s rate=%d", voice, rate)
+		return audioTts.NewSystemSayTTS(voice, rate)
 	default:
 		return &audio.UnavailableTTS{Reason: "unsupported tts provider: " + strings.TrimSpace(cfg.TTS.Provider)}
 	}
@@ -370,21 +378,35 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 // chooseLLMStreamer 选择LLM流式处理器
 func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	fallback := llm.UnavailableStreamer{Reason: "llm unavailable"}
-	if cfg.LLM.Provider != "ollama" {
+	provider := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	if provider != "ollama" && provider != "openai" && provider != "deepseek" {
 		return fallback
+	}
+	if provider == "deepseek" {
+		model := strings.TrimSpace(cfg.LLM.Model)
+		if model == "" {
+			model = "deepseek-flash"
+		}
+		endpoint := strings.TrimSpace(cfg.LLM.Endpoint)
+		if endpoint == "" {
+			endpoint = "https://api.deepseek.com"
+		}
+		primary := llm.NewOllamaStreamer(endpoint, model, cfg.LLM.APIKey, 30*time.Second).WithOptions(true, cfg.LLM.MaxTokens, cfg.LLM.Temperature)
+		log.Printf("[llm] use deepseek endpoint=%s model=%s thinking=off", endpoint, model)
+		return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 	}
 
 	model := strings.TrimSpace(cfg.LLM.Model)
 	if model == "" {
 		// 自动发现第一个可用的LLM模型
-		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, "", 2*time.Second)
+		discovered, derr := llm.DiscoverFirstLLMModel(cfg.LLM.Endpoint, cfg.LLM.APIKey, 2*time.Second)
 		if derr != nil {
 			log.Printf("[llm] discover model failed: %v", derr)
 			return fallback
 		}
 		model = discovered
 	}
-	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, "", 15*time.Second)
+	primary := llm.NewOllamaStreamer(cfg.LLM.Endpoint, model, cfg.LLM.APIKey, 15*time.Second)
 	degradedModel := ""
 	if degradedModel == "" || degradedModel == model {
 		log.Printf("[llm] use ollama provider endpoint=%s model=%s", cfg.LLM.Endpoint, model)

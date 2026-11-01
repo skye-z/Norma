@@ -86,6 +86,7 @@ type LLMConfig struct {
 	Provider    string  `mapstructure:"provider"`
 	Endpoint    string  `mapstructure:"endpoint"`
 	Model       string  `mapstructure:"model"`
+	APIKey      string  `mapstructure:"api_key"`
 	MaxTokens   int     `mapstructure:"max_tokens"`
 	Temperature float64 `mapstructure:"temperature"`
 }
@@ -203,6 +204,9 @@ func applyEnvOverride(v *viper.Viper, cfg *Config) {
 	// 环境变量覆盖逻辑
 	if env := strings.TrimSpace(os.Getenv("NORMA_LLM_ENDPOINT")); env != "" {
 		cfg.LLM.Endpoint = env
+	}
+	if env := strings.TrimSpace(os.Getenv("NORMA_LLM_API_KEY")); env != "" {
+		cfg.LLM.APIKey = env
 	}
 	if env := strings.TrimSpace(os.Getenv("NORMA_LLM_MODEL")); env != "" {
 		cfg.LLM.Model = env

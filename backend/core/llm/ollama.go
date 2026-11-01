@@ -21,6 +21,20 @@ type OllamaStreamer struct {
 	model    string
 	apiKey   string
 	client   *http.Client
+
+	disableThinking bool
+	maxTokens       int
+	temperature     *float64
+}
+
+// 关闭思考模式，并设置生成上限与温度；用于 DeepSeek 等支持 thinking 开关的接口
+func (o *OllamaStreamer) WithOptions(disableThinking bool, maxTokens int, temperature float64) *OllamaStreamer {
+	o.disableThinking = disableThinking
+	o.maxTokens = maxTokens
+	if temperature > 0 {
+		o.temperature = &temperature
+	}
+	return o
 }
 
 // openAIChatRequest OpenAI 聊天请求
@@ -28,6 +42,15 @@ type openAIChatRequest struct {
 	Model    string          `json:"model"`
 	Messages []openAIMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
+	// DeepSeek 默认开启思考，语音场景需要关闭以缩短首字等待
+	Thinking    *openAIThinking `json:"thinking,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Temperature *float64        `json:"temperature,omitempty"`
+}
+
+// openAIThinking 思考开关
+type openAIThinking struct {
+	Type string `json:"type"`
 }
 
 // openAIMessage OpenAI 消息
@@ -176,7 +199,11 @@ func isLikelyLLM(name string) bool {
 // 流式调用
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
 	prompt := buildPrompt(req)
-	body, err := json.Marshal(openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true})
+	chatReq := openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true, MaxTokens: o.maxTokens, Temperature: o.temperature}
+	if o.disableThinking {
+		chatReq.Thinking = &openAIThinking{Type: "disabled"}
+	}
+	body, err := json.Marshal(chatReq)
 	if err != nil {
 		return fmt.Errorf("marshal ollama request: %w", err)
 	}
