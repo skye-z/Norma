@@ -14,6 +14,13 @@ type Request struct {
 	Prompt    string   // 用户输入的提示词
 	Context   []string // 检索增强的上下文信息
 	Persona   string   // 角色设定
+	History   []Turn   // 最近几轮对话，按时间从早到晚
+}
+
+// Turn 是已经完成的一轮对话
+type Turn struct {
+	User      string
+	Assistant string
 }
 
 // 流式输出接口

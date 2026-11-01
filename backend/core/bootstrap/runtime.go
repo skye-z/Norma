@@ -118,7 +118,7 @@ func BuildVoicePipelineForMode(cfg *config.Config, mgr *providers.Manager, overr
 		wakeBufferFrames = 10
 	}
 	pipe := audio.Pipeline{
-		VAD:              audioVad.NewEnergyVAD(0.02),
+		VAD:              audioVad.NewAdaptiveVAD(),
 		WakeWord:         chooseWakeWord(cfg, mgr),
 		ASR:              chooseASR(cfg, mgr),
 		WakeMode:         effectiveMode,

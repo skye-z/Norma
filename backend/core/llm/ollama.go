@@ -198,8 +198,7 @@ func isLikelyLLM(name string) bool {
 
 // 流式调用
 func (o *OllamaStreamer) Stream(ctx context.Context, req Request, onToken func(string)) error {
-	prompt := buildPrompt(req)
-	chatReq := openAIChatRequest{Model: o.model, Messages: []openAIMessage{{Role: "user", Content: prompt}}, Stream: true, MaxTokens: o.maxTokens, Temperature: o.temperature}
+	chatReq := openAIChatRequest{Model: o.model, Messages: buildMessages(req), Stream: true, MaxTokens: o.maxTokens, Temperature: o.temperature}
 	if o.disableThinking {
 		chatReq.Thinking = &openAIThinking{Type: "disabled"}
 	}
@@ -271,20 +270,29 @@ func normalizeOpenAIEndpoint(endpoint string) string {
 	return endpoint
 }
 
-// buildPrompt 构建提示词
-func buildPrompt(req Request) string {
+// buildSystemPrompt 构建 system 消息：人设、回答风格与 Live2D 标识规则
+func buildSystemPrompt(req Request) string {
 	persona := strings.TrimSpace(req.Persona)
 	if persona == "" {
 		persona = config.DefaultLLMPersona
 	}
 	var sb strings.Builder
 	sb.WriteString(persona)
-	sb.WriteString("\n\u8bf7\u81ea\u7136\u3001\u53e3\u8bed\u5316\u5730\u56de\u7b54\uff0c\u63a7\u5236\u5728 2-4 \u53e5\uff0c\u4f18\u5148\u76f4\u63a5\u56de\u5e94\u7528\u6237\uff0c\u4e0d\u8981\u5199\u6210\u6d41\u7a0b\u8bf4\u660e\uff0c\u4e0d\u8981 OOC\u3002\n")
-	sb.WriteString("\u4f60\u53ef\u4ee5\u5728\u56de\u7b54\u4e2d\u5c11\u91cf\u63d2\u5165 Live2D \u63a7\u5236\u6807\u8bc6\uff0c\u683c\u5f0f\u662f {{\u52a8\u4f5c}} \u6216 {{\u7c7b\u578b:\u52a8\u4f5c}}\u3002\n")
-	sb.WriteString("\u53ef\u7528\u793a\u4f8b\uff1a{{thinking}}\u3001{{idle}}\u3001{{tap}}\u3001{{smile}}\u3001{{soft}}\u3001{{focus}}\u3001{{motion:thinking}}\u3001{{expression:smile}}\u3002\n")
-	sb.WriteString("\u8fd9\u4e9b\u6807\u8bc6\u53ea\u7528\u4e8e\u9a71\u52a8 Live2D \u7684\u52a8\u4f5c\u6216\u8868\u60c5\uff0c\u4e0d\u5c5e\u4e8e\u8981\u8bfb\u51fa\u6765\u7684\u6b63\u6587\uff1b\u6bcf\u6b21\u56de\u7b54\u6700\u591a\u4f7f\u7528 1 \u5230 3 \u4e2a\uff0c\u4e0d\u8981\u8fde\u7eed\u5806\u53e0\u3002\n")
+	sb.WriteString("\n请自然、口语化地回答，控制在 2-4 句，优先直接回应用户，不要写成流程说明，不要 OOC。\n")
+	// 没有这一条时模型会把人设当成“用户刚做的自我介绍”，每一轮都先说一遍“我是诺玛……”
+	sb.WriteString("你和用户已经在持续对话中：不要主动自我介绍，也不要复述自己的身份、职责或所属机构，除非用户明确问你是谁。直接回应用户刚说的这句话。\n")
+	sb.WriteString("用户告诉过你的名字、偏好和前面聊过的内容要自然地用起来，不要反复确认。\n")
+	sb.WriteString("你可以在回答中少量插入 Live2D 控制标识，格式是 {{动作}} 或 {{类型:动作}}。\n")
+	sb.WriteString("可用示例：{{thinking}}、{{idle}}、{{tap}}、{{smile}}、{{soft}}、{{focus}}、{{motion:thinking}}、{{expression:smile}}。\n")
+	sb.WriteString("这些标识只用于驱动 Live2D 的动作或表情，不属于要读出来的正文；每次回答最多使用 1 到 3 个，不要连续堆叠。")
+	return sb.String()
+}
+
+// buildUserPrompt 是本轮用户消息：检索到的参考内容在前，用户这句话在后
+func buildUserPrompt(req Request) string {
+	var sb strings.Builder
 	if len(req.Context) > 0 {
-		sb.WriteString("\u4ee5\u4e0b\u662f\u53ef\u53c2\u8003\u7684\u68c0\u7d22\u4e0a\u4e0b\u6587\uff1a\n")
+		sb.WriteString("以下是可参考的检索上下文（相关时再用，不要提及它的来源）：\n")
 		for i, c := range req.Context {
 			sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, c))
 		}
@@ -292,4 +300,18 @@ func buildPrompt(req Request) string {
 	}
 	sb.WriteString(req.Prompt)
 	return sb.String()
+}
+
+// buildMessages 按聊天接口的角色拼装：人设与规则放 system，历史按轮次交替，最后是本轮用户消息
+func buildMessages(req Request) []openAIMessage {
+	msgs := []openAIMessage{{Role: "system", Content: buildSystemPrompt(req)}}
+	for _, t := range req.History {
+		if strings.TrimSpace(t.User) == "" || strings.TrimSpace(t.Assistant) == "" {
+			continue
+		}
+		msgs = append(msgs,
+			openAIMessage{Role: "user", Content: t.User},
+			openAIMessage{Role: "assistant", Content: t.Assistant})
+	}
+	return append(msgs, openAIMessage{Role: "user", Content: buildUserPrompt(req)})
 }

@@ -85,9 +85,9 @@ func (w *WhisperCPPASR) TranscribeFrames(
 		return err
 	}
 	// 音频很短或不清晰时，Whisper 会把起始提示词原样吐出来而丢掉真实内容。
-	// 这种结果先不带提示词重识别一次，内容就不会丢；重识别后的繁体字由后处理统一为简体
-	if text == "" || isPromptEcho(text) {
-		if retry, rerr := w.runOnce(ctx, wavPath, ""); rerr == nil && retry != "" && !isPromptEcho(retry) {
+	// 或被判为幻觉（如“请不吝点赞”）时，先不带提示词重识别一次，内容就不会丢；重识别后的繁体字由后处理统一为简体
+	if text == "" || PostProcessASRText(text, "") == "" {
+		if retry, rerr := w.runOnce(ctx, wavPath, ""); rerr == nil && PostProcessASRText(retry, "") != "" {
 			log.Printf("[asr] prompt echo %q, retried without prompt: %q", text, retry)
 			text = retry
 		}

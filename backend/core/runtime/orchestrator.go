@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,14 @@ type Orchestrator struct {
 	playback  playbackSink
 	persona   string
 	memory    memoryWriter
+
+	// 最近几轮对话，让模型知道前面聊过什么，也不会每一轮都当作第一次见面
+	hmu         sync.Mutex
+	history     []llm.Turn
+	historyAt   time.Time
+	historyMax  int
+	historyIdle time.Duration
+	now         func() time.Time
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -85,6 +94,10 @@ func NewOrchestratorWithPlayback(
 		ragTopK:   ragTopK,
 		playback:  playback,
 		sessions:  make(map[string]*session),
+
+		historyMax:  8,
+		historyIdle: 15 * time.Minute,
+		now:         time.Now,
 	}
 	o.rt.Bus.Subscribe("asr.final", o.onASRFinal)
 	o.rt.Bus.Subscribe("interrupt", o.onInterrupt)
@@ -172,11 +185,13 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 	}()
 
 	splitter := newSentenceSplitter()
-	req := llm.Request{SessionID: s.id, Prompt: text, Context: contexts, Persona: persona}
+	req := llm.Request{SessionID: s.id, Prompt: text, Context: contexts, Persona: persona, History: o.historySnapshot()}
+	var reply strings.Builder
 	llmErr := o.llm.Stream(ctx, req, func(token string) {
 		if ctx.Err() != nil {
 			return
 		}
+		reply.WriteString(token)
 		pub("llm.token", token)
 		for _, sent := range splitter.Push(token) {
 			select {
@@ -206,6 +221,7 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 		o.finish(s)
 		return
 	}
+	o.recordTurn(text, reply.String())
 	pub("llm.finished", nil)
 	if o.playback != nil {
 		o.playback.Complete(s.id, s.trace)
@@ -303,4 +319,40 @@ func (o *Orchestrator) StartSession() (string, string) {
 // 取消指定会话
 func (o *Orchestrator) CancelSession(sessionID string) {
 	o.cancelAndWait(sessionID, "", "cancel")
+}
+
+var liveMarkRe = regexp.MustCompile(`\{\{[^}]*\}\}?`)
+
+// historySnapshot 返回仍有效的历史副本；超过空闲时间没有对话就视为新的对话，旧历史作废
+func (o *Orchestrator) historySnapshot() []llm.Turn {
+	o.hmu.Lock()
+	defer o.hmu.Unlock()
+	if len(o.history) == 0 {
+		return nil
+	}
+	if o.now().Sub(o.historyAt) > o.historyIdle {
+		o.history = nil
+		return nil
+	}
+	return append([]llm.Turn(nil), o.history...)
+}
+
+// recordTurn 在一轮对话正常结束后记录；Live2D 标识不属于正文，不进入历史。
+// 被打断或失败的轮次不会走到这里，避免把说了一半的回复当成完整回答
+func (o *Orchestrator) recordTurn(user, assistant string) {
+	assistant = strings.TrimSpace(liveMarkRe.ReplaceAllString(assistant, ""))
+	user = strings.TrimSpace(user)
+	if user == "" || assistant == "" {
+		return
+	}
+	o.hmu.Lock()
+	defer o.hmu.Unlock()
+	if len(o.history) > 0 && o.now().Sub(o.historyAt) > o.historyIdle {
+		o.history = nil
+	}
+	o.history = append(o.history, llm.Turn{User: user, Assistant: assistant})
+	if len(o.history) > o.historyMax {
+		o.history = append([]llm.Turn(nil), o.history[len(o.history)-o.historyMax:]...)
+	}
+	o.historyAt = o.now()
 }

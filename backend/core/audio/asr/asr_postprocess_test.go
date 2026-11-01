@@ -117,3 +117,26 @@ func TestDumpingASRSavesAudioAndPassesResultThrough(t *testing.T) {
 		t.Fatalf("wav size = %d", info.Size())
 	}
 }
+
+func TestPromptEchoDetectionIsFuzzyButSparesRealSentences(t *testing.T) {
+	echoes := []string{"用简体中文。", "这个是普通话的句子，使用简体中文。", "以下是普通话的句子，使用简体中文。", "是普通话的句子使用简体中文"}
+	for _, in := range echoes {
+		if !isPromptEcho(in) {
+			t.Errorf("%q should be detected as a prompt echo", in)
+		}
+	}
+	real := []string{"帮我用简体中文写一句话", "今天天气怎么样", "我叫skye", "那你记一下我叫斯凯", "请介绍一下普通话的发音"}
+	for _, in := range real {
+		if isPromptEcho(in) {
+			t.Errorf("%q is real speech but was treated as echo", in)
+		}
+	}
+}
+
+func TestWhisperRetriesWhenFirstPassIsAHallucination(t *testing.T) {
+	bin := fakeWhisper(t, `case "$*" in *--prompt*) echo "请不吝点赞 订阅 转发 打赏支持明镜与点点栏目";; *) echo "我叫斯凯";; esac`)
+	got, err := transcribe(t, bin)
+	if err != nil || got != "我叫斯凯" {
+		t.Fatalf("got %q err %v", got, err)
+	}
+}

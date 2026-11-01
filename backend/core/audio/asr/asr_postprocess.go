@@ -54,15 +54,42 @@ func PostProcessASRText(text, wakeKeyword string) string {
 	return strings.TrimSpace(out)
 }
 
-// Whisper 在音频很短或不清晰时会把起始提示词原样吐出来（例如只识别出“用简体中文。”）。
-// 去掉标点后，若结果是提示词的开头或结尾片段（至少 3 个字），就当作没有识别到内容
+// Whisper 在音频很短或不清晰时会把起始提示词原样或稍作改动地吐出来（如“用简体中文。”“这个是普通话的句子，使用简体中文。”）。
+// 去掉标点后，短结果按“是提示词的开头或结尾”判断；较长的结果按与提示词的最长公共子序列占比判断，
+// 占比达到 75% 以上视为复述。正常提到“简体中文”的句子（如“帮我用简体中文写一句话”）占比远低于此
 func isPromptEcho(text string) bool {
-	t := stripPunctAndSpace(text)
-	p := stripPunctAndSpace(defaultWhisperPrompt)
-	if len([]rune(t)) < 3 || p == "" {
+	t := []rune(stripPunctAndSpace(text))
+	p := []rune(stripPunctAndSpace(defaultWhisperPrompt))
+	if len(t) < 3 || len(p) == 0 {
 		return false
 	}
-	return strings.HasPrefix(p, t) || strings.HasSuffix(p, t) || t == p
+	ts, ps := string(t), string(p)
+	if ts == ps || strings.HasPrefix(ps, ts) || strings.HasSuffix(ps, ts) {
+		return true
+	}
+	if len(t) < 6 {
+		return false
+	}
+	return float64(lcsLen(t, p))/float64(len(t)) >= 0.75
+}
+
+// 最长公共子序列长度
+func lcsLen(a, b []rune) int {
+	prev := make([]int, len(b)+1)
+	cur := make([]int, len(b)+1)
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			if a[i-1] == b[j-1] {
+				cur[j] = prev[j-1] + 1
+			} else if prev[j] >= cur[j-1] {
+				cur[j] = prev[j]
+			} else {
+				cur[j] = cur[j-1]
+			}
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(b)]
 }
 
 func stripPunctAndSpace(s string) string {
