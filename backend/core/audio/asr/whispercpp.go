@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -22,7 +23,11 @@ type WhisperCPPASR struct {
 	Threads    int
 	SampleRate int
 	TempDir    string
+	// 起始提示，用于让 Whisper 倾向输出简体中文；为空时使用默认提示
+	Prompt string
 }
+
+const defaultWhisperPrompt = "以下是普通话的句子，使用简体中文。"
 
 func NewWhisperCPPASR(binaryPath, modelPath, language string, threads int) *WhisperCPPASR {
 	if strings.TrimSpace(language) == "" {
@@ -73,13 +78,21 @@ func (w *WhisperCPPASR) TranscribeFrames(
 		"-f", wavPath,
 		"-l", w.Language,
 		"-t", fmt.Sprintf("%d", w.Threads),
-		"-nt",
+		"-nt", "-np",
 	}
+	prompt := strings.TrimSpace(w.Prompt)
+	if prompt == "" {
+		prompt = defaultWhisperPrompt
+	}
+	args = append(args, "--prompt", prompt)
 
+	// 识别文本在标准输出；模型加载等日志写在标准错误，不能混入文本
 	cmd := exec.CommandContext(ctx, w.BinaryPath, args...)
-	out, err := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("run whispercpp: %w, output=%s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("run whispercpp: %w, stderr=%s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	text := normalizeWhisperOutput(string(out))
