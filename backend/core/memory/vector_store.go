@@ -4,6 +4,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"sort"
@@ -75,7 +76,7 @@ func (s *DiskVectorStore) Upsert(path string, chunks []string) error {
 	for i, c := range chunks {
 		v32, err := s.embedder.Embed(context.Background(), c)
 		if err != nil {
-			v32 = embedF32(c)
+			return err
 		}
 		s.docs = append(s.docs, vectorDoc{
 			ChunkID: chunkID(path, i),
@@ -234,8 +235,37 @@ func (s *DiskVectorStore) load() error {
 	if err := json.Unmarshal(b, &s.docs); err != nil {
 		return err
 	}
+	// 嵌入器变更后旧向量不可再用，重新生成
+	if id := embedderID(s.embedder); id != s.readEmbedderID() {
+		for i := range s.docs {
+			v, err := s.embedder.Embed(context.Background(), s.docs[i].Content)
+			if err != nil {
+				return err
+			}
+			s.docs[i].Vec = to64(v)
+		}
+		if err := s.save(); err != nil {
+			return err
+		}
+	}
 
 	return s.rebuildHNSWLocked()
+}
+
+// 嵌入器标识；未提供名称的嵌入器以类型名代替
+func embedderID(e Embedder) string {
+	if n, ok := e.(interface{ Name() string }); ok {
+		return n.Name()
+	}
+	return fmt.Sprintf("%T", e)
+}
+
+func (s *DiskVectorStore) readEmbedderID() string {
+	b, err := os.ReadFile(s.path + ".embedder")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func (s *DiskVectorStore) save() error {
@@ -251,7 +281,7 @@ func (s *DiskVectorStore) save() error {
 		return err
 	}
 
-	return nil
+	return os.WriteFile(s.path+".embedder", []byte(embedderID(s.embedder)), 0o644)
 }
 
 func chunkID(path string, i int) string {

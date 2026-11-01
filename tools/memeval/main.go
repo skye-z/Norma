@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"norma/backend/core/db"
+	"norma/backend/core/llm"
 	"norma/backend/core/memory"
 )
 
@@ -47,6 +48,9 @@ func main() {
 	k := flag.Int("k", 3, "top-k")
 	embedEndpoint := flag.String("embed-endpoint", "", "ollama endpoint for real embeddings")
 	embedModel := flag.String("embed-model", "", "ollama embedding model")
+	staticModel := flag.String("static-model", "", "Model2Vec directory for local static embeddings")
+	llmEndpoint := flag.String("llm-endpoint", "", "cloud chat endpoint for query expansion")
+	llmModel := flag.String("llm-model", "deepseek-flash", "chat model for query expansion")
 	out := flag.String("out", "", "json output")
 	flag.Parse()
 
@@ -107,6 +111,21 @@ func main() {
 		rv := mkVec("real", e)
 		methods = append(methods, method{"vector-" + *embedModel, func(ctx context.Context, q string, k int) ([]memory.Chunk, error) { return rv.Search(ctx, q, k) }})
 		methods = append(methods, method{"hybrid-" + *embedModel, memory.NewHybridRetriever(rv, fts, nil).Search})
+	}
+
+	if *staticModel != "" {
+		e, err := memory.NewStaticEmbedder(*staticModel)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer e.Close()
+		sv := mkVec("static", e)
+		methods = append(methods, method{"vector-static", func(ctx context.Context, q string, k int) ([]memory.Chunk, error) { return sv.Search(ctx, q, k) }})
+		methods = append(methods, method{"hybrid-static", memory.NewHybridRetriever(sv, fts, nil).Search})
+	}
+	if *llmEndpoint != "" {
+		exp := llm.NewChatQueryExpander(*llmEndpoint, *llmModel, os.Getenv("NORMA_LLM_API_KEY"), 30*time.Second)
+		methods = append(methods, method{"fts+llm-expand", memory.NewExpandingRetriever(fts, exp).Search})
 	}
 
 	var results []result

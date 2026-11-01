@@ -106,6 +106,7 @@ type RAGConfig struct {
 	EmbedEndpoint   string `mapstructure:"embed_endpoint"`
 	EmbedModel      string `mapstructure:"embed_model"`
 	EmbedProvider   string `mapstructure:"embed_provider"`
+	EmbedModelDir   string `mapstructure:"embed_model_dir"`
 	VectorIndexPath string `mapstructure:"vector_index_path"`
 	TopK            int    `mapstructure:"top_k"`
 }

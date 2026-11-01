@@ -456,6 +456,13 @@ func chooseEmbedder(cfg *config.Config, mgr *providers.Manager) memory.Embedder 
 			return memory.HashEmbedder{}
 		}
 		return memory.NewOllamaEmbedder(cfg.RAG.EmbedEndpoint, cfg.RAG.EmbedModel, 15*time.Second)
+	case "static":
+		e, err := memory.NewStaticEmbedder(strings.TrimSpace(cfg.RAG.EmbedModelDir))
+		if err != nil {
+			log.Printf("[rag] static embedder unavailable, fallback to hash embedder: %v", err)
+			return memory.HashEmbedder{}
+		}
+		return e
 	default:
 		return memory.HashEmbedder{}
 	}
