@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package desktop
 
@@ -15,7 +15,6 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"norma/pkg/apiserver"
@@ -24,8 +23,9 @@ import (
 const appTitle = "Norma"
 
 func Run(assets fs.FS) error {
+	platformInit()
 	app := NewApp()
-	return wails.Run(&options.App{
+	opts := &options.App{
 		Title:             appTitle,
 		Width:             360,
 		Height:            560,
@@ -37,12 +37,6 @@ func Run(assets fs.FS) error {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
-		Windows: &windows.Options{
-			WebviewIsTransparent:              true,
-			WindowIsTranslucent:               true,
-			DisableFramelessWindowDecorations: true,
-			BackdropType:                      windows.None,
-		},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "norma.desktop.singleton",
 			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
@@ -58,7 +52,9 @@ func Run(assets fs.FS) error {
 		Bind: []interface{}{
 			app,
 		},
-	})
+	}
+	applyPlatformOptions(opts)
+	return wails.Run(opts)
 }
 
 func (a *App) onSecondInstanceLaunch(secondInstanceData options.SecondInstanceData) {

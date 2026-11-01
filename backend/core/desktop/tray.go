@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || darwin
 
 package desktop
 
@@ -7,12 +7,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/getlantern/systray"
 	"github.com/pkg/browser"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"norma/backend/core/audio"
@@ -22,33 +20,46 @@ import (
 
 var trayQuitOnce sync.Once
 
+// 托盘后端：Windows 用 systray，macOS 用自己的 NSStatusItem（systray 在 macOS 上的 AppDelegate 与 Wails 冲突）
+type trayItem interface {
+	SetTitle(string)
+	Clicked() <-chan struct{}
+}
+
+type trayBackend interface {
+	SetIcon([]byte)
+	SetTooltip(string)
+	AddItem(title, tooltip string) trayItem
+	AddSeparator()
+}
+
 func (a *App) runTray() {
-	systray.Run(func() {
-		a.initTrayMenu()
-	}, func() {})
+	startTray(func(tb trayBackend) {
+		a.initTrayMenu(tb)
+	})
 }
 
 func (a *App) stopTray() {
 	trayQuitOnce.Do(func() {
-		systray.Quit()
+		quitTray()
 	})
 }
 
-func (a *App) initTrayMenu() {
+func (a *App) initTrayMenu(tb trayBackend) {
 	if icon := loadTrayIcon(); len(icon) > 0 {
-		systray.SetIcon(icon)
+		tb.SetIcon(icon)
 	}
-	systray.SetTooltip("Norma Desktop Companion")
+	tb.SetTooltip("Norma Desktop Companion")
 
-	menuConsole := systray.AddMenuItem("打开控制台", "在浏览器打开开发工具控制台")
-	menuToggle := systray.AddMenuItem("开启完全穿透", "切换完全穿透模式")
-	menuWakeMode := systray.AddMenuItem("唤醒模式：自动", "切换自动唤醒或手动唤醒")
+	menuConsole := tb.AddItem("打开控制台", "在浏览器打开开发工具控制台")
+	menuToggle := tb.AddItem("开启完全穿透", "切换完全穿透模式")
+	menuWakeMode := tb.AddItem("唤醒模式：自动", "切换自动唤醒或手动唤醒")
 
-	systray.AddSeparator()
-	menuShow := systray.AddMenuItem("隐藏伴侣", "显示或隐藏桌面伴侣")
-	menuReload := systray.AddMenuItem("重新加载伴侣", "重新加载窗口与模型")
-	systray.AddSeparator()
-	menuQuit := systray.AddMenuItem("退出", "退出 Norma")
+	tb.AddSeparator()
+	menuShow := tb.AddItem("隐藏伴侣", "显示或隐藏桌面伴侣")
+	menuReload := tb.AddItem("重新加载伴侣", "重新加载窗口与模型")
+	tb.AddSeparator()
+	menuQuit := tb.AddItem("退出", "退出 Norma")
 
 	refreshMenus := func() {
 		visibleText := "隐藏伴侣"
@@ -79,13 +90,13 @@ func (a *App) initTrayMenu() {
 					}
 				}()
 				select {
-				case <-menuShow.ClickedCh:
+				case <-menuShow.Clicked():
 					a.ToggleCompanionVisibility()
 					refreshMenus()
-				case <-menuToggle.ClickedCh:
+				case <-menuToggle.Clicked():
 					a.ToggleForcePassthrough()
 					refreshMenus()
-				case <-menuWakeMode.ClickedCh:
+				case <-menuWakeMode.Clicked():
 					nextAutoWake, err := toggleWakeMode()
 					if err != nil {
 						_ = publishRuntimeEvent("debug.notice", map[string]any{"text": "唤醒模式切换失败: " + err.Error()})
@@ -94,12 +105,12 @@ func (a *App) initTrayMenu() {
 						_ = publishRuntimeEvent("runtime.utils.updated", map[string]any{"path": layout.ConfigFileName, "source": "tray"})
 					}
 					refreshMenus()
-				case <-menuConsole.ClickedCh:
+				case <-menuConsole.Clicked():
 					go a.openExternalURL(debugURL())
-				case <-menuReload.ClickedCh:
+				case <-menuReload.Clicked():
 					go a.reloadCompanion()
 					refreshMenus()
-				case <-menuQuit.ClickedCh:
+				case <-menuQuit.Clicked():
 					if a.ctx != nil {
 						wruntime.Quit(a.ctx)
 					} else {
@@ -160,19 +171,6 @@ func settingsURL() string {
 		return "http://localhost:34115/"
 	}
 	return "http://127.0.0.1:8090/static/console/index.html"
-}
-
-func loadTrayIcon() []byte {
-	root, err := detectProjectRoot()
-	if err != nil {
-		return nil
-	}
-	iconPath := filepath.Join(root, "build", "windows", "icon.ico")
-	data, err := os.ReadFile(iconPath)
-	if err != nil {
-		return nil
-	}
-	return data
 }
 
 func autoWakeEnabled() bool {
