@@ -64,15 +64,24 @@ func (p *Pipeline) Run(
 		if fasr, ok := p.ASR.(FrameASR); ok {
 			log.Printf("[pipeline] transcribe via FrameASR frames=%d", len(utterance))
 			if err := fasr.TranscribeFrames(ctx, utterance, onPartial, onFinal); err != nil {
-				log.Printf("[pipeline] frame asr error: %v", err)
-				return err
+				// 没识别到内容是正常情况（只喊了唤醒词、静音、被过滤的幻觉），不能让收音循环退出
+				if errors.Is(err, ErrNoSpeech) {
+					log.Printf("[pipeline] no speech recognized, keep listening")
+				} else {
+					log.Printf("[pipeline] frame asr error: %v", err)
+					return err
+				}
 			}
 		} else {
 			// 使用流式ASR
 			log.Printf("[pipeline] transcribe via streaming ASR")
 			if err := p.ASR.Stream(ctx, onPartial, onFinal); err != nil {
-				log.Printf("[pipeline] asr stream error: %v", err)
-				return err
+				if errors.Is(err, ErrNoSpeech) {
+					log.Printf("[pipeline] no speech recognized, keep listening")
+				} else {
+					log.Printf("[pipeline] asr stream error: %v", err)
+					return err
+				}
 			}
 		}
 		// 重置 utterances

@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"norma/backend/core/audio"
 )
 
 var timeTagRe = regexp.MustCompile(`\[[^\]]+\]`)
@@ -73,6 +76,34 @@ func (w *WhisperCPPASR) TranscribeFrames(
 		onPartial("正在识别...")
 	}
 
+	prompt := strings.TrimSpace(w.Prompt)
+	if prompt == "" {
+		prompt = defaultWhisperPrompt
+	}
+	text, err := w.runOnce(ctx, wavPath, prompt)
+	if err != nil {
+		return err
+	}
+	// 音频很短或不清晰时，Whisper 会把起始提示词原样吐出来而丢掉真实内容。
+	// 这种结果先不带提示词重识别一次，内容就不会丢；重识别后的繁体字由后处理统一为简体
+	if text == "" || isPromptEcho(text) {
+		if retry, rerr := w.runOnce(ctx, wavPath, ""); rerr == nil && retry != "" && !isPromptEcho(retry) {
+			log.Printf("[asr] prompt echo %q, retried without prompt: %q", text, retry)
+			text = retry
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("whispercpp: %w", audio.ErrNoSpeech)
+	}
+
+	if onFinal != nil {
+		onFinal(text)
+	}
+	return nil
+}
+
+// runOnce 调用一次 whisper.cpp；prompt 为空时不带起始提示
+func (w *WhisperCPPASR) runOnce(ctx context.Context, wavPath, prompt string) (string, error) {
 	args := []string{
 		"-m", w.ModelPath,
 		"-f", wavPath,
@@ -80,30 +111,18 @@ func (w *WhisperCPPASR) TranscribeFrames(
 		"-t", fmt.Sprintf("%d", w.Threads),
 		"-nt", "-np",
 	}
-	prompt := strings.TrimSpace(w.Prompt)
-	if prompt == "" {
-		prompt = defaultWhisperPrompt
+	if prompt != "" {
+		args = append(args, "--prompt", prompt)
 	}
-	args = append(args, "--prompt", prompt)
-
 	// 识别文本在标准输出；模型加载等日志写在标准错误，不能混入文本
 	cmd := exec.CommandContext(ctx, w.BinaryPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("run whispercpp: %w, stderr=%s", err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("run whispercpp: %w, stderr=%s", err, strings.TrimSpace(stderr.String()))
 	}
-
-	text := normalizeWhisperOutput(string(out))
-	if strings.TrimSpace(text) == "" {
-		return fmt.Errorf("whispercpp returned empty text")
-	}
-
-	if onFinal != nil {
-		onFinal(text)
-	}
-	return nil
+	return strings.TrimSpace(normalizeWhisperOutput(string(out))), nil
 }
 
 func (w *WhisperCPPASR) writeTempWav(frames [][]float32) (string, func(), error) {

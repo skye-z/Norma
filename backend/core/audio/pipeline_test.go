@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -155,5 +156,66 @@ func TestPipelineWithoutOnWakeStillWorks(t *testing.T) {
 	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), WakeWord: &MockWakeWord{}, ASR: &frameASRStub{}, WakeMode: WakeModeWakeWordVAD}
 	if err := pipe.Run(context.Background(), NewMockFrameSource(DefaultDemoFrames(), time.Millisecond), nil, nil, nil, nil); err != nil {
 		t.Fatalf("run pipeline: %v", err)
+	}
+}
+
+// 先返回“没识别到内容”再返回正常结果的 ASR
+type flakyASR struct {
+	calls   int
+	results []error
+	final   []string
+}
+
+func (s *flakyASR) Stream(ctx context.Context, p func(string), f func(string)) error { return nil }
+func (s *flakyASR) TranscribeFrames(ctx context.Context, frames [][]float32, p func(string), f func(string)) error {
+	i := s.calls
+	s.calls++
+	if i < len(s.results) && s.results[i] != nil {
+		return s.results[i]
+	}
+	s.final = append(s.final, "第二句")
+	if f != nil {
+		f("第二句")
+	}
+	return nil
+}
+
+func loudSilentFrames(loud, silent int) [][]float32 {
+	var out [][]float32
+	for i := 0; i < loud; i++ {
+		f := make([]float32, 320)
+		for j := range f {
+			f[j] = 0.5
+		}
+		out = append(out, f)
+	}
+	for i := 0; i < silent; i++ {
+		out = append(out, make([]float32, 320))
+	}
+	return out
+}
+
+// 回归：一次“没识别到内容”不能让整个收音循环退出，否则之后的语音全部无人处理
+func TestPipelineKeepsRunningAfterNoSpeechResult(t *testing.T) {
+	asr := &flakyASR{results: []error{ErrNoSpeech}}
+	var frames [][]float32
+	frames = append(frames, loudSilentFrames(20, 30)...) // 第一句：识别为空
+	frames = append(frames, loudSilentFrames(20, 30)...) // 第二句：正常
+	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), ASR: asr, SilenceFrames: 8}
+	err := pipe.Run(context.Background(), &sliceFrameSource{frames: frames}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("pipeline must not fail on ErrNoSpeech, got %v", err)
+	}
+	if asr.calls != 2 || len(asr.final) != 1 {
+		t.Fatalf("second utterance was not processed: calls=%d finals=%v", asr.calls, asr.final)
+	}
+}
+
+func TestPipelineStillFailsOnRealASRErrors(t *testing.T) {
+	asr := &flakyASR{results: []error{errors.New("whisper binary crashed")}}
+	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), ASR: asr, SilenceFrames: 8}
+	err := pipe.Run(context.Background(), &sliceFrameSource{frames: loudSilentFrames(20, 30)}, nil, nil, nil, nil)
+	if err == nil {
+		t.Fatal("a real ASR failure must still be reported")
 	}
 }

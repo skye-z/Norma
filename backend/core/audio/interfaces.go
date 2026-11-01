@@ -33,6 +33,10 @@ type ASR interface {
 }
 
 // 可以直接转录语音片段
+// ErrNoSpeech 表示这段音频没有识别出有效内容（静音、过滤掉的幻觉等）。
+// 这是正常情况，不是故障，收音循环必须继续运行
+var ErrNoSpeech = errors.New("no speech recognized")
+
 type FrameASR interface {
 	ASR
 	TranscribeFrames(ctx context.Context, frames [][]float32, onPartial func(text string), onFinal func(text string)) error

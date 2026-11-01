@@ -51,7 +51,9 @@ type AudioConfig struct {
 	WakeMode       string `mapstructure:"wake_mode"`
 	WakeKeyword    string `mapstructure:"wake_keyword"`
 	// 唤醒或点击麦克风后立即播放的应答语，留空则不播放
-	WakeAckText           string `mapstructure:"wake_ack_text"`
+	WakeAckText string `mapstructure:"wake_ack_text"`
+	// 非空时把每段交给识别的音频存成 wav 并记录识别结果，仅用于排查识别问题
+	DebugDumpDir          string `mapstructure:"debug_dump_dir"`
 	EndpointSilenceFrames int    `mapstructure:"endpoint_silence_frames"`
 	InterruptDuringSpeak  bool   `mapstructure:"interrupt_during_speak"`
 	MicDeviceID           string `mapstructure:"mic_device_id"`

@@ -92,7 +92,7 @@ func (w *WhisperEmbeddedASR) TranscribeFrames(ctx context.Context, frames [][]fl
 	finalText := strings.TrimSpace(strings.Join(segments, " "))
 	if finalText == "" {
 		log.Printf("[asr] whisper final text empty")
-		return fmt.Errorf("embedded whisper returned empty text")
+		return fmt.Errorf("embedded whisper: %w", audio.ErrNoSpeech)
 	}
 	log.Printf("[asr] whisper final text=%q", finalText)
 	if onFinal != nil {

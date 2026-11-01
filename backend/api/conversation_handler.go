@@ -563,6 +563,13 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	}
 	// 构建语音处理管道
 	pipe := bootstrap.BuildVoicePipelineForMode(cfg, providerMgr, pipeMode)
+	// 排查识别问题：保存每段交给识别的音频并记录结果
+	if dir := strings.TrimSpace(cfg.Audio.DebugDumpDir); dir != "" {
+		if fa, ok := pipe.ASR.(audio.FrameASR); ok {
+			pipe.ASR = audioAsr.NewDumpingASR(fa, dir)
+			log.Printf("[conversation] asr debug dump enabled dir=%s", dir)
+		}
+	}
 	// 检测到唤醒词时立即请求播放应答语，与后续收音并行
 	pipe.OnWake = func() {
 		h.bus.Publish(bus.Event{Name: "audio.wake.ack", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "wake_word"}})
