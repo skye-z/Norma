@@ -16,8 +16,14 @@ func Save(path string, cfg *Config) error {
 		return fmt.Errorf("config is nil")
 	}
 
+	// 环境变量注入的密钥只在运行时使用，不能被规范化回存时写进配置文件
+	toSave := *cfg
+	if env := os.Getenv("NORMA_LLM_API_KEY"); env != "" && toSave.LLM.APIKey == env {
+		toSave.LLM.APIKey = ""
+	}
+
 	doc := map[string]any{}
-	if err := mapstructure.Decode(cfg, &doc); err != nil {
+	if err := mapstructure.Decode(&toSave, &doc); err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
 

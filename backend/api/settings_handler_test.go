@@ -124,3 +124,31 @@ func TestSettingsRuntimePutSyncsWakeKeywordFile(t *testing.T) {
 		t.Fatalf("expected wake_keywords_file_path to be persisted")
 	}
 }
+
+func TestPreserveUnmanagedKeepsGenieAndStaticEmbedFields(t *testing.T) {
+	prev := &config.Config{}
+	prev.TTS.Genie.Worker = "/opt/worker"
+	prev.TTS.Genie.DataDir = "/opt/data"
+	prev.TTS.Genie.CharacterDir = "/opt/char"
+	prev.RAG.EmbedModelDir = "/opt/m2v"
+	prev.Memory.MarkdownPath = "mem.md"
+	prev.Memory.MarkdownMaxBytes = 4096
+
+	next := &config.Config{} // 控制台提交的配置不含这些字段
+	preserveUnmanaged(prev, next)
+	if next.TTS.Genie.Worker != "/opt/worker" || next.TTS.Genie.DataDir != "/opt/data" || next.TTS.Genie.CharacterDir != "/opt/char" {
+		t.Fatalf("genie lost: %+v", next.TTS.Genie)
+	}
+	if next.RAG.EmbedModelDir != "/opt/m2v" || next.Memory.MarkdownPath != "mem.md" || next.Memory.MarkdownMaxBytes != 4096 {
+		t.Fatalf("rag/memory lost: %+v %+v", next.RAG, next.Memory)
+	}
+
+	// 控制台显式提交了值时不能被旧值覆盖
+	explicit := &config.Config{}
+	explicit.RAG.EmbedModelDir = "/new"
+	preserveUnmanaged(prev, explicit)
+	if explicit.RAG.EmbedModelDir != "/new" {
+		t.Fatalf("explicit value overwritten: %q", explicit.RAG.EmbedModelDir)
+	}
+	preserveUnmanaged(nil, explicit) // 旧配置读取失败时不能崩
+}

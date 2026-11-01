@@ -78,6 +78,8 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	}
 	// 规范化 TTS 配置为 sherpa 格式
 	_ = normalizeTTSToSherpa(&cfg)
+	// 控制台只管理一部分字段，其余字段沿用旧值，避免保存时被清空
+	preserveUnmanaged(previous, &cfg)
 
 	// 验证必填字段: LLM Provider
 	if strings.TrimSpace(cfg.LLM.Provider) == "" {
@@ -279,4 +281,39 @@ func publishWakeModeAnnouncement(b *bus.Bus, previous, current *config.Config, s
 		text = "我一直都在，有事叫我哦"
 	}
 	b.Publish(bus.Event{Name: "assistant.say", SessionID: "system-wake-mode", TraceID: "system-wake-mode", Payload: map[string]any{"text": text, "interrupt": true, "source": source}})
+}
+
+// preserveUnmanaged 把控制台不提交的字段从旧配置带过来：Genie 合成、静态词向量目录、Markdown 记忆
+func preserveUnmanaged(prev, cfg *config.Config) {
+	if prev == nil || cfg == nil {
+		return
+	}
+	g, pg := &cfg.TTS.Genie, prev.TTS.Genie
+	if g.Worker == "" {
+		g.Worker = pg.Worker
+	}
+	if g.Script == "" {
+		g.Script = pg.Script
+	}
+	if g.DataDir == "" {
+		g.DataDir = pg.DataDir
+	}
+	if g.CharacterDir == "" {
+		g.CharacterDir = pg.CharacterDir
+	}
+	if g.Language == "" {
+		g.Language = pg.Language
+	}
+	if len(g.References) == 0 {
+		g.References = pg.References
+	}
+	if strings.TrimSpace(cfg.RAG.EmbedModelDir) == "" {
+		cfg.RAG.EmbedModelDir = prev.RAG.EmbedModelDir
+	}
+	if strings.TrimSpace(cfg.Memory.MarkdownPath) == "" {
+		cfg.Memory.MarkdownPath = prev.Memory.MarkdownPath
+	}
+	if cfg.Memory.MarkdownMaxBytes == 0 {
+		cfg.Memory.MarkdownMaxBytes = prev.Memory.MarkdownMaxBytes
+	}
 }

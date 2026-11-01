@@ -1339,6 +1339,10 @@ async function initCompanion() {
       }, 120);
     }));
 
+    state.eventSources.push(createRuntimeEventSource('desktop.passthrough', (payload) => {
+      setMicFabVisible(!payload?.enabled);
+    }));
+
     state.eventSources.push(createRuntimeEventSource('audio.play.end', (_payload, evt) => {
       const evtSessionID = String(evt?.session_id || state.sessionID || '');
       const evtTraceID = String(evt?.trace_id || state.traceID || evtSessionID || '');

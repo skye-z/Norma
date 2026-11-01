@@ -51,7 +51,14 @@ void normaSetFloating(const char *title, int floating) {
 
 // 不在 Dock 与应用切换器里显示，与 Windows 隐藏任务栏图标一致
 void normaHideFromDock(void) {
-	onMainAsync(^{ [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory]; });
+	onMainAsync(^{
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+		// 透明窗口的系统阴影会沿着不透明像素描边，在按钮和人物周围形成灰色圈
+		for (NSWindow *w in [NSApp windows]) {
+			[w setHasShadow:NO];
+			[w invalidateShadow];
+		}
+	});
 }
 
 int normaCursorInteract(const char *title, int *inside, double *nx, double *ny) {

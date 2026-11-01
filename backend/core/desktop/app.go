@@ -241,6 +241,8 @@ func (a *App) applyForcePassthrough(enabled bool) bool {
 	if err := setMousePassthroughByTitle(appTitle, enabled); err == nil {
 		a.setMousePassthrough(enabled)
 	}
+	// 完全穿透时窗口收不到点击，前端据此隐藏头顶的麦克风按钮
+	go func() { _ = publishRuntimeEvent("desktop.passthrough", map[string]any{"enabled": enabled}) }()
 	return a.isForcePassthrough()
 }
 

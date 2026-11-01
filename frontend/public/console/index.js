@@ -114,9 +114,7 @@ const moduleSchemas = {
     summary: '知识检索和向量嵌入配置。',
     fields: [
       { path: 'rag.top_k', label: '召回条数', type: 'number' },
-      { path: 'rag.embed_provider', label: '嵌入组件', type: 'select', options: [{ value: 'ollama', label: 'Ollama' }] },
-      { path: 'rag.embed_endpoint', label: '嵌入接口地址', type: 'shared_endpoint' },
-      { path: 'rag.embed_model', label: '嵌入模型', type: 'model_name_select' },
+      { path: 'rag.embed_provider', label: '嵌入组件', type: 'select', options: [{ value: 'static', label: '静态词向量（本地）' }, { value: 'hash', label: '哈希（无语义，回退用）' }] },
       { path: 'rag.vector_index_path', label: '向量索引路径', type: 'text' }
     ]
   },
@@ -134,9 +132,9 @@ const moduleSchemas = {
   },
   tts: {
     title: '输出模块',
-    summary: '语音合成配置（Sherpa ONNX Kokoro）。',
+    summary: '语音合成配置（默认 Genie-TTS，按参考音频克隆语气；缺少模型时自动退回系统合成）。',
     fields: [
-      { path: 'tts.provider', label: '合成组件', type: 'select', options: [{ value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
+      { path: 'tts.provider', label: '合成组件', type: 'select', options: [{ value: 'genie', label: 'Genie-TTS' }, { value: 'sherpa-onnx', label: 'Sherpa ONNX' }] },
       { path: 'tts.voice', label: '声线', type: 'select', options: [
         { value: 'zf_xiaobei', label: 'zf_xiaobei' },
         { value: 'zf_xiaoni', label: 'zf_xiaoni' },
@@ -348,14 +346,16 @@ function normalizeRuntimeSettings(raw) {
     request_timeout_ms: pick(ttsRaw, 'request_timeout_ms', 'RequestTimeoutMs'),
     binary_path: pick(ttsRaw, 'binary_path', 'BinaryPath'),
     model_path: pick(ttsRaw, 'model_path', 'ModelPath'),
-    sentence_first_enabled: pick(ttsRaw, 'sentence_first_enabled', 'SentenceFirstEnabled')
+    sentence_first_enabled: pick(ttsRaw, 'sentence_first_enabled', 'SentenceFirstEnabled'),
+    genie_character_dir: pick(compact(ttsRaw?.genie ?? ttsRaw?.Genie), 'character_dir', 'CharacterDir')
   };
   const rag = {
     top_k: pick(ragRaw, 'top_k', 'TopK'),
     vector_index_path: pick(ragRaw, 'vector_index_path', 'VectorIndexPath'),
     embed_provider: pick(ragRaw, 'embed_provider', 'EmbedProvider'),
     embed_endpoint: pick(ragRaw, 'embed_endpoint', 'EmbedEndpoint'),
-    embed_model: pick(ragRaw, 'embed_model', 'EmbedModel')
+    embed_model: pick(ragRaw, 'embed_model', 'EmbedModel'),
+    embed_model_dir: pick(ragRaw, 'embed_model_dir', 'EmbedModelDir')
   };
   const memory = {
     stm_token_budget: pick(memoryRaw, 'stm_token_budget', 'STMTokenBudget'),
@@ -459,8 +459,7 @@ function ensureDebugDraft() {
   if (!draftSettings.llm.model) draftSettings.llm.model = '';
   if (!draftSettings.llm.api_key) draftSettings.llm.api_key = '';
   if (!draftSettings.llm.persona) draftSettings.llm.persona = defaultPersonaPrompt;
-  if (!draftSettings.rag.embed_provider) draftSettings.rag.embed_provider = 'ollama';
-  if (!draftSettings.rag.embed_endpoint) draftSettings.rag.embed_endpoint = draftSettings.llm.endpoint || 'http://127.0.0.1:11434/v1';
+  if (!draftSettings.rag.embed_provider) draftSettings.rag.embed_provider = 'static';
   if (!draftSettings.rag.embed_model) draftSettings.rag.embed_model = '';
   if (!draftSettings.audio.wake_mode) draftSettings.audio.wake_mode = 'wake_word_vad';
   if (!draftSettings.audio.wake_keyword) draftSettings.audio.wake_keyword = '诺玛';
@@ -487,7 +486,7 @@ function moduleIndicatorColor(moduleKey) {
       return modelMotionGroups.length ? 'green' : 'yellow';
     }
     case 'input': {
-      if (!currentSettings.audio?.mic_device_id) return 'gray';
+      // 没有指定麦克风设备时使用系统默认设备，不算缺失
       if (!currentSettings.audio?.enable_wake_word) return 'green';
       if (!currentSettings.audio?.wake_keyword) return 'yellow';
       return String(currentSettings.audio?.wake_provider || '').trim() ? 'green' : 'yellow';
@@ -502,6 +501,10 @@ function moduleIndicatorColor(moduleKey) {
       if (!currentSettings.rag?.embed_provider) return 'gray';
       if (Number(currentSettings.rag?.top_k ?? 0) <= 0) return 'red';
       if (currentSettings.rag.embed_provider === 'hash') return 'green';
+      // 静态词向量在本地进程内加载，只需要模型目录
+      if (currentSettings.rag.embed_provider === 'static') {
+        return String(currentSettings.rag?.embed_model_dir || '').trim() ? 'green' : 'yellow';
+      }
       const endpoint = String(currentSettings.rag?.embed_endpoint || '').trim();
       const model = String(currentSettings.rag?.embed_model || '').trim();
       if (!endpoint) return 'red';
@@ -520,6 +523,10 @@ function moduleIndicatorColor(moduleKey) {
     case 'tts': {
       if (!currentSettings.tts?.provider) return 'gray';
       if (currentSettings.tts.provider === 'mock') return 'red';
+      // Genie 由参考音频决定语气，没有声线名；只需要角色模型目录
+      if (currentSettings.tts.provider === 'genie') {
+        return String(currentSettings.tts?.genie_character_dir || '').trim() ? 'green' : 'yellow';
+      }
       if (!String(currentSettings.tts?.voice || '').trim()) return 'yellow';
       return 'green';
     }
@@ -557,11 +564,14 @@ function renderSidebarText(settings) {
   const hit = modelCatalog.find((item) => item.url === activeURL);
   if (textModelEl) textModelEl.textContent = hit?.label || '自定义模型';
   if (textInputEl) textInputEl.textContent = `${settings?.audio?.enable_wake_word ? '唤醒词' : '持续监听'} / ${settings?.audio?.wake_provider || '-'}`;
-  if (textAsrEl) textAsrEl.textContent = `内嵌 Whisper / ${settings?.asr?.language || 'zh'}`;
+  if (textAsrEl) textAsrEl.textContent = `Whisper / ${settings?.asr?.language || 'zh'}`;
   if (textRagEl) textRagEl.textContent = `${settings?.rag?.embed_provider || '-'} / 检索条数 ${settings?.rag?.top_k ?? '-'}`;
   if (textLlmEl) textLlmEl.textContent = `${settings?.llm?.provider || '-'} / ${settings?.llm?.model || '默认模型'}`;
   const ttsProvider = settings?.tts?.provider ? String(settings.tts.provider) : '-';
-  const ttsVoice = settings?.tts?.voice || '默认声线';
+  const genieDir = String(settings?.tts?.genie_character_dir || '').replace(/[\\/]+$/, '');
+  const ttsVoice = ttsProvider === 'genie'
+    ? (genieDir.split(/[\\/]/).pop() || '默认角色')
+    : (settings?.tts?.voice || '默认声线');
   if (textTtsEl) textTtsEl.textContent = `${ttsProvider} / ${ttsVoice}`;
 }
 

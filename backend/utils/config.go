@@ -179,6 +179,11 @@ func Load(path string) (*Config, error) {
 	// 应用环境变量覆盖
 	applyEnvOverride(v, &cfg)
 
+	// 旧版本会把缺省的 0 回存进配置文件，0 召回条数等于关闭检索，按未设置处理
+	if cfg.RAG.TopK <= 0 {
+		cfg.RAG.TopK = 6
+	}
+
 	return &cfg, nil
 }
 
@@ -194,8 +199,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.path", layout.DBPath)
 
 	v.SetDefault("audio.enable_wake_word", true)
-	v.SetDefault("audio.wake_mode", "vad")
-	v.SetDefault("audio.wake_keyword", "hey norma")
+	v.SetDefault("audio.wake_mode", "wake_word_vad")
+	v.SetDefault("audio.wake_provider", "sherpa-onnx")
+	v.SetDefault("audio.wake_keyword", "诺玛")
 	v.SetDefault("audio.endpoint_silence_frames", 40)
 	v.SetDefault("audio.interrupt_during_speak", true)
 	v.SetDefault("audio.sample_rate", 16000)
@@ -220,6 +226,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tts.speed", 1.25)
 
 	v.SetDefault("rag.provider", "hybrid")
+	v.SetDefault("rag.top_k", 6)
 	v.SetDefault("rag.embed_provider", "static")
 	v.SetDefault("rag.embed_model_dir", layout.StaticEmbedModelDir)
 	v.SetDefault("rag.vector_index_path", layout.VectorIndexPath)
