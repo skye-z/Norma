@@ -20,7 +20,8 @@ const (
 	ProvidersDir          = "resource/runtime/providers"
 	DBPath                = "resource/data/norma.db"
 	VectorIndexPath       = "resource/data/vector_index.json"
-	MemoryPath            = "resource/data/memory.md"
+	MemoryPath            = "resource/data/memory.md" // 旧版单文件记忆，仅用于迁移
+	MemoryDir             = "resource/data/memory"
 	GenieDataDir          = "resource/model/genie/GenieData"
 	GenieCharacterDir     = "resource/model/genie/CharacterModels/v2ProPlus/feibi"
 	GenieWorkerPath       = "resource/runtime/genie/norma-genie-worker"

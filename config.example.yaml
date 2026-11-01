@@ -70,7 +70,16 @@ rag:
   embed_model_dir: resource/model/model2vec/potion-multilingual-128M
 
 memory:
-  # “记住……”指令写入的 Markdown 记忆文件，文件是唯一事实来源，索引可随时重建
+  # 记忆目录（Markdown，可以直接打开查看和修改，文件是唯一事实来源，索引可随时重建）：
+  #   USER.md    用户画像，每轮整体注入提示词，所以上限小
+  #   MEMORY.md  长期记忆，按相关度检索
+  #   daily/     每日笔记，检索时按 30 天半衰期衰减
+  dir: resource/data/memory
+  user_char_limit: 1200
+  memory_char_limit: 8000
+  # 每轮对话结束后，由大模型在后台判断有没有值得记住的内容（需要联网调用对话模型，不想用就改成 false）
+  auto_curate: true
+  # 旧版单文件记忆，启动时若存在会迁移进上面的目录
   markdown_path: resource/data/memory.md
   markdown_max_bytes: 16384
   stm_token_budget: 2048

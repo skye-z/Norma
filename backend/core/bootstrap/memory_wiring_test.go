@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +19,8 @@ func memoryTestConfig(dir string) *config.Config {
 	cfg := &config.Config{}
 	cfg.RAG.Provider = "hybrid"
 	cfg.RAG.VectorIndexPath = filepath.Join(dir, "vec.json")
-	cfg.Memory.MarkdownPath = filepath.Join(dir, "memory.md")
+	cfg.Memory.Dir = filepath.Join(dir, "memory")
+	cfg.Memory.MarkdownPath = filepath.Join(dir, "memory.md") // 旧版单文件，用于迁移
 	return cfg
 }
 
@@ -39,18 +41,18 @@ func TestRememberedFactSurvivesRestart(t *testing.T) {
 	if err := md.Remember(context.Background(), "我的猫叫团子"); err != nil {
 		t.Fatal(err)
 	}
-	if !searchFinds(t, retriever, "猫叫团子", "我的猫叫团子") {
+	if !searchFinds(t, retriever, "猫叫团子", "用户的猫叫团子") {
 		t.Fatal("fact not retrievable right after remember")
 	}
 
-	// 新的数据库文件模拟索引丢失，只有 memory.md 保留
+	// 新的数据库文件模拟索引丢失，只有记忆目录里的 MEMORY.md 保留
 	engine2, err := db.NewEngine(filepath.Join(dir, "m2.db"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	retriever2, _ := chooseRetriever(cfg, engine2, mgr)
-	if !searchFinds(t, retriever2, "猫叫团子", "我的猫叫团子") {
-		t.Fatal("fact lost after restart; index was not rebuilt from memory.md")
+	if !searchFinds(t, retriever2, "猫叫团子", "用户的猫叫团子") {
+		t.Fatal("fact lost after restart; index was not rebuilt from MEMORY.md")
 	}
 }
 
@@ -115,5 +117,81 @@ func TestWakeStatusJSONUsesSnakeCaseKeysTheFrontendReads(t *testing.T) {
 	}
 	if m["keyword"] != "诺玛" {
 		t.Errorf("keyword = %v", m["keyword"])
+	}
+}
+
+// 画像（个人信息）每轮整体注入提示词，不应该再出现在检索结果里；长期记忆则相反
+func TestProfileFactsAreInjectedNotRetrieved(t *testing.T) {
+	dir := t.TempDir()
+	cfg := memoryTestConfig(dir)
+	engine, err := db.NewEngine(filepath.Join(dir, "m.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retriever, svc := chooseRetriever(cfg, engine, providers.NewManager(filepath.Join(dir, "providers")))
+	ctx := context.Background()
+	if err := svc.Remember(ctx, "我叫 Skye"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Remember(ctx, "我的猫叫团子"); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Profile(); got != "- 用户叫 Skye" {
+		t.Fatalf("profile = %q", got)
+	}
+	if searchFinds(t, retriever, "我叫什么名字", "用户叫 Skye") {
+		t.Fatal("profile entries must not be duplicated into retrieval results")
+	}
+	if !searchFinds(t, retriever, "猫叫什么", "用户的猫叫团子") {
+		t.Fatal("long-term fact must be retrievable")
+	}
+}
+
+// 旧版单文件记忆在启动时自动迁移进新的记忆目录
+func TestLegacyMemoryFileIsMigratedOnStartup(t *testing.T) {
+	dir := t.TempDir()
+	cfg := memoryTestConfig(dir)
+	if err := os.WriteFile(cfg.Memory.MarkdownPath, []byte("- 我叫 Skye\n- 明天下午开会\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := db.NewEngine(filepath.Join(dir, "m.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retriever, svc := chooseRetriever(cfg, engine, providers.NewManager(filepath.Join(dir, "providers")))
+	if svc.Profile() != "- 用户叫 Skye" {
+		t.Fatalf("profile after migration = %q", svc.Profile())
+	}
+	if !searchFinds(t, retriever, "开会", "明天下午开会") {
+		t.Fatal("migrated long-term entry not retrievable")
+	}
+	if _, err := os.Stat(cfg.Memory.MarkdownPath + ".migrated"); err != nil {
+		t.Fatal("legacy file should be kept as .migrated")
+	}
+}
+
+// 没有配置大模型接口、或关闭开关时，不创建后台整理，也不能崩
+func TestCuratorIsOnlyCreatedWhenEnabledAndConfigured(t *testing.T) {
+	svc := memory.NewMemoryService(memory.NewMemoryBank(t.TempDir(), 0, 0))
+	cfg := &config.Config{}
+	cfg.Memory.AutoCurate = true
+	if newCurator(cfg, svc) != nil {
+		t.Fatal("no llm provider configured: curator must not be created")
+	}
+	cfg.LLM.Provider = "deepseek"
+	if newCurator(cfg, svc) == nil {
+		t.Fatal("deepseek has default model/endpoint: curator expected")
+	}
+	cfg.Memory.AutoCurate = false
+	if newCurator(cfg, svc) != nil {
+		t.Fatal("switch off: curator must not be created")
+	}
+	cfg.Memory.AutoCurate = true
+	cfg.LLM.Provider = "ollama" // 没有模型名和地址
+	if newCurator(cfg, svc) != nil {
+		t.Fatal("ollama without model/endpoint: curator must not be created")
+	}
+	if newCurator(cfg, nil) != nil {
+		t.Fatal("nil service must be tolerated")
 	}
 }

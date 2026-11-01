@@ -15,6 +15,7 @@ type Request struct {
 	Context   []string // 检索增强的上下文信息
 	Persona   string   // 角色设定
 	History   []Turn   // 最近几轮对话，按时间从早到晚
+	Profile   string   // 已知的用户画像，一行一条；为空表示还不了解用户
 }
 
 // Turn 是已经完成的一轮对话

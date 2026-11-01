@@ -3,9 +3,11 @@ package runtime
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,8 @@ type Orchestrator struct {
 	playback  playbackSink
 	persona   string
 	memory    memoryWriter
+	profile   profileSource
+	observer  turnObserver
 
 	// 最近几轮对话，让模型知道前面聊过什么，也不会每一轮都当作第一次见面
 	hmu         sync.Mutex
@@ -43,6 +47,16 @@ type Orchestrator struct {
 // 记忆写入接口，用于响应“记住……”之类的口语指令
 type memoryWriter interface {
 	Remember(ctx context.Context, fact string) error
+}
+
+// 用户画像来源：每轮对话前读取，写入 system 提示词
+type profileSource interface {
+	Profile() string
+}
+
+// 一轮对话正常结束后的观察者，用于后台整理记忆；实现必须是非阻塞的
+type turnObserver interface {
+	OnTurn(user, assistant string)
 }
 
 // 播放接收器接口
@@ -118,6 +132,20 @@ func (o *Orchestrator) SetMemory(w memoryWriter) {
 	o.mu.Unlock()
 }
 
+// 设置用户画像来源；未设置时不向模型提供画像
+func (o *Orchestrator) SetProfile(p profileSource) {
+	o.mu.Lock()
+	o.profile = p
+	o.mu.Unlock()
+}
+
+// 设置对话结束后的观察者（后台整理记忆）
+func (o *Orchestrator) SetTurnObserver(t turnObserver) {
+	o.mu.Lock()
+	o.observer = t
+	o.mu.Unlock()
+}
+
 // 识别完成后启动会话；同一会话号的在途任务会先被取消并等待退出
 func (o *Orchestrator) onASRFinal(evt bus.Event) {
 	text, ok := evt.Payload.(string)
@@ -158,7 +186,7 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 				return
 			}
 			log.Printf("[orchestrator] remember failed: %v", err)
-			contexts = append(contexts, "（系统提示：用户想让你记住“"+fact+"”，但保存失败了，请如实告诉用户。）")
+			contexts = append(contexts, "（系统提示：用户想让你记住“"+fact+"”，但"+rememberFailureReason(err)+"请如实告诉用户，不要假装记住了。）")
 		} else {
 			contexts = append(contexts, "（系统提示：已把“"+fact+"”写入长期记忆，请简短确认，不要复述全文。）")
 			pub("memory.saved", fact)
@@ -185,7 +213,14 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 	}()
 
 	splitter := newSentenceSplitter()
-	req := llm.Request{SessionID: s.id, Prompt: text, Context: contexts, Persona: persona, History: o.historySnapshot()}
+	o.mu.Lock()
+	profileSrc := o.profile
+	o.mu.Unlock()
+	profile := ""
+	if profileSrc != nil {
+		profile = profileSrc.Profile()
+	}
+	req := llm.Request{SessionID: s.id, Prompt: text, Context: contexts, Persona: persona, History: o.historySnapshot(), Profile: profile}
 	var reply strings.Builder
 	llmErr := o.llm.Stream(ctx, req, func(token string) {
 		if ctx.Err() != nil {
@@ -222,6 +257,12 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 		return
 	}
 	o.recordTurn(text, reply.String())
+	o.mu.Lock()
+	observer := o.observer
+	o.mu.Unlock()
+	if observer != nil {
+		observer.OnTurn(text, liveMarkRe.ReplaceAllString(reply.String(), ""))
+	}
 	pub("llm.finished", nil)
 	if o.playback != nil {
 		o.playback.Complete(s.id, s.trace)
@@ -355,4 +396,16 @@ func (o *Orchestrator) recordTurn(user, assistant string) {
 		o.history = append([]llm.Turn(nil), o.history[len(o.history)-o.historyMax:]...)
 	}
 	o.historyAt = o.now()
+}
+
+// rememberFailureReason 把保存失败的原因翻成给模型的说明，让它能如实告诉用户
+func rememberFailureReason(err error) string {
+	var full *memory.MemoryFullError
+	switch {
+	case errors.As(err, &full):
+		return "记忆已经满了（" + strconv.Itoa(full.Used) + "/" + strconv.Itoa(full.Limit) + " 个字），需要先删掉或合并一些旧内容。"
+	case errors.Is(err, memory.ErrInvalidEntry):
+		return "这段内容不适合存进记忆（太长、含有密码密钥，或不是普通的事实）。"
+	}
+	return "保存失败了。"
 }

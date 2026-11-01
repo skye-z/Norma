@@ -67,7 +67,9 @@ func main() {
 			}}
 		}
 		c.RAG = config.RAGConfig{Provider: "hybrid", EmbedProvider: "static", EmbedModelDir: *staticDir, VectorIndexPath: filepath.Join(work, filepath.Base(filepath.Dir(memPath))+"-vec.json"), TopK: 4}
-		c.Memory.MarkdownPath = memPath
+		c.Memory.Dir = filepath.Dir(memPath)
+		c.Memory.MarkdownPath = filepath.Join(work, "no-legacy.md") // 绝不能指向真实的旧记忆文件，迁移会把它改名
+		c.Memory.AutoCurate = true
 		return c
 	}
 	recognizer := asr.NewWhisperCPPASR(*whisperBin, *whisperModel, "zh", 4)
@@ -146,19 +148,29 @@ func main() {
 		return st
 	}
 
-	// A、B：同一进程内写入并追问
+	// A：没有说“记住”，只是自我介绍；后台整理应当自己把它写进画像
 	s1 := newStack("run1", mem)
-	runTurn(s1, "A-写入", "记住我养的猫叫团子。", "")
-	runTurn(s1, "B-同进程追问", "我养的猫叫什么名字？", "团子")
-	// C：全新进程与全新数据库，只保留 memory.md，验证索引重建
+	runTurn(s1, "A-自我介绍", "我叫斯凯，今年二十岁。", "")
+	waitForFile(filepath.Join(filepath.Dir(mem), "USER.md"), 30*time.Second)
+	// B：全新进程、全新数据库、没有任何对话历史，只剩磁盘上的 USER.md
 	s2 := newStack("run2", mem)
-	runTurn(s2, "C-重启后追问", "我养的猫叫什么名字？", "团子")
-	// D：对照，没有任何记忆的全新环境
-	s3 := newStack("run3", filepath.Join(work, "empty", "memory.md"))
-	runTurn(s3, "D-无记忆对照", "我养的猫叫什么名字？", "")
+	runTurn(s2, "B-重启后问名字", "我叫什么名字？", "斯凯")
+	// C：显式“记住”写入长期记忆，随后在新进程里靠检索答出
+	s3 := newStack("run3", mem)
+	runTurn(s3, "C-显式记住", "记住我养的猫叫团子。", "")
+	s4 := newStack("run4", mem)
+	runTurn(s4, "D-重启后问猫", "我养的猫叫什么名字？", "团子")
+	// E：对照，没有任何记忆的全新环境
+	s5 := newStack("run5", filepath.Join(work, "empty", "memory.md"))
+	runTurn(s5, "E-无记忆对照", "我叫什么名字？", "")
 
-	body, _ := os.ReadFile(mem)
-	fmt.Printf("\nmemory.md 内容：\n%s\n", body)
+	dir := filepath.Dir(mem)
+	var body []byte
+	for _, f := range []string{"USER.md", "MEMORY.md"} {
+		b, _ := os.ReadFile(filepath.Join(dir, f))
+		body = append(body, []byte("["+f+"]\n"+string(b)+"\n")...)
+	}
+	fmt.Printf("\n记忆文件：\n%s\n", body)
 	if *out != "" {
 		b, _ := json.MarshalIndent(map[string]any{"note": "语音为 macOS say 合成，非真人录音", "turns": results, "memory_md": string(body)}, "", "  ")
 		_ = os.WriteFile(*out, b, 0o644)
@@ -182,4 +194,16 @@ func synth(dir, wav, voice, text string) []float32 {
 		out[8000+i] = float32(int16(binary.LittleEndian.Uint16(b[i*2:]))) / 32768
 	}
 	return out[:8000+len(b)/2+8000]
+}
+
+// 等某个文件出现且非空，后台整理是异步的
+func waitForFile(path string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	log.Printf("timeout waiting for %s", path)
 }

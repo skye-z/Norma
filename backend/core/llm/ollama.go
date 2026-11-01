@@ -281,10 +281,20 @@ func buildSystemPrompt(req Request) string {
 	sb.WriteString("\n请自然、口语化地回答，控制在 2-4 句，优先直接回应用户，不要写成流程说明，不要 OOC。\n")
 	// 没有这一条时模型会把人设当成“用户刚做的自我介绍”，每一轮都先说一遍“我是诺玛……”
 	sb.WriteString("你和用户已经在持续对话中：不要主动自我介绍，也不要复述自己的身份、职责或所属机构，除非用户明确问你是谁。直接回应用户刚说的这句话。\n")
-	sb.WriteString("用户告诉过你的名字、偏好和前面聊过的内容要自然地用起来，不要反复确认。\n")
+	// 注意措辞：只说“要自然地用起来”会让模型觉得自己“应该记得”，没有记录时就编造（实测问名字 4/8 次编出同一个名字）。
+	// 所以同时划清边界：只有下面“已了解的信息”和本次对话里用户亲口说的才算数
+	sb.WriteString("你只知道两类关于用户的信息：下面“已了解的信息”，以及这次对话里用户亲口说过的话；这些要自然地用起来，不必反复确认。")
+	sb.WriteString("被问到你并不知道的个人信息（名字、喜好、家人、宠物、经历等）时，如实说你还不知道，可以请对方告诉你；绝不要编造，也不要用“你之前提过”“我记得”去支撑一个并不存在的记忆。\n")
 	sb.WriteString("你可以在回答中少量插入 Live2D 控制标识，格式是 {{动作}} 或 {{类型:动作}}。\n")
 	sb.WriteString("可用示例：{{thinking}}、{{idle}}、{{tap}}、{{smile}}、{{soft}}、{{focus}}、{{motion:thinking}}、{{expression:smile}}。\n")
 	sb.WriteString("这些标识只用于驱动 Live2D 的动作或表情，不属于要读出来的正文；每次回答最多使用 1 到 3 个，不要连续堆叠。")
+	// 画像放在 system 末尾：它只在被整理出新内容时才变化，前面的人设与规则保持不变，有利于提示词前缀缓存
+	if profile := strings.TrimSpace(req.Profile); profile != "" {
+		sb.WriteString("\n\n已了解的信息（自然地用，不要逐条复述，也不要说“我记得你说过”）：\n")
+		sb.WriteString(profile)
+	} else {
+		sb.WriteString("\n\n已了解的信息：目前还不了解用户的任何个人信息。")
+	}
 	return sb.String()
 }
 

@@ -322,4 +322,15 @@ func preserveUnmanaged(prev, cfg *config.Config) {
 	if cfg.Memory.MarkdownMaxBytes == 0 {
 		cfg.Memory.MarkdownMaxBytes = prev.Memory.MarkdownMaxBytes
 	}
+	if strings.TrimSpace(cfg.Memory.Dir) == "" {
+		cfg.Memory.Dir = prev.Memory.Dir
+	}
+	if cfg.Memory.UserCharLimit == 0 {
+		cfg.Memory.UserCharLimit = prev.Memory.UserCharLimit
+	}
+	if cfg.Memory.MemoryCharLimit == 0 {
+		cfg.Memory.MemoryCharLimit = prev.Memory.MemoryCharLimit
+	}
+	// 控制台没有这个开关；从表单提交上来的配置里它总是 false，沿用旧值才不会被悄悄关掉
+	cfg.Memory.AutoCurate = prev.Memory.AutoCurate
 }

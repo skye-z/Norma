@@ -17,8 +17,8 @@ import (
 	"strings"
 
 	"norma/backend/core/audio"
-	wake "norma/backend/core/audio/wake"
 	audioVad "norma/backend/core/audio/vad"
+	wake "norma/backend/core/audio/wake"
 )
 
 type captureASR struct{ utterances [][][]float32 }

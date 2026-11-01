@@ -176,7 +176,7 @@ func ParseRememberCommand(text string) (string, bool) {
 				continue
 			}
 			rest = strings.TrimRight(rest, "。.!！")
-			if strings.TrimSpace(rest) != "" {
+			if utf8.RuneCountInString(strings.TrimSpace(rest)) >= minEntryRunes {
 				return rest, true
 			}
 		}

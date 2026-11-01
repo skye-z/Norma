@@ -33,7 +33,7 @@ type Stack struct {
 	Tracker         *config.Tracker
 	ProviderManager *providers.Manager
 	Retriever       memory.Retriever
-	Memory          *memory.MarkdownMemory
+	Memory          *memory.MemoryService
 	LLM             llm.Streamer
 	TTS             audio.TTS
 	Playback        audioPlayback
@@ -86,6 +86,10 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	orch := runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, 4, playback)
 	if mdMemory != nil {
 		orch.SetMemory(mdMemory)
+		orch.SetProfile(mdMemory)
+		if c := newCurator(cfg, mdMemory); c != nil {
+			orch.SetTurnObserver(c)
+		}
 	}
 	startWakeAck(cfg, rt, tts)
 
@@ -436,33 +440,48 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 }
 
-// chooseRetriever 选择记忆检索器，同时返回 Markdown 记忆服务用于写入“记住……”的内容
-// rag.provider 为 markdown 时整份文件直接作为上下文；否则对条目建立全文与向量索引做混合检索
-func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) (memory.Retriever, *memory.MarkdownMemory) {
-	mdPath := strings.TrimSpace(cfg.Memory.MarkdownPath)
-	if mdPath == "" {
-		mdPath = layout.MemoryPath
+// chooseRetriever 选择记忆检索器，同时返回记忆服务，用于写入“记住……”与后台整理的内容
+// 记忆目录里：USER.md 是画像（每轮整体注入提示词），MEMORY.md 与 daily/ 建立全文与向量索引做混合检索，
+// rag.provider 为 markdown 时直接把 MEMORY.md 整份作为上下文
+func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) (memory.Retriever, *memory.MemoryService) {
+	dir := strings.TrimSpace(cfg.Memory.Dir)
+	if dir == "" {
+		dir = layout.MemoryDir
 	}
-	store := memory.NewMarkdownStore(mdPath, cfg.Memory.MarkdownMaxBytes)
+	bank := memory.NewMemoryBank(dir, cfg.Memory.UserCharLimit, cfg.Memory.MemoryCharLimit)
+	migrate := func(svc *memory.MemoryService) {
+		legacy := strings.TrimSpace(cfg.Memory.MarkdownPath)
+		if legacy == "" {
+			legacy = layout.MemoryPath
+		}
+		if n, err := svc.MigrateLegacy(legacy); err != nil {
+			log.Printf("[memory] migrate legacy memory failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[memory] migrated %d entries from %s into %s", n, legacy, dir)
+		}
+	}
 
 	if strings.EqualFold(strings.TrimSpace(cfg.RAG.Provider), "markdown") {
-		log.Printf("[rag] use markdown retriever file=%s", mdPath)
-		return memory.MarkdownRetriever{Store: store}, memory.NewMarkdownMemory(store)
+		svc := memory.NewMemoryService(bank)
+		migrate(svc)
+		log.Printf("[rag] use markdown retriever dir=%s", dir)
+		return memory.MarkdownRetriever{Store: memory.NewMarkdownStore(filepath.Join(dir, "MEMORY.md"), 0)}, svc
 	}
 
 	// 创建基于SQLite的全文搜索存储
 	fts := memory.NewSQLiteStore(engine)
-	syncMarkdown := func(indexes ...*memory.DiskVectorStore) *memory.MarkdownMemory {
-		var md *memory.MarkdownMemory
-		if len(indexes) > 0 && indexes[0] != nil {
-			md = memory.NewMarkdownMemory(store, fts, indexes[0])
+	build := func(vec *memory.DiskVectorStore) *memory.MemoryService {
+		var svc *memory.MemoryService
+		if vec != nil {
+			svc = memory.NewMemoryService(bank, fts, vec)
 		} else {
-			md = memory.NewMarkdownMemory(store, fts)
+			svc = memory.NewMemoryService(bank, fts)
 		}
-		if err := md.Sync(); err != nil {
-			log.Printf("[rag] sync markdown memory failed: %v", err)
+		migrate(svc)
+		if err := svc.Sync(); err != nil {
+			log.Printf("[rag] sync memory failed: %v", err)
 		}
-		return md
+		return svc
 	}
 
 	vecPath := strings.TrimSpace(cfg.RAG.VectorIndexPath)
@@ -470,10 +489,10 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 		vecPath = layout.VectorIndexPath
 	}
 	// 确保向量索引目录存在
-	if dir := filepath.Dir(vecPath); dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	if d := filepath.Dir(vecPath); d != "." {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			log.Printf("[rag] create vector memory dir failed, fallback to text-only retriever: %v", err)
-			return memory.NewHybridRetriever(nil, fts, nil), syncMarkdown()
+			return memory.NewDecayingRetriever(memory.NewHybridRetriever(nil, fts, nil)), build(nil)
 		}
 	}
 
@@ -482,14 +501,40 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 	vec, err := memory.NewDiskVectorStoreWithEmbedder(vecPath, embedder)
 	if err != nil {
 		log.Printf("[rag] init vector store failed, fallback to text-only retriever: %v", err)
-		return memory.NewHybridRetriever(nil, fts, nil), syncMarkdown()
+		return memory.NewDecayingRetriever(memory.NewHybridRetriever(nil, fts, nil)), build(nil)
 	}
 
-	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s markdown=%s", vecPath, cfg.RAG.EmbedProvider, mdPath)
+	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s memory_dir=%s", vecPath, cfg.RAG.EmbedProvider, dir)
 	r := memory.NewHybridRetriever(vec, fts, nil)
 	// 记忆条目彼此独立，相邻合并会把无关条目拼进同一段上下文
 	r.SetPostProcessOptions(memory.RetrieverPostProcessOptions{EnableDedup: true, EnableRerank: true, RerankWeight: 0.15})
-	return r, syncMarkdown(vec)
+	return memory.NewDecayingRetriever(r), build(vec)
+}
+
+// newCurator 创建后台记忆整理；关闭开关、没有可用的大模型接口时返回 nil
+func newCurator(cfg *config.Config, svc *memory.MemoryService) *memory.Curator {
+	if svc == nil || !cfg.Memory.AutoCurate {
+		return nil
+	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	if provider != "deepseek" && provider != "openai" && provider != "ollama" {
+		return nil
+	}
+	model, endpoint := strings.TrimSpace(cfg.LLM.Model), strings.TrimSpace(cfg.LLM.Endpoint)
+	if provider == "deepseek" {
+		if model == "" {
+			model = "deepseek-flash"
+		}
+		if endpoint == "" {
+			endpoint = "https://api.deepseek.com"
+		}
+	}
+	if model == "" || endpoint == "" {
+		log.Printf("[memory] auto curate disabled: llm model or endpoint not configured")
+		return nil
+	}
+	log.Printf("[memory] auto curate enabled model=%s", model)
+	return memory.NewCurator(svc, llm.NewChatCompleter(endpoint, model, cfg.LLM.APIKey, 30*time.Second))
 }
 
 // chooseEmbedder 选择嵌入向量生成模块

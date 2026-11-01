@@ -64,3 +64,36 @@ func TestRetrievalContextGoesWithTheCurrentUserMessage(t *testing.T) {
 		t.Fatal("retrieved memory must not be in the system prompt")
 	}
 }
+
+func TestProfileGoesAtTheEndOfTheSystemMessageOnly(t *testing.T) {
+	msgs := buildMessages(Request{Prompt: "我叫什么", Profile: "- 用户叫 Skye\n- 用户喜欢美式"})
+	sys := msgs[0].Content
+	if !strings.Contains(sys, "- 用户叫 Skye") || !strings.HasSuffix(sys, "- 用户喜欢美式") {
+		t.Fatalf("profile should end the system prompt:\n%s", sys)
+	}
+	if strings.Contains(msgs[len(msgs)-1].Content, "Skye") {
+		t.Fatal("profile must not leak into the user message")
+	}
+}
+
+// 画像为空时要明确告诉模型“还不了解用户”，而不是什么都不说让它自己脑补；这段话也要保持稳定（有利于前缀缓存）
+func TestEmptyProfileSaysNothingIsKnownAndStaysStable(t *testing.T) {
+	a := buildMessages(Request{Prompt: "x"})[0].Content
+	b := buildMessages(Request{Prompt: "y", Profile: "  \n"})[0].Content
+	if !strings.HasSuffix(a, "目前还不了解用户的任何个人信息。") || a != b {
+		t.Fatalf("empty profile must say nothing is known and keep the prompt identical:\n%s", a)
+	}
+}
+
+// 回归：旧措辞“要自然地用起来，不要反复确认”让模型在没有记录时编造（问名字 4/8 次编出同一个名字）
+func TestSystemPromptForbidsInventingPersonalFacts(t *testing.T) {
+	sys := buildMessages(Request{Prompt: "x"})[0].Content
+	for _, want := range []string{"如实说你还不知道", "绝不要编造", "你只知道两类关于用户的信息"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("system prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(sys, "不要反复确认。\n") && !strings.Contains(sys, "绝不要编造") {
+		t.Error("the old wording without the honesty boundary must not return")
+	}
+}

@@ -142,8 +142,15 @@ type MemoryConfig struct {
 	EnableLTM    bool `mapstructure:"enable_ltm"`
 	MaxSTMTokens int  `mapstructure:"max_stm_tokens"`
 	// Markdown 记忆文件路径与大小上限
-	MarkdownPath     string `mapstructure:"markdown_path"`
-	MarkdownMaxBytes int    `mapstructure:"markdown_max_bytes"`
+	MarkdownPath string `mapstructure:"markdown_path"`
+	// 记忆目录，内含 USER.md（用户画像）、MEMORY.md（长期记忆）、daily/（每日笔记）
+	Dir string `mapstructure:"dir"`
+	// 画像每轮注入提示词，上限要小；长期记忆按相关度检索，上限可以大一些（单位：字符）
+	UserCharLimit   int `mapstructure:"user_char_limit"`
+	MemoryCharLimit int `mapstructure:"memory_char_limit"`
+	// 每轮对话结束后，由模型在后台判断是否有值得记住的内容
+	AutoCurate       bool `mapstructure:"auto_curate"`
+	MarkdownMaxBytes int  `mapstructure:"markdown_max_bytes"`
 }
 
 // 安全配置
@@ -237,6 +244,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rag.vector_index_path", layout.VectorIndexPath)
 
 	v.SetDefault("memory.markdown_path", layout.MemoryPath)
+	v.SetDefault("memory.dir", layout.MemoryDir)
+	v.SetDefault("memory.user_char_limit", 1200)
+	v.SetDefault("memory.memory_char_limit", 8000)
+	v.SetDefault("memory.auto_curate", true)
 	v.SetDefault("memory.markdown_max_bytes", 16*1024)
 	v.SetDefault("memory.enable_stm", true)
 	v.SetDefault("memory.enable_ltm", true)
