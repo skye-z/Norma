@@ -1,4 +1,5 @@
 import './style.css';
+import { createMotionTimers } from './motionTimers.js';
 import * as PIXI from 'pixi.js';
 
 window.PIXI = PIXI;
@@ -280,6 +281,7 @@ async function initCompanion() {
   const stage = document.getElementById('stage');
   const statusEl = document.getElementById('stage-status');
   const micFabEl = document.getElementById('mic-fab');
+  const motionTimers = createMotionTimers();
   const state = {
     app: null,
     model: null,
@@ -358,28 +360,29 @@ async function initCompanion() {
     }
   };
 
-  function idleAfterMotion(ms = 1200) {
+  function idleAfterMotion(ms = 1200, epoch = motionTimers.epoch) {
     if (!state.model) return;
-    if (state.motionState.idleTimer) {
-      window.clearTimeout(state.motionState.idleTimer);
-      state.motionState.idleTimer = null;
-    }
-    state.motionState.idleTimer = window.setTimeout(async () => {
+    motionTimers.schedule('idle', async () => {
       if (!state.model) return;
       try {
         await state.model.motion(resolveMotionGroup('idle'), 0, 1);
       } catch (_) {}
-    }, ms);
+    }, ms, epoch);
   }
 
   function scheduleExpressionReset(ms = 1200) {
-    if (state.motionState.expressionTimer) {
-      window.clearTimeout(state.motionState.expressionTimer);
-      state.motionState.expressionTimer = null;
-    }
-    state.motionState.expressionTimer = window.setTimeout(() => {
+    motionTimers.schedule('expression', () => {
       state.motionState.paramTargets = {};
     }, ms);
+  }
+
+  // 打断或会话结束：取消待触发的动作与表情复位，并清掉动作优先级与冷却
+  function stopMotionOnInterrupt() {
+    motionTimers.cancelAll();
+    const m = state.motionState;
+    m.paramTargets = {};
+    m.cooldownUntil = 0;
+    m.priority = 0;
   }
 
   function normalizeKey(value) {
@@ -477,15 +480,17 @@ async function initCompanion() {
       if (current.cooldownUntil > now && priority < current.priority) return;
       if (current.currentGroup === group && current.cooldownUntil > now) return;
     }
+    const epoch = motionTimers.epoch;
     current.currentGroup = String(group || 'Idle');
     current.priority = priority;
     current.cooldownUntil = now + Math.max(0, cooldownMs);
     try {
       await state.model.motion(group, index, 3);
       if (String(group).toLowerCase() !== 'idle') {
-        idleAfterMotion(Number.isFinite(Number(payload?.idle_after_ms)) ? Number(payload.idle_after_ms) : 1200);
+        idleAfterMotion(Number.isFinite(Number(payload?.idle_after_ms)) ? Number(payload.idle_after_ms) : 1200, epoch);
       }
     } catch (_) {
+      if (epoch !== motionTimers.epoch) return;
       for (const fallback of [resolveMotionGroup('tap'), resolveMotionGroup('flick'), resolveMotionGroup('idle')]) {
         try {
           await state.model.motion(fallback, 0, 3);
@@ -1056,14 +1061,7 @@ async function initCompanion() {
 
   function destroy() {
     closeEvents();
-    if (state.motionState.idleTimer) {
-      window.clearTimeout(state.motionState.idleTimer);
-      state.motionState.idleTimer = null;
-    }
-    if (state.motionState.expressionTimer) {
-      window.clearTimeout(state.motionState.expressionTimer);
-      state.motionState.expressionTimer = null;
-    }
+    motionTimers.cancelAll();
     if (state.speechRecognition && state.speechListening) {
       try { state.speechRecognition.stop(); } catch (_) {}
     }
@@ -1102,6 +1100,7 @@ async function initCompanion() {
           reason: 'mic_toggle_stop'
         }).catch(() => undefined);
         setMicListening(false);
+        stopMotionOnInterrupt();
         setStatus('语音输入已停止', 'info', true);
         if (state.playbackState.started) {
           state.playbackState.pending = 0;
@@ -1348,6 +1347,7 @@ async function initCompanion() {
     }));
 
     state.eventSources.push(createRuntimeEventSource('audio.play.interrupt', (_payload, evt) => {
+      stopMotionOnInterrupt();
       state.playbackState.pending = 0;
       state.playbackState.interrupted = true;
       const evtSessionID = String(evt?.session_id || state.sessionID || '');
