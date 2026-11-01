@@ -27,9 +27,15 @@ type SherpaKokoroTTS struct {
 	Sid      int
 	Speed    float32
 	Threads  int
+	// onnxruntime 运行提供者：cpu（默认）或 coreml
+	Provider string
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
+
+	// 合成引擎只创建一次并复用；Generate 不可并发，用 engMu 串行
+	engMu  sync.Mutex
+	engine *sherpa.OfflineTts
 }
 
 // 创建 Sherpa TTS
@@ -216,10 +222,6 @@ func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(
 		cancel()
 	}()
 
-	cfg, err := buildKokoroConfig(s.ModelDir, s.Threads)
-	if err != nil {
-		return err
-	}
 	if s.Voice != "" {
 		if sid := ResolveSpeakerID(s.Voice); sid >= 0 {
 			s.Sid = sid
@@ -231,21 +233,27 @@ func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(
 	if s.Speed <= 0 {
 		s.Speed = 1.0
 	}
-	cfg.MaxNumSentences = 1
 
-	log.Printf("[tts] kokoro ready model_dir=%s sid=%d speed=%.2f", s.ModelDir, s.Sid, s.Speed)
-	engine := sherpa.NewOfflineTts(&cfg)
-	if engine == nil {
-		return fmt.Errorf("create sherpa offline tts failed")
+	s.engMu.Lock()
+	defer s.engMu.Unlock()
+	if s.engine == nil {
+		cfg, err := buildKokoroConfig(s.ModelDir, s.Threads, s.Provider)
+		if err != nil {
+			return err
+		}
+		log.Printf("[tts] kokoro loading model_dir=%s provider=%s threads=%d", s.ModelDir, cfg.Model.Provider, cfg.Model.NumThreads)
+		s.engine = sherpa.NewOfflineTts(&cfg)
+		if s.engine == nil {
+			return fmt.Errorf("create sherpa offline tts failed")
+		}
 	}
-	defer sherpa.DeleteOfflineTts(engine)
 
 	select {
 	case <-streamCtx.Done():
 		return streamCtx.Err()
 	default:
 	}
-	audio := engine.Generate(trimmed, s.Sid, float32(math.Max(float64(s.Speed), 1e-6)))
+	audio := s.engine.Generate(trimmed, s.Sid, float32(math.Max(float64(s.Speed), 1e-6)))
 	if audio == nil || len(audio.Samples) == 0 {
 		return fmt.Errorf("kokoro generated empty audio")
 	}
@@ -262,6 +270,16 @@ func (s *SherpaKokoroTTS) Stream(ctx context.Context, text string, onChunk func(
 	return nil
 }
 
+// 释放合成引擎
+func (s *SherpaKokoroTTS) Close() {
+	s.engMu.Lock()
+	defer s.engMu.Unlock()
+	if s.engine != nil {
+		sherpa.DeleteOfflineTts(s.engine)
+		s.engine = nil
+	}
+}
+
 func (s *SherpaKokoroTTS) Stop(sessionID string) error {
 	_ = sessionID
 	s.mu.Lock()
@@ -272,10 +290,16 @@ func (s *SherpaKokoroTTS) Stop(sessionID string) error {
 	return nil
 }
 
-func buildKokoroConfig(dir string, threads int) (sherpa.OfflineTtsConfig, error) {
+func buildKokoroConfig(dir string, threads int, provider string) (sherpa.OfflineTtsConfig, error) {
 	base := filepath.Clean(dir)
 	cfg := sherpa.OfflineTtsConfig{}
 	cfg.Model.Kokoro.Model = filepath.Join(base, "model.onnx")
+	if _, err := os.Stat(cfg.Model.Kokoro.Model); err != nil {
+		// 官方量化包的模型文件名为 model.int8.onnx
+		if alt := filepath.Join(base, "model.int8.onnx"); fileExists(alt) {
+			cfg.Model.Kokoro.Model = alt
+		}
+	}
 	cfg.Model.Kokoro.Voices = filepath.Join(base, "voices.bin")
 	cfg.Model.Kokoro.Tokens = filepath.Join(base, "tokens.txt")
 	if _, err := os.Stat(cfg.Model.Kokoro.Model); err != nil {
@@ -305,8 +329,16 @@ func buildKokoroConfig(dir string, threads int) (sherpa.OfflineTtsConfig, error)
 	}
 	cfg.Model.NumThreads = threads
 	cfg.Model.Provider = "cpu"
+	if p := strings.ToLower(strings.TrimSpace(provider)); p == "coreml" {
+		cfg.Model.Provider = p
+	}
 	cfg.MaxNumSentences = 1
 	return cfg, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func joinExisting(sep string, paths ...string) string {
