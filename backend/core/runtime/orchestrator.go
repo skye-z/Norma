@@ -409,3 +409,6 @@ func rememberFailureReason(err error) string {
 	}
 	return "保存失败了。"
 }
+
+// RagTopK 返回每轮检索的条数，供诊断与测试使用
+func (o *Orchestrator) RagTopK() int { return o.ragTopK }

@@ -195,3 +195,23 @@ func TestCuratorIsOnlyCreatedWhenEnabledAndConfigured(t *testing.T) {
 		t.Fatal("nil service must be tolerated")
 	}
 }
+
+// 控制台里的“召回条数”必须真的传给编排器；此前传的是写死的 4
+func TestRetrievalTopKFromConfigReachesTheOrchestrator(t *testing.T) {
+	dir := t.TempDir()
+	cfg := memoryTestConfig(dir)
+	cfg.RAG.TopK = 3
+	cfg.TTS.Provider = "system"
+	cfg.LLM.Provider = "mock"
+	engine, err := db.NewEngine(filepath.Join(dir, "m.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := NewStack(cfg, engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Orchestrator.RagTopK(); got != 3 {
+		t.Fatalf("orchestrator top-k = %d, want 3 from config", got)
+	}
+}

@@ -34,6 +34,7 @@ type Stack struct {
 	ProviderManager *providers.Manager
 	Retriever       memory.Retriever
 	Memory          *memory.MemoryService
+	Orchestrator    *runtime.Orchestrator
 	LLM             llm.Streamer
 	TTS             audio.TTS
 	Playback        audioPlayback
@@ -83,7 +84,8 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	playback := choosePlayback(rt.Bus, tts)
 	streamer := chooseLLMStreamer(cfg)
 	retriever, mdMemory := chooseRetriever(cfg, engine, providerMgr)
-	orch := runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, 4, playback)
+	// 召回条数取自配置（控制台里的“召回条数”），缺省时 NewOrchestratorWithPlayback 用 4
+	orch := runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, cfg.RAG.TopK, playback)
 	if mdMemory != nil {
 		orch.SetMemory(mdMemory)
 		orch.SetProfile(mdMemory)
@@ -99,6 +101,7 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 		ProviderManager: providerMgr,
 		Retriever:       retriever,
 		Memory:          mdMemory,
+		Orchestrator:    orch,
 		LLM:             streamer,
 		TTS:             tts,
 		Playback:        playback,

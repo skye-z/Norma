@@ -9,6 +9,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -60,6 +61,8 @@ func main() {
 	mode := flag.String("mode", "normal", "normal | interrupt")
 	play := flag.Bool("play", false, "play audio with afplay")
 	voice := flag.String("voice", "Tingting", "say voice")
+	genieBin := flag.String("genie-bin", "", "packaged genie worker; when set, Genie-TTS replaces macOS say")
+	genieRoot := flag.String("genie-root", "", "dir holding GenieData and CharacterModels (with -genie-bin)")
 	memFile := flag.String("memory", "", "markdown memory file (optional)")
 	out := flag.String("out", "", "write json result")
 	flag.Parse()
@@ -70,7 +73,26 @@ func main() {
 		log.Fatal("NORMA_LLM_API_KEY is empty")
 	}
 	streamer := llm.NewOllamaStreamer("https://api.deepseek.com", "deepseek-flash", key, 40*time.Second).WithOptions(true, 200, 0.7)
-	tts := audioTts.NewSystemSayTTS(*voice, 0)
+	var tts interface {
+		audio.TTS
+		audio.AudioFormatProvider
+	} = audioTts.NewSystemSayTTS(*voice, 0)
+	if *genieBin != "" {
+		charDir := filepath.Join(*genieRoot, "CharacterModels/v2ProPlus/feibi")
+		ref, err := audioTts.DefaultGenieRef(charDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		g := audioTts.NewGenieTTS(audioTts.GenieConfig{
+			Command: []string{*genieBin}, DataDir: filepath.Join(*genieRoot, "GenieData"), CharacterDir: charDir,
+			Refs: map[string]audioTts.GenieRef{"default": ref},
+		})
+		if err := g.Warmup(); err != nil {
+			log.Fatalf("genie warmup: %v", err)
+		}
+		defer g.Close()
+		tts = g
+	}
 
 	var retr memory.Retriever
 	if *memFile != "" {
