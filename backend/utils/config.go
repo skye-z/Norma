@@ -47,9 +47,11 @@ type DatabaseConfig struct {
 
 // 音频配置
 type AudioConfig struct {
-	EnableWakeWord        bool   `mapstructure:"enable_wake_word"`
-	WakeMode              string `mapstructure:"wake_mode"`
-	WakeKeyword           string `mapstructure:"wake_keyword"`
+	EnableWakeWord bool   `mapstructure:"enable_wake_word"`
+	WakeMode       string `mapstructure:"wake_mode"`
+	WakeKeyword    string `mapstructure:"wake_keyword"`
+	// 唤醒或点击麦克风后立即播放的应答语，留空则不播放
+	WakeAckText           string `mapstructure:"wake_ack_text"`
 	EndpointSilenceFrames int    `mapstructure:"endpoint_silence_frames"`
 	InterruptDuringSpeak  bool   `mapstructure:"interrupt_during_speak"`
 	MicDeviceID           string `mapstructure:"mic_device_id"`
@@ -202,6 +204,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("audio.wake_mode", "wake_word_vad")
 	v.SetDefault("audio.wake_provider", "sherpa-onnx")
 	v.SetDefault("audio.wake_keyword", "诺玛")
+	v.SetDefault("audio.wake_ack_text", "嗯？")
 	v.SetDefault("audio.endpoint_silence_frames", 40)
 	v.SetDefault("audio.interrupt_during_speak", true)
 	v.SetDefault("audio.sample_rate", 16000)

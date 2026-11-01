@@ -133,6 +133,9 @@ func (p *Pipeline) Run(
 			// 检测到唤醒词
 			if matched {
 				log.Printf("[pipeline] wake detected buffered_frames=%d", len(wakeBuffer))
+				if p.OnWake != nil {
+					p.OnWake()
+				}
 				armed = true
 				// 设置唤醒后保持帧数(至少保持75帧)
 				postWakeHoldFrames = wakeBufferFrames

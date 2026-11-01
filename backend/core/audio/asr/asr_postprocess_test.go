@@ -17,3 +17,19 @@ func TestPostProcessASRText(t *testing.T) {
 		}
 	}
 }
+
+func TestPostProcessDropsWhisperPromptEcho(t *testing.T) {
+	for _, in := range []string{"用简体中文。", "使用简体中文", "以下是普通话的句子，使用简体中文。", "的句子，使用简体中文"} {
+		if got := PostProcessASRText(in, "诺玛"); got != "" {
+			t.Errorf("%q should be treated as no speech, got %q", in, got)
+		}
+	}
+}
+
+func TestPostProcessKeepsRealSpeechThatMentionsSimilarWords(t *testing.T) {
+	for _, in := range []string{"你好，请介绍一下你自己。", "今天天气怎么样", "帮我把这段话翻成简体中文再读一遍"} {
+		if got := PostProcessASRText(in, "诺玛"); got == "" {
+			t.Errorf("%q wrongly dropped", in)
+		}
+	}
+}

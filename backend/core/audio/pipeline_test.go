@@ -131,3 +131,29 @@ func TestPipelineFlushesUtteranceOnEndOfStream(t *testing.T) {
 		t.Fatalf("expected final callback once, got %d", finalCount)
 	}
 }
+
+func TestPipelineCallsOnWakeOncePerDetectionBeforeSpeechStarts(t *testing.T) {
+	var order []string
+	pipe := Pipeline{
+		VAD:      vad.NewEnergyVAD(0.02),
+		WakeWord: &MockWakeWord{},
+		ASR:      &frameASRStub{},
+		WakeMode: WakeModeWakeWordVAD,
+		OnWake:   func() { order = append(order, "wake") },
+	}
+	src := NewMockFrameSource(DefaultDemoFrames(), time.Millisecond)
+	onSpeechStart := func() { order = append(order, "speech") }
+	if err := pipe.Run(context.Background(), src, onSpeechStart, nil, nil, nil); err != nil {
+		t.Fatalf("run pipeline: %v", err)
+	}
+	if len(order) < 2 || order[0] != "wake" {
+		t.Fatalf("OnWake must fire first when a wake word is detected, got %v", order)
+	}
+}
+
+func TestPipelineWithoutOnWakeStillWorks(t *testing.T) {
+	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), WakeWord: &MockWakeWord{}, ASR: &frameASRStub{}, WakeMode: WakeModeWakeWordVAD}
+	if err := pipe.Run(context.Background(), NewMockFrameSource(DefaultDemoFrames(), time.Millisecond), nil, nil, nil, nil); err != nil {
+		t.Fatalf("run pipeline: %v", err)
+	}
+}

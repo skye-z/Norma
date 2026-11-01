@@ -72,6 +72,7 @@ type Pipeline struct {
 	WakeBufferFrames int            // 唤醒缓冲帧数
 	SilenceFrames    int            // 静默帧数阈值
 	AllowBargeIn     bool           // 是否允许打断
+	OnWake           func()         // 检测到唤醒词时回调，可为空；回调不能阻塞音频循环
 }
 
 // 不可用的ASR实现，返回错误信息

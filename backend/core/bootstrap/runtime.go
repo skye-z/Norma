@@ -40,15 +40,16 @@ type Stack struct {
 }
 
 // 唤醒词配置状态
+// JSON 字段名是前端与控制台读取的约定（snake_case）；缺少标签时会输出 "Keyword" 等大写名，前端读不到
 type WakeConfigStatus struct {
-	Enabled       bool
-	EffectiveMode string
-	Provider      string
-	Keyword       string
-	Ready         bool
-	Reason        string
-	ModelDir      string
-	KeywordsFile  string
+	Enabled       bool   `json:"enabled"`
+	EffectiveMode string `json:"effective_mode"`
+	Provider      string `json:"provider"`
+	Keyword       string `json:"keyword"`
+	Ready         bool   `json:"ready"`
+	Reason        string `json:"reason"`
+	ModelDir      string `json:"model_dir"`
+	KeywordsFile  string `json:"keywords_file"`
 }
 
 // audioPlayback 音频播放接口
@@ -86,6 +87,7 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	if mdMemory != nil {
 		orch.SetMemory(mdMemory)
 	}
+	startWakeAck(cfg, rt, tts)
 
 	return &Stack{
 		Runtime:         rt,
@@ -622,4 +624,30 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// startWakeAck 预合成唤醒应答语并订阅唤醒、点击麦克风的请求事件
+// 应答音使用独立的播放接收器与私有事件总线，既不影响回复的打断，前端也不会收到多余的播放事件
+func startWakeAck(cfg *config.Config, rt *runtime.Runtime, tts audio.TTS) *runtime.WakeAck {
+	text := strings.TrimSpace(cfg.Audio.WakeAckText)
+	if text == "" {
+		return nil
+	}
+	f, ok := tts.(audio.AudioFormatProvider)
+	if !ok {
+		log.Printf("[wake-ack] tts has no audio format, wake ack disabled")
+		return nil
+	}
+	sink, err := audio.NewPlatformPlaybackSink(bus.New(), f.SampleRate(), f.Channels(), f.Encoding())
+	if err != nil {
+		log.Printf("[wake-ack] playback unavailable, wake ack disabled: %v", err)
+		return nil
+	}
+	ack := runtime.NewWakeAck(rt.Bus, tts, sink, text, filepath.Join(layout.DataDir, "wake_ack"))
+	go func() {
+		if err := ack.Prepare(context.Background()); err != nil {
+			log.Printf("[wake-ack] prepare failed: %v", err)
+		}
+	}()
+	return ack
 }

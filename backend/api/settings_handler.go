@@ -307,6 +307,9 @@ func preserveUnmanaged(prev, cfg *config.Config) {
 	if len(g.References) == 0 {
 		g.References = pg.References
 	}
+	if strings.TrimSpace(cfg.Audio.WakeAckText) == "" {
+		cfg.Audio.WakeAckText = prev.Audio.WakeAckText
+	}
 	if strings.TrimSpace(cfg.RAG.EmbedModelDir) == "" {
 		cfg.RAG.EmbedModelDir = prev.RAG.EmbedModelDir
 	}

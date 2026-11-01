@@ -128,3 +128,8 @@ func readWAVData(path string) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("wav data chunk not found")
 }
+
+// 缓存身份：声音或语速变化后，预合成的音频应作废
+func (s *SystemSayTTS) Identity() string {
+	return fmt.Sprintf("say|%s|%d", s.Voice, s.Rate)
+}

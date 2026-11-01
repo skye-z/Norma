@@ -758,7 +758,7 @@ async function initCompanion() {
         autoWake: policy?.auto_wake === true,
         wakeReady: policy?.wake_ready === true,
         showMicButton: policy?.show_mic_button !== false,
-        wakeKeyword: String(policy?.wake_status?.keyword || '??')
+        wakeKeyword: String(policy?.wake_status?.keyword || '诺玛')
       };
       setMicFabVisible(state.audioPolicy.showMicButton);
       if (!state.speechListening && previousAutoWake !== state.audioPolicy.autoWake) {

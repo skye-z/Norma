@@ -46,9 +46,11 @@ func (s *SherpaEmbeddedWakeWord) Detect(frame []int16) (bool, error) {
 	if s.EncoderPath == "" || s.DecoderPath == "" || s.JoinerPath == "" || s.TokensPath == "" || s.KeywordsFilePath == "" {
 		return false, fmt.Errorf("sherpa wake assets incomplete")
 	}
-	if len(frame) == 0 || !hasSignal(frame, 0.01) {
+	if len(frame) == 0 {
 		return false, nil
 	}
+	// 不能按音量丢弃安静的帧：流式模型需要关键词之后的音频才能确认最后一个字，
+	// 丢掉说完话后的安静帧会让唤醒延迟十几秒，轻声说话则几乎唤不醒
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

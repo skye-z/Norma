@@ -238,3 +238,14 @@ func TestConversationInterruptClosesStreamButPreservesSource(t *testing.T) {
 		t.Fatalf("expected native source preserved for continuous capture")
 	}
 }
+
+func TestOnlyManualMicRequestsTriggerWakeAck(t *testing.T) {
+	for mode, want := range map[string]bool{
+		"direct": true, "manual": true, " Direct ": true,
+		"wake": false, "": false, "unknown": false,
+	} {
+		if got := isManualMicRequest(mode); got != want {
+			t.Errorf("isManualMicRequest(%q) = %v, want %v", mode, got, want)
+		}
+	}
+}

@@ -333,3 +333,21 @@ func DefaultGenieRef(characterDir string) (GenieRef, error) {
 	}
 	return GenieRef{}, fmt.Errorf("prompt_wav.json has no entries")
 }
+
+// 缓存身份：角色模型目录与各情绪的参考音频变化后，预合成的音频应作废
+func (g *GenieTTS) Identity() string {
+	names := make([]string, 0, len(g.cfg.Refs))
+	for k := range g.cfg.Refs {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	id := "genie|" + g.cfg.CharacterDir
+	for _, k := range names {
+		r := g.cfg.Refs[k]
+		id += fmt.Sprintf("|%s=%s:%s", k, r.Audio, r.Text)
+		if st, err := os.Stat(r.Audio); err == nil {
+			id += fmt.Sprintf("@%d", st.ModTime().UnixNano())
+		}
+	}
+	return id
+}

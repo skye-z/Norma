@@ -3,6 +3,7 @@ package audio
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var wakeKeywordNearHomophoneRe = regexp.MustCompile(
@@ -41,7 +42,7 @@ func PostProcessASRText(text, wakeKeyword string) string {
 		return ""
 	}
 	out = zhHansCharReplacer.Replace(out)
-	if whisperHallucinationRe.MatchString(out) {
+	if whisperHallucinationRe.MatchString(out) || isPromptEcho(out) {
 		return ""
 	}
 	if keyword := strings.TrimSpace(wakeKeyword); keyword != "" {
@@ -51,4 +52,26 @@ func PostProcessASRText(text, wakeKeyword string) string {
 	out = strings.ReplaceAll(out, ",，", "，")
 	out = strings.ReplaceAll(out, "。。", "。")
 	return strings.TrimSpace(out)
+}
+
+// Whisper 在音频很短或不清晰时会把起始提示词原样吐出来（例如只识别出“用简体中文。”）。
+// 去掉标点后，若结果是提示词的开头或结尾片段（至少 3 个字），就当作没有识别到内容
+func isPromptEcho(text string) bool {
+	t := stripPunctAndSpace(text)
+	p := stripPunctAndSpace(defaultWhisperPrompt)
+	if len([]rune(t)) < 3 || p == "" {
+		return false
+	}
+	return strings.HasPrefix(p, t) || strings.HasSuffix(p, t) || t == p
+}
+
+func stripPunctAndSpace(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsPunct(r) || unicode.IsSpace(r) || unicode.IsSymbol(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

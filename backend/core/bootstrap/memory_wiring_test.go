@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,5 +95,25 @@ func TestGenieMissingFallsBackToAnotherTTS(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("no fallback TTS returned")
+	}
+}
+
+// 前端按 wake_status.keyword 读取唤醒词；字段名一旦变回 Keyword，气泡就会显示兜底的问号
+func TestWakeStatusJSONUsesSnakeCaseKeysTheFrontendReads(t *testing.T) {
+	raw, err := json.Marshal(WakeConfigStatus{Enabled: true, EffectiveMode: "wake_word_vad", Keyword: "诺玛", Ready: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"enabled", "effective_mode", "provider", "keyword", "ready", "reason", "model_dir", "keywords_file"} {
+		if _, ok := m[key]; !ok {
+			t.Errorf("missing JSON key %q in %s", key, raw)
+		}
+	}
+	if m["keyword"] != "诺玛" {
+		t.Errorf("keyword = %v", m["keyword"])
 	}
 }

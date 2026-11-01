@@ -7,6 +7,8 @@
 """
 import argparse, json, os, sys, tempfile
 
+from text_fix import normalize_for_genie
+
 # 协议通道使用原始 stdout 的副本，随后把 fd 1 指向 stderr，防止库的 print 污染协议
 _proto = os.fdopen(os.dup(1), "wb", buffering=0)
 os.dup2(2, 1)
@@ -47,6 +49,7 @@ def main():
 
     def synth(text, emotion):
         use_reference(emotion)
+        text = normalize_for_genie(text)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "o.wav")
             genie.tts(name, text, play=False, split_sentence=False, save_path=path)

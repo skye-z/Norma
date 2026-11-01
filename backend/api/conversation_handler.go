@@ -195,6 +195,10 @@ func (h *ConversationHandler) handleMicStart(w http.ResponseWriter, r *http.Requ
 	// 在后台运行麦克风处理管道
 	go h.runMicPipeline(ctx, sid, tid, stream, mode)
 	log.Printf("[conversation] mic start session=%s trace=%s mode=%s capture=push", sid, tid, mode)
+	// 用户手动点击麦克风按钮（direct/manual）时也提示“可以说话了”；启动时自动进入的唤醒监听（wake）不提示
+	if isManualMicRequest(req.Mode) {
+		h.bus.Publish(bus.Event{Name: "audio.wake.ack", SessionID: sid, TraceID: tid, Payload: map[string]any{"source": "mic_button"}})
+	}
 	// 返回当前状态快照
 	state := h.snapshot()
 	state.Capture = "push"
@@ -559,6 +563,10 @@ func (h *ConversationHandler) runMicPipeline(ctx context.Context, sessionID, tra
 	}
 	// 构建语音处理管道
 	pipe := bootstrap.BuildVoicePipelineForMode(cfg, providerMgr, pipeMode)
+	// 检测到唤醒词时立即请求播放应答语，与后续收音并行
+	pipe.OnWake = func() {
+		h.bus.Publish(bus.Event{Name: "audio.wake.ack", SessionID: sessionID, TraceID: traceID, Payload: map[string]any{"source": "wake_word"}})
+	}
 	wakeStatus := bootstrap.ResolveWakeConfig(cfg, providerMgr)
 	log.Printf("[conversation] pipeline init session=%s trace=%s mode=%s wake_enabled=%v wake_ready=%v wake_mode=%s provider=%s keyword=%s keywords=%s model=%s reason=%s", sessionID, traceID, mode, wakeStatus.Enabled, wakeStatus.Ready, wakeStatus.EffectiveMode, wakeStatus.Provider, wakeStatus.Keyword, wakeStatus.KeywordsFile, wakeStatus.ModelDir, wakeStatus.Reason)
 	// 如果启用唤醒词但未准备就绪，发布错误事件
@@ -709,4 +717,13 @@ func (h *ConversationHandler) closeStream(sessionID string) {
 		stream.Close()
 	}
 	delete(h.streams, sessionID)
+}
+
+// isManualMicRequest 判断请求是否来自用户主动点击麦克风按钮
+func isManualMicRequest(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "direct", "manual":
+		return true
+	}
+	return false
 }
