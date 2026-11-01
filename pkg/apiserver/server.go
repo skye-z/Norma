@@ -203,7 +203,8 @@ func registerStaticDebug(mux *http.ServeMux, debugDir string) {
 		return
 	}
 	fs := http.FileServer(http.Dir(absDir))
-	mux.Handle("/static/console/", http.StripPrefix("/static/console/", fs))
+	// 控制台随版本频繁变化，要求浏览器每次向服务端校验，否则会长期使用缓存里的旧脚本
+	mux.Handle("/static/console/", http.StripPrefix("/static/console/", noCache(fs)))
 	log.Printf("static console route: /static/console/ -> %s", absDir)
 }
 
@@ -258,4 +259,12 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// noCache 让浏览器每次使用缓存前都向服务端校验；文件未变化时仍返回 304
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		next.ServeHTTP(w, r)
+	})
 }
