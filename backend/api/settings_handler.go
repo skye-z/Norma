@@ -114,7 +114,7 @@ func (h *SettingsHandler) handleRuntimePut(w http.ResponseWriter, r *http.Reques
 	}
 	// 设置默认 Embedding 提供商
 	if strings.TrimSpace(cfg.RAG.EmbedProvider) == "" {
-		cfg.RAG.EmbedProvider = "ollama"
+		cfg.RAG.EmbedProvider = "static"
 	}
 	// 设置默认 Embedding 端点
 	if strings.TrimSpace(cfg.RAG.EmbedEndpoint) == "" {

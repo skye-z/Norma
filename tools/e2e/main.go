@@ -58,7 +58,8 @@ func main() {
 		c.LLM = config.LLMConfig{Provider: "deepseek", Endpoint: "https://api.deepseek.com", Model: "deepseek-flash", APIKey: key, MaxTokens: 120, Temperature: 0.7}
 		c.TTS = config.TTSConfig{Provider: "system", Voice: "Tingting", Speed: 1.2}
 		if *genieBin != "" {
-			c.TTS = config.TTSConfig{Provider: "genie", BinaryPath: *genieBin, Genie: config.TTSGenieConfig{
+			c.TTS = config.TTSConfig{Provider: "genie", Genie: config.TTSGenieConfig{
+				Worker:       *genieBin,
 				Script:       *genieScript,
 				DataDir:      filepath.Join(*genieRoot, "GenieData"),
 				CharacterDir: filepath.Join(*genieRoot, "CharacterModels/v2ProPlus/feibi"),

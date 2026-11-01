@@ -98,13 +98,15 @@ type TTSConfig struct {
 	ModelPath  string  `mapstructure:"model_path"`
 	Voice      string  `mapstructure:"voice"`
 	Speed      float64 `mapstructure:"speed"`
-	// provider 为 genie 时使用；binary_path 是 python 解释器或已打包好的工作进程可执行文件
+	// provider 为 genie 时使用
 	Genie TTSGenieConfig `mapstructure:"genie"`
 }
 
 // Genie-TTS 配置：由应用拉起的子进程，经标准输入输出通信，不监听端口
 type TTSGenieConfig struct {
-	// 工作进程脚本；binary_path 已是打包好的可执行文件时留空
+	// 工作进程：打包好的可执行文件，或 python 解释器（此时配合 script）
+	Worker string `mapstructure:"worker"`
+	// 工作进程脚本；worker 已是打包好的可执行文件时留空
 	Script       string `mapstructure:"script"`
 	DataDir      string `mapstructure:"data_dir"`
 	CharacterDir string `mapstructure:"character_dir"`
@@ -209,10 +211,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.max_tokens", 4096)
 	v.SetDefault("llm.temperature", 0.7)
 
-	v.SetDefault("tts.provider", "sherpa")
+	v.SetDefault("tts.provider", "genie")
+	v.SetDefault("tts.genie.worker", layout.GenieWorkerPath)
+	v.SetDefault("tts.genie.data_dir", layout.GenieDataDir)
+	v.SetDefault("tts.genie.character_dir", layout.GenieCharacterDir)
+	v.SetDefault("tts.genie.language", "zh")
 	v.SetDefault("tts.speed", 1.25)
 
 	v.SetDefault("rag.provider", "hybrid")
+	v.SetDefault("rag.embed_provider", "static")
+	v.SetDefault("rag.embed_model_dir", layout.StaticEmbedModelDir)
 	v.SetDefault("rag.vector_index_path", layout.VectorIndexPath)
 
 	v.SetDefault("memory.markdown_path", layout.MemoryPath)

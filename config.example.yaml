@@ -40,7 +40,17 @@ llm:
   request_timeout_ms: 45000
 
 tts:
-  provider: sherpa-onnx
+  # genie（默认）：GPT-SoVITS 的 ONNX 推理，由应用拉起子进程，经标准输入输出通信，不监听端口。
+  # 程序或模型缺失时自动退回系统合成（macOS）或 sherpa-onnx（其他平台）
+  provider: genie
+  genie:
+    worker: resource/runtime/genie/norma-genie-worker
+    data_dir: resource/model/genie/GenieData
+    character_dir: resource/model/genie/CharacterModels/v2ProPlus/feibi
+    language: zh
+    # 情绪名（对应 {{smile}} 等动作标记）到参考音频；default 缺省时取角色目录 prompt_wav.json 的第一项
+    # references:
+    #   smile: { audio: resource/model/genie/refs/smile.wav, text: "参考音频里说的话" }
   voice: zf_xiaobei
   speed: 1.25
   endpoint: ""
@@ -57,7 +67,7 @@ rag:
   # embed_provider: hash（无语义，回退用）| static（Model2Vec 静态词向量，进程内加载）| ollama
   embed_provider: static
   # static 模型目录，需含 model.safetensors 与 tokenizer.json，缺失时自动回退到 hash
-  embed_model_dir: ""
+  embed_model_dir: resource/model/model2vec/potion-multilingual-128M
 
 memory:
   # “记住……”指令写入的 Markdown 记忆文件，文件是唯一事实来源，索引可随时重建

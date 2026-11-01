@@ -1,9 +1,0 @@
-{
-  "removed": [
-    "/Users/skye/Documents/Environment/Package/Golang/tmp/TestPrivacyPurge941584752/001/norma.db",
-    "/Users/skye/Documents/Environment/Package/Golang/tmp/TestPrivacyPurge941584752/001/logs/app.log",
-    "/Users/skye/Documents/Environment/Package/Golang/tmp/TestPrivacyPurge941584752/001/logs/audio.log",
-    "/Users/skye/Documents/Environment/Package/Golang/tmp/TestPrivacyPurge941584752/001/logs/rag.log"
-  ],
-  "timestamp_utc": "2026-11-01T16:48:40Z"
-}

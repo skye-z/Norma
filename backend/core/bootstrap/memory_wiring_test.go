@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	audioTts "norma/backend/core/audio/tts"
 	"norma/backend/core/db"
 	"norma/backend/core/memory"
 	"norma/backend/core/providers"
@@ -77,4 +78,21 @@ func searchFinds(t *testing.T, r memory.Retriever, q, want string) bool {
 		}
 	}
 	return false
+}
+
+// Genie 的程序或模型缺失时必须退回其他合成器，应用不能因此失声或起不来
+func TestGenieMissingFallsBackToAnotherTTS(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{}
+	cfg.TTS.Provider = "genie"
+	cfg.TTS.Genie.Worker = filepath.Join(dir, "no-such-worker")
+	cfg.TTS.Genie.DataDir = filepath.Join(dir, "no-data")
+	cfg.TTS.Genie.CharacterDir = filepath.Join(dir, "no-char")
+	got := chooseTTS(cfg, providers.NewManager(filepath.Join(dir, "providers")))
+	if _, isGenie := got.(*audioTts.GenieTTS); isGenie {
+		t.Fatal("genie must not be selected when files are missing")
+	}
+	if got == nil {
+		t.Fatal("no fallback TTS returned")
+	}
 }

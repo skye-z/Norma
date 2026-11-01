@@ -3,9 +3,11 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -368,7 +370,15 @@ func chooseTTS(cfg *config.Config, mgr *providers.Manager) audio.TTS {
 		log.Printf("[tts] use sherpa kokoro model_dir=%s sid=%d voice=%s speed=%.2f", modelDir, sid, cfg.TTS.Voice, speed)
 		return primary
 	case "genie":
-		return newGenieTTS(cfg, fallback)
+		if t, err := newGenieTTS(cfg); err == nil {
+			return t
+		} else {
+			// 缺少程序或模型时退回其他合成器，应用仍可正常发声
+			next := *cfg
+			next.TTS.Provider = genieFallbackProvider()
+			log.Printf("[tts] genie unavailable (%v), fallback to %s", err, next.TTS.Provider)
+			return chooseTTS(&next, mgr)
+		}
 	case "system", "say", "macos":
 		voice := strings.TrimSpace(cfg.TTS.Voice)
 		rate := 0
@@ -544,38 +554,72 @@ func firstExistingPath(paths ...string) string {
 	return ""
 }
 
-// newGenieTTS 创建 Genie 合成器并在后台预热子进程，避免第一句话承担模型加载耗时
-func newGenieTTS(cfg *config.Config, fallback audio.TTS) audio.TTS {
-	g := cfg.TTS.Genie
-	bin := strings.TrimSpace(cfg.TTS.BinaryPath)
-	if bin == "" || strings.TrimSpace(g.DataDir) == "" || strings.TrimSpace(g.CharacterDir) == "" {
-		log.Printf("[tts] genie needs tts.binary_path, tts.genie.data_dir and tts.genie.character_dir")
-		return fallback
+// genieFallbackProvider 是 Genie 不可用时退回的合成器：macOS 用系统 say，其余平台用 sherpa
+func genieFallbackProvider() string {
+	if goruntime.GOOS == "darwin" {
+		return "system"
 	}
-	command := []string{bin}
+	return "sherpa-onnx"
+}
+
+// newGenieTTS 创建 Genie 合成器并在后台预热子进程，避免第一句话承担模型加载耗时
+// 程序、模型或参考音频缺失时返回 nil 与原因，由调用方退回其他合成器
+func newGenieTTS(cfg *config.Config) (audio.TTS, error) {
+	g := cfg.TTS.Genie
+	worker := strings.TrimSpace(g.Worker)
+	if worker == "" {
+		worker = layout.GenieWorkerPath
+	}
+	abs := func(p string) string {
+		if a, err := filepath.Abs(p); err == nil {
+			return a
+		}
+		return p
+	}
+	worker = abs(worker)
+	dataDir := abs(firstNonEmpty(g.DataDir, layout.GenieDataDir))
+	charDir := abs(firstNonEmpty(g.CharacterDir, layout.GenieCharacterDir))
+	if _, err := os.Stat(worker); err != nil {
+		return nil, fmt.Errorf("worker not found: %s", worker)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "speaker_encoder.onnx")); err != nil {
+		return nil, fmt.Errorf("genie data not found in %s", dataDir)
+	}
+	if _, err := os.Stat(filepath.Join(charDir, "tts_models")); err != nil {
+		return nil, fmt.Errorf("genie character models not found in %s", charDir)
+	}
+	command := []string{worker}
 	if script := strings.TrimSpace(g.Script); script != "" {
-		command = append(command, script)
+		command = append(command, abs(script))
 	}
 	refs := map[string]audioTts.GenieRef{}
 	for name, r := range g.References {
-		refs[strings.ToLower(strings.TrimSpace(name))] = audioTts.GenieRef{Audio: r.Audio, Text: r.Text}
+		refs[strings.ToLower(strings.TrimSpace(name))] = audioTts.GenieRef{Audio: abs(r.Audio), Text: r.Text}
 	}
 	if _, ok := refs["default"]; !ok {
-		def, err := audioTts.DefaultGenieRef(g.CharacterDir)
+		def, err := audioTts.DefaultGenieRef(charDir)
 		if err != nil {
-			log.Printf("[tts] genie has no default reference audio: %v", err)
-			return fallback
+			return nil, fmt.Errorf("no default reference audio: %w", err)
 		}
 		refs["default"] = def
 	}
 	tts := audioTts.NewGenieTTS(audioTts.GenieConfig{
-		Command: command, DataDir: g.DataDir, CharacterDir: g.CharacterDir, Language: g.Language, Refs: refs,
+		Command: command, DataDir: dataDir, CharacterDir: charDir, Language: g.Language, Refs: refs,
 	})
 	go func() {
 		if err := tts.Warmup(); err != nil {
 			log.Printf("[tts] genie warmup failed: %v", err)
 		}
 	}()
-	log.Printf("[tts] use genie worker=%s character=%s refs=%d", bin, g.CharacterDir, len(refs))
-	return tts
+	log.Printf("[tts] use genie worker=%s character=%s refs=%d", worker, charDir, len(refs))
+	return tts, nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }

@@ -55,3 +55,4 @@ docs/.content-collections/
 docs/.yarn/
 docs/node_modules/
 .pnp.*
+backend/api/resource/

@@ -21,6 +21,10 @@ const (
 	DBPath                = "resource/data/norma.db"
 	VectorIndexPath       = "resource/data/vector_index.json"
 	MemoryPath            = "resource/data/memory.md"
+	GenieDataDir          = "resource/model/genie/GenieData"
+	GenieCharacterDir     = "resource/model/genie/CharacterModels/v2ProPlus/feibi"
+	GenieWorkerPath       = "resource/runtime/genie/norma-genie-worker"
+	StaticEmbedModelDir   = "resource/model/model2vec/potion-multilingual-128M"
 	PurgeProofDir         = "resource/diagnostics/purge-proofs"
 	StartupReportPath     = "resource/logs/startup_report.json"
 )
