@@ -172,6 +172,9 @@ func ParseRememberCommand(text string) (string, bool) {
 	for _, p := range []string{"请记住", "记住", "帮我记住", "记一下"} {
 		if idx := strings.Index(t, p); idx >= 0 && idx <= 12 {
 			rest := strings.TrimLeft(t[idx+len(p):], "，,：: ")
+			if isQuestionOrFiller(rest) {
+				continue
+			}
 			rest = strings.TrimRight(rest, "。.!！")
 			if strings.TrimSpace(rest) != "" {
 				return rest, true
@@ -179,4 +182,14 @@ func ParseRememberCommand(text string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// “你记住了吗”“记住了”“你能记住我喜欢咖啡吗”是询问或确认，不是要记的内容
+func isQuestionOrFiller(rest string) bool {
+	r := strings.TrimSpace(rest)
+	if strings.HasPrefix(r, "了") {
+		return true
+	}
+	return strings.HasSuffix(r, "吗") || strings.HasSuffix(r, "吗？") || strings.HasSuffix(r, "?") ||
+		strings.HasSuffix(r, "？") || strings.HasSuffix(r, "呢") || strings.HasSuffix(r, "呢？")
 }

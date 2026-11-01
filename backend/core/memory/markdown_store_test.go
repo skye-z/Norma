@@ -86,3 +86,14 @@ func TestParseRememberCommand(t *testing.T) {
 		t.Error("question must not be a remember command")
 	}
 }
+
+func TestParseRememberCommandRejectsQuestionsAndFillers(t *testing.T) {
+	for _, in := range []string{"你记住了吗？", "你记住了吗", "记住了", "你能记住我喜欢咖啡吗", "记住"} {
+		if fact, ok := ParseRememberCommand(in); ok {
+			t.Errorf("%q should not be a remember command, got fact %q", in, fact)
+		}
+	}
+	if fact, ok := ParseRememberCommand("记住我喜欢喝美式"); !ok || fact != "我喜欢喝美式" {
+		t.Errorf("valid command rejected: %q %v", fact, ok)
+	}
+}
