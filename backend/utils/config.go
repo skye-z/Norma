@@ -185,7 +185,8 @@ func Load(path string) (*Config, error) {
 // 设置默认值
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("app.name", "Norma")
-	v.SetDefault("app.model_name", "default")
+	// 留空时自动选择 resource/model 下第一个可用模型
+	v.SetDefault("app.model_name", "")
 	v.SetDefault("app.env", "dev")
 	v.SetDefault("app.log_level", "info")
 	v.SetDefault("app.log_dir", layout.LogsDir)

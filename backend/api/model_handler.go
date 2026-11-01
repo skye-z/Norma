@@ -172,6 +172,9 @@ func resolveLive2DModelPath(rootDir, configuredModelName string) (string, string
 
 	modelDir := ""
 	modelName := strings.TrimSpace(configuredModelName)
+	if strings.EqualFold(modelName, "default") {
+		modelName = "" // 历史默认值，等同于未配置
+	}
 	if modelName != "" {
 		candidate := filepath.Join(absRoot, modelName)
 		info, statErr := os.Stat(candidate)

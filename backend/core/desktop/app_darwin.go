@@ -52,8 +52,9 @@ func Run(assets fs.FS) error {
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 0},
 		Mac: &mac.Options{
 			TitleBar:             mac.TitleBarHidden(),
+			// 全透明：网页背景透明，不叠加系统毛玻璃（WindowIsTranslucent 会产生灰色模糊层）
 			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+			WindowIsTranslucent:  false,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,
