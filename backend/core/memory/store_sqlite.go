@@ -3,6 +3,8 @@ package memory
 
 import (
 	"context"
+	"strconv"
+	"unicode"
 	"fmt"
 	"regexp"
 	"strings"
@@ -62,7 +64,7 @@ func (s *SQLiteStore) Upsert(path string, chunks []string) error {
 		}
 		if _, err := sess.Exec(
 			"INSERT INTO index_chunks_fts(rowid, path, content) VALUES(?,?,?)",
-			row.ID, row.Path, row.Content,
+			row.ID, row.Path, segmentForFTS(row.Content),
 		); err != nil {
 			_ = sess.Rollback()
 			return err
@@ -121,18 +123,55 @@ func (s *SQLiteStore) SearchText(ctx context.Context, query string, topK int) ([
 		out = append(out, Chunk{
 			DocID:   string(r["path"]),
 			ChunkID: fmt.Sprintf("%s#%s", string(r["path"]), string(r["chunk_no"])),
-			Score:   1.0,
+			Score:   -parseRank(string(r["rank"])),
 			Content: string(r["content"]),
 		})
 	}
 	return out, nil
 }
 
+// 中文没有空格分词，unicode61 会把一整段汉字当作一个词；
+// 这里在入库和查询时把汉字展开成单字加相邻双字，其余文字按词切分
+func segmentForFTS(text string) string {
+	text = strings.ToLower(text)
+	var out []string
+	for _, tok := range sqliteFTSTokenPattern.FindAllString(text, -1) {
+		runes := []rune(tok)
+		if !isHan(runes[0]) {
+			out = append(out, tok)
+			continue
+		}
+		for i, r := range runes {
+			out = append(out, string(r))
+			if i+1 < len(runes) && isHan(runes[i+1]) {
+				out = append(out, string(runes[i:i+2]))
+			}
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+func isHan(r rune) bool { return unicode.Is(unicode.Han, r) }
+
 func normalizeFTSQuery(query string) string {
 	query = sqliteFTSPossessivePattern.ReplaceAllString(strings.ToLower(query), `${1}`)
-	tokens := sqliteFTSTokenPattern.FindAllString(query, -1)
-	if len(tokens) == 0 {
+	seg := strings.Fields(segmentForFTS(query))
+	if len(seg) == 0 {
 		return ""
 	}
-	return strings.Join(tokens, " ")
+	seen := map[string]bool{}
+	terms := make([]string, 0, len(seg))
+	for _, t := range seg {
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
+		terms = append(terms, `"`+t+`"`)
+	}
+	return strings.Join(terms, " OR ")
+}
+
+func parseRank(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
 }

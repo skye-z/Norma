@@ -61,6 +61,11 @@ func (r *RetrieverHybrid) SearchTuned(ctx context.Context, query string, topK in
 
 	if r.vector != nil {
 		emb := embedF32(query)
+		if qe, ok := r.vector.(QueryEmbedder); ok {
+			if v, err := qe.EmbedQuery(ctx, query); err == nil && len(v) > 0 {
+				emb = v
+			}
+		}
 		if tuned, ok := r.vector.(TunedVectorSearcher); ok {
 			vHits, err = tuned.SearchVectorTuned(ctx, emb, candidateCount(topK, tuning.RetrieverExtraFactor, tuning.MinVectorCandidates), VectorSearchOptions{EFSearch: tuning.VectorEFSearch})
 		} else {

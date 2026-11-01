@@ -325,3 +325,12 @@ func cosine(a, b []float64) float64 {
 	}
 	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }
+
+// 查询向量必须与入库向量使用同一个嵌入器
+type QueryEmbedder interface {
+	EmbedQuery(ctx context.Context, text string) ([]float32, error)
+}
+
+func (s *DiskVectorStore) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	return s.embedder.Embed(ctx, text)
+}
