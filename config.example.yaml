@@ -52,11 +52,17 @@ tts:
 rag:
   top_k: 6
   vector_index_path: resource/data/vector_index.json
-  embed_provider: ollama
-  embed_endpoint: http://127.0.0.1:11434
-  embed_model: bge-m3:latest
+  # provider: hybrid 为全文加向量混合检索；markdown 为整份记忆文件直接作为上下文
+  provider: hybrid
+  # embed_provider: hash（无语义，回退用）| static（Model2Vec 静态词向量，进程内加载）| ollama
+  embed_provider: static
+  # static 模型目录，需含 model.safetensors 与 tokenizer.json，缺失时自动回退到 hash
+  embed_model_dir: ""
 
 memory:
+  # “记住……”指令写入的 Markdown 记忆文件，文件是唯一事实来源，索引可随时重建
+  markdown_path: resource/data/memory.md
+  markdown_max_bytes: 16384
   stm_token_budget: 2048
   stm_reserve_important: true
   summary_auto_write: true

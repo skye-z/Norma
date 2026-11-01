@@ -31,6 +31,7 @@ type Stack struct {
 	Tracker         *config.Tracker
 	ProviderManager *providers.Manager
 	Retriever       memory.Retriever
+	Memory          *memory.MarkdownMemory
 	LLM             llm.Streamer
 	TTS             audio.TTS
 	Playback        audioPlayback
@@ -78,14 +79,18 @@ func NewStack(cfg *config.Config, engine *xorm.Engine) (*Stack, error) {
 	tts := chooseTTS(cfg, providerMgr)
 	playback := choosePlayback(rt.Bus, tts)
 	streamer := chooseLLMStreamer(cfg)
-	retriever := chooseRetriever(cfg, engine, providerMgr)
-	_ = runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, 4, playback)
+	retriever, mdMemory := chooseRetriever(cfg, engine, providerMgr)
+	orch := runtime.NewOrchestratorWithPlayback(rt, retriever, streamer, tts, 4, playback)
+	if mdMemory != nil {
+		orch.SetMemory(mdMemory)
+	}
 
 	return &Stack{
 		Runtime:         rt,
 		Tracker:         tracker,
 		ProviderManager: providerMgr,
 		Retriever:       retriever,
+		Memory:          mdMemory,
 		LLM:             streamer,
 		TTS:             tts,
 		Playback:        playback,
@@ -417,10 +422,34 @@ func chooseLLMStreamer(cfg *config.Config) llm.Streamer {
 	return llm.FallbackStreamer{Primary: primary, Fallback: fallback}
 }
 
-// chooseRetriever 选择记忆检索器
-func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) memory.Retriever {
+// chooseRetriever 选择记忆检索器，同时返回 Markdown 记忆服务用于写入“记住……”的内容
+// rag.provider 为 markdown 时整份文件直接作为上下文；否则对条目建立全文与向量索引做混合检索
+func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Manager) (memory.Retriever, *memory.MarkdownMemory) {
+	mdPath := strings.TrimSpace(cfg.Memory.MarkdownPath)
+	if mdPath == "" {
+		mdPath = layout.MemoryPath
+	}
+	store := memory.NewMarkdownStore(mdPath, cfg.Memory.MarkdownMaxBytes)
+
+	if strings.EqualFold(strings.TrimSpace(cfg.RAG.Provider), "markdown") {
+		log.Printf("[rag] use markdown retriever file=%s", mdPath)
+		return memory.MarkdownRetriever{Store: store}, memory.NewMarkdownMemory(store)
+	}
+
 	// 创建基于SQLite的全文搜索存储
 	fts := memory.NewSQLiteStore(engine)
+	syncMarkdown := func(indexes ...*memory.DiskVectorStore) *memory.MarkdownMemory {
+		var md *memory.MarkdownMemory
+		if len(indexes) > 0 && indexes[0] != nil {
+			md = memory.NewMarkdownMemory(store, fts, indexes[0])
+		} else {
+			md = memory.NewMarkdownMemory(store, fts)
+		}
+		if err := md.Sync(); err != nil {
+			log.Printf("[rag] sync markdown memory failed: %v", err)
+		}
+		return md
+	}
 
 	vecPath := strings.TrimSpace(cfg.RAG.VectorIndexPath)
 	if vecPath == "" {
@@ -430,7 +459,7 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 	if dir := filepath.Dir(vecPath); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			log.Printf("[rag] create vector memory dir failed, fallback to text-only retriever: %v", err)
-			return memory.NewHybridRetriever(nil, fts, nil)
+			return memory.NewHybridRetriever(nil, fts, nil), syncMarkdown()
 		}
 	}
 
@@ -439,14 +468,14 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 	vec, err := memory.NewDiskVectorStoreWithEmbedder(vecPath, embedder)
 	if err != nil {
 		log.Printf("[rag] init vector store failed, fallback to text-only retriever: %v", err)
-		return memory.NewHybridRetriever(nil, fts, nil)
+		return memory.NewHybridRetriever(nil, fts, nil), syncMarkdown()
 	}
 
-	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s", vecPath, cfg.RAG.EmbedProvider)
+	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s markdown=%s", vecPath, cfg.RAG.EmbedProvider, mdPath)
 	r := memory.NewHybridRetriever(vec, fts, nil)
 	// 记忆条目彼此独立，相邻合并会把无关条目拼进同一段上下文
 	r.SetPostProcessOptions(memory.RetrieverPostProcessOptions{EnableDedup: true, EnableRerank: true, RerankWeight: 0.15})
-	return r
+	return r, syncMarkdown(vec)
 }
 
 // chooseEmbedder 选择嵌入向量生成模块

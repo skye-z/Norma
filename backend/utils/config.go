@@ -116,6 +116,9 @@ type MemoryConfig struct {
 	EnableSTM    bool `mapstructure:"enable_stm"`
 	EnableLTM    bool `mapstructure:"enable_ltm"`
 	MaxSTMTokens int  `mapstructure:"max_stm_tokens"`
+	// Markdown 记忆文件路径与大小上限
+	MarkdownPath     string `mapstructure:"markdown_path"`
+	MarkdownMaxBytes int    `mapstructure:"markdown_max_bytes"`
 }
 
 // 安全配置
@@ -193,6 +196,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rag.provider", "hybrid")
 	v.SetDefault("rag.vector_index_path", layout.VectorIndexPath)
 
+	v.SetDefault("memory.markdown_path", layout.MemoryPath)
+	v.SetDefault("memory.markdown_max_bytes", 16*1024)
 	v.SetDefault("memory.enable_stm", true)
 	v.SetDefault("memory.enable_ltm", true)
 	v.SetDefault("memory.max_stm_tokens", 4096)

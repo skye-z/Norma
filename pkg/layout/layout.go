@@ -20,6 +20,7 @@ const (
 	ProvidersDir          = "resource/runtime/providers"
 	DBPath                = "resource/data/norma.db"
 	VectorIndexPath       = "resource/data/vector_index.json"
+	MemoryPath            = "resource/data/memory.md"
 	PurgeProofDir         = "resource/diagnostics/purge-proofs"
 	StartupReportPath     = "resource/logs/startup_report.json"
 )

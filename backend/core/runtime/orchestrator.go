@@ -25,9 +25,15 @@ type Orchestrator struct {
 	ragTopK   int
 	playback  playbackSink
 	persona   string
+	memory    memoryWriter
 
 	mu       sync.Mutex
 	sessions map[string]*session
+}
+
+// 记忆写入接口，用于响应“记住……”之类的口语指令
+type memoryWriter interface {
+	Remember(ctx context.Context, fact string) error
 }
 
 // 播放接收器接口
@@ -92,6 +98,13 @@ func (o *Orchestrator) SetPersona(persona string) {
 	o.mu.Unlock()
 }
 
+// 设置记忆写入器；未设置时“记住……”只当作普通提问
+func (o *Orchestrator) SetMemory(w memoryWriter) {
+	o.mu.Lock()
+	o.memory = w
+	o.mu.Unlock()
+}
+
 // 识别完成后启动会话；同一会话号的在途任务会先被取消并等待退出
 func (o *Orchestrator) onASRFinal(evt bus.Event) {
 	text, ok := evt.Payload.(string)
@@ -123,6 +136,21 @@ func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string
 	}
 
 	var contexts []string
+	o.mu.Lock()
+	mem := o.memory
+	o.mu.Unlock()
+	if fact, ok := memory.ParseRememberCommand(text); ok && mem != nil {
+		if err := mem.Remember(ctx, fact); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("[orchestrator] remember failed: %v", err)
+			contexts = append(contexts, "（系统提示：用户想让你记住“"+fact+"”，但保存失败了，请如实告诉用户。）")
+		} else {
+			contexts = append(contexts, "（系统提示：已把“"+fact+"”写入长期记忆，请简短确认，不要复述全文。）")
+			pub("memory.saved", fact)
+		}
+	}
 	chunks, err := o.retriever.Search(ctx, text, o.ragTopK)
 	if err != nil && ctx.Err() == nil {
 		log.Printf("[orchestrator] retriever search failed: %v", err)
