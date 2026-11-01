@@ -156,6 +156,12 @@ func ResolveWakeConfig(cfg *config.Config, mgr *providers.Manager) WakeConfigSta
 	if mgr != nil {
 		modelDir = filepath.Join(mgr.Root(), "wake", "current")
 	}
+	if custom := strings.TrimSpace(cfg.Audio.WakeModelPath); custom != "" {
+		modelDir = custom
+		if mgr != nil {
+			mgr = providers.NewManager(filepath.Dir(custom))
+		}
+	}
 	status.ModelDir = modelDir
 	encoder := ""
 	decoder := ""
@@ -444,6 +450,9 @@ func EnsureWakeKeywordsForConfig(cfg *config.Config, mgr *providers.Manager) (st
 	}
 	if mgr == nil {
 		return "", nil
+	}
+	if custom := strings.TrimSpace(cfg.Audio.WakeModelPath); custom != "" {
+		return providers.EnsureWakeKeywordsFile(custom, keyword)
 	}
 	return mgr.EnsureWakeKeywords(keyword)
 }

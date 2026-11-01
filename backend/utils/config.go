@@ -60,6 +60,15 @@ type AudioConfig struct {
 	AEC                   string `mapstructure:"aec"`
 	ANS                   string `mapstructure:"ans"`
 	AGC                   string `mapstructure:"agc"`
+
+	WakeProvider         string `mapstructure:"wake_provider"`
+	WakeBinaryPath       string `mapstructure:"wake_binary_path"`
+	WakeModelPath        string `mapstructure:"wake_model_path"`
+	WakeKeywordsFilePath string `mapstructure:"wake_keywords_file_path"`
+	WakeWindowMS         int    `mapstructure:"wake_window_ms"`
+	WakeDetectIntervalMS int    `mapstructure:"wake_detect_interval_ms"`
+	MicSampleRate        int    `mapstructure:"mic_sample_rate"`
+	MicChannelCount      int    `mapstructure:"mic_channel_count"`
 }
 
 // 配置
@@ -69,6 +78,7 @@ type ASRConfig struct {
 	BinaryPath string `mapstructure:"binary_path"`
 	ModelPath  string `mapstructure:"model_path"`
 	Threads    int    `mapstructure:"threads"`
+	Endpoint   string `mapstructure:"endpoint"`
 }
 
 // 配置
@@ -96,6 +106,7 @@ type RAGConfig struct {
 	EmbedModel      string `mapstructure:"embed_model"`
 	EmbedProvider   string `mapstructure:"embed_provider"`
 	VectorIndexPath string `mapstructure:"vector_index_path"`
+	TopK            int    `mapstructure:"top_k"`
 }
 
 // 记忆配置
@@ -109,11 +120,16 @@ type MemoryConfig struct {
 type SecurityConfig struct {
 	AllowRemote bool     `mapstructure:"allow_remote"`
 	AllowedIPs  []string `mapstructure:"allowed_ips"`
+
+	ToolWhitelist   []string `mapstructure:"tool_whitelist"`
+	HighRiskConfirm bool     `mapstructure:"high_risk_confirm"`
+	PurgeProofDir   string   `mapstructure:"purge_proof_dir"`
 }
 
 // 配置
 type ProvidersConfig struct {
 	InstallMode string `mapstructure:"install_mode"`
+	Root        string `mapstructure:"root"`
 }
 
 // 加载配置文件

@@ -6,7 +6,7 @@ import (
 
 	"norma/backend/core/memory"
 	"norma/backend/core/runtime/bus"
-	"norma/backend/testdouble"
+	"norma/backend/core/testdouble"
 )
 
 func TestOrchestratorWithFakeProviders(t *testing.T) {
@@ -14,7 +14,7 @@ func TestOrchestratorWithFakeProviders(t *testing.T) {
 	tts := &testdouble.FakeTTS{Chunks: [][]byte{[]byte("a"), []byte("b")}}
 	_ = NewOrchestrator(
 		rt,
-		testdouble.FakeRetriever{Chunks: []index.Chunk{{Content: "ctx"}}},
+		testdouble.FakeRetriever{Chunks: []memory.Chunk{{Content: "ctx"}}},
 		testdouble.FakeLLM{Tokens: []string{"o", "k"}},
 		tts,
 		4,

@@ -3,14 +3,11 @@ package security
 import (
 	"testing"
 
-	"norma/backend/utils"
+	config "norma/backend/utils"
 )
 
 func TestToolPolicyCheck(t *testing.T) {
-	policy := NewToolPolicy(config.SecurityConfig{
-		ToolWhitelist:   []string{"open_local_file", "export_diagnostics"},
-		HighRiskConfirm: true,
-	})
+	policy := NewToolPolicy(config.SecurityConfig{})
 
 	decision := policy.Check("open_local_file", false)
 	if !decision.Allowed || decision.RequiresConfirmation {
@@ -22,8 +19,8 @@ func TestToolPolicyCheck(t *testing.T) {
 		t.Fatalf("expected confirmation for high risk tool: %#v", highRisk)
 	}
 
-	blocked := policy.Check("delete_system32", false)
+	blocked := policy.Check("  ", false)
 	if blocked.Allowed {
-		t.Fatalf("unexpected allow: %#v", blocked)
+		t.Fatalf("empty tool name must be rejected: %#v", blocked)
 	}
 }

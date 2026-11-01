@@ -65,6 +65,13 @@ func (s *platformPlaybackSink) Stop(sessionID, traceID, reason string) {
 	_ = reason
 }
 
+func (s *platformPlaybackSink) Drain(ctx context.Context, sessionID string) error {
+	_ = s
+	_ = ctx
+	_ = sessionID
+	return nil
+}
+
 func (s *platformPlaybackSink) Wait(ctx context.Context, sessionID string) error {
 	_ = s
 	_ = ctx

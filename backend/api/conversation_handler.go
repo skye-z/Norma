@@ -239,7 +239,8 @@ func (h *ConversationHandler) handleMicInterrupt(w http.ResponseWriter, r *http.
 	h.bus.Publish(bus.Event{Name: "interrupt", SessionID: sid, TraceID: tid, Payload: reason})
 	log.Printf("[conversation] mic interrupt session=%s trace=%s reason=%s capture=%s mode=%s", sid, tid, reason, h.capture[sid], h.modes[sid])
 
-	h.clearSession(sid)
+	// 打断只终止当前流，保留原生音频源以便继续采集下一轮
+	h.closeStream(sid)
 	writeJSON(w, http.StatusOK, h.snapshot())
 }
 
@@ -694,4 +695,18 @@ func normalizeConversationMode(mode string) string {
 	default:
 		return "manual"
 	}
+}
+
+// closeStream 关闭并移除推流源，保留原生音频源
+func (h *ConversationHandler) closeStream(sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.cancel != nil {
+		h.cancel()
+		h.cancel = nil
+	}
+	if stream := h.streams[sessionID]; stream != nil {
+		stream.Close()
+	}
+	delete(h.streams, sessionID)
 }

@@ -59,11 +59,13 @@ func New() *Runtime {
 		inspector.SetState(string(rt.State.Get()))
 	})
 
-	rt.Bus.Subscribe("llm.done", func(evt bus.Event) {
-		_ = evt
-		rt.State.Set(state.Listening)
-		inspector.SetState(string(rt.State.Get()))
-	})
+	for _, name := range []string{"llm.done", "session.done"} {
+		rt.Bus.Subscribe(name, func(evt bus.Event) {
+			_ = evt
+			rt.State.Set(state.Listening)
+			inspector.SetState(string(rt.State.Get()))
+		})
+	}
 
 	rt.Bus.Subscribe("interrupt", func(evt bus.Event) {
 		rt.State.Set(state.Interrupted)

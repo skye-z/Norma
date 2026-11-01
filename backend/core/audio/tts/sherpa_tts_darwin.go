@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package audio 音频处理
 package audio
 
@@ -13,7 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	sherpa "github.com/k2-fsa/sherpa-onnx-go-windows"
+	sherpa "github.com/k2-fsa/sherpa-onnx-go-macos"
 	cfg "norma/backend/utils"
 	"norma/pkg/layout"
 )

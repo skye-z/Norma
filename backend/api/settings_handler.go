@@ -161,6 +161,10 @@ func validateEndpointPolicy(endpoint string, sec config.SecurityConfig) *config.
 		return config.Invalid("invalid endpoint: " + endpoint)
 	}
 	host := strings.ToLower(u.Hostname())
+	// 本机回环地址不属于远程提供商
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return nil
+	}
 	// 如果允许远程提供商，直接通过
 	if sec.AllowRemote {
 		return nil
@@ -217,7 +221,7 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 	if cfg == nil {
 		return nil
 	}
-	mgr := providers.NewManager("")
+	mgr := providers.NewManager(cfg.Providers.Root)
 	if err := mgr.EnsureLayout(); err != nil {
 		return err
 	}
@@ -241,6 +245,7 @@ func syncWakeKeywordArtifacts(cfg *config.Config) error {
 	if err := os.WriteFile(keywordsPath, []byte(formatted), 0o644); err != nil {
 		return err
 	}
+	cfg.Audio.WakeKeywordsFilePath = keywordsPath
 	return nil
 }
 

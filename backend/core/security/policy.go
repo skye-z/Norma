@@ -31,8 +31,20 @@ func (p ToolPolicy) Check(toolName string, highRisk bool) ToolDecision {
 	if name == "" {
 		return ToolDecision{ToolName: name, Allowed: false, Reason: "tool name required"}
 	}
-	decision := ToolDecision{ToolName: name, Allowed: true, RequiresConfirmation: highRisk}
-	if highRisk {
+	if len(p.cfg.ToolWhitelist) > 0 {
+		listed := false
+		for _, w := range p.cfg.ToolWhitelist {
+			if strings.EqualFold(strings.TrimSpace(w), name) {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			return ToolDecision{ToolName: name, Allowed: false, Reason: "tool is not in whitelist"}
+		}
+	}
+	decision := ToolDecision{ToolName: name, Allowed: true, RequiresConfirmation: highRisk && p.cfg.HighRiskConfirm}
+	if decision.RequiresConfirmation {
 		decision.Reason = "high risk tool requires explicit confirmation"
 	}
 	return decision

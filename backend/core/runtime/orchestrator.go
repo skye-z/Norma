@@ -15,30 +15,40 @@ import (
 	"norma/backend/core/runtime/bus"
 )
 
-// Orchestrator 编排器，连接 ASR/RAG/LLM/TTS 与事件总线
-// 负责语音会话的完整流程编排：音频输入 -> ASR 识别 -> RAG 检索 -> LLM 生成 -> TTS 合成 -> 播放
+// Orchestrator 编排器，连接记忆检索、大模型、语音合成与播放
+// 一次语音问答对应一个会话，会话内的各阶段共享同一个可取消上下文
 type Orchestrator struct {
-	rt        *Runtime         // 运行时实例
-	retriever memory.Retriever // RAG 检索器
-	llm       llm.Streamer     // LLM 流式输出
-	tts       audio.TTS        // TTS 语音合成
-	ragTopK   int              // RAG 检索返回结果数量
-	playback  playbackSink     // 音频播放接收器
+	rt        *Runtime
+	retriever memory.Retriever
+	llm       llm.Streamer
+	tts       audio.TTS
+	ragTopK   int
+	playback  playbackSink
+	persona   string
 
-	mu      sync.Mutex                    // 互斥锁，保护 cancels
-	cancels map[string]context.CancelFunc // 会话取消函数映射
+	mu       sync.Mutex
+	sessions map[string]*session
 }
 
-// playbackSink 音频播放接收器接口
+// 播放接收器接口
 type playbackSink interface {
-	Queue(sessionID, traceID string, chunk []byte) error // 入队音频数据
-	Complete(sessionID, traceID string)                  // 完成播放
-	Stop(sessionID, traceID, reason string)              // 停止播放
-	Drain(ctx context.Context, sessionID string) error   // 排空队列
-	Wait(ctx context.Context, sessionID string) error    // 等待播放完成
+	Queue(sessionID, traceID string, chunk []byte) error
+	Complete(sessionID, traceID string)
+	Stop(sessionID, traceID, reason string)
+	Drain(ctx context.Context, sessionID string) error
+	Wait(ctx context.Context, sessionID string) error
 }
 
-// 创建新的编排器（简化版本，使用默认播放接收器）
+// 单个会话的运行状态
+type session struct {
+	id      string
+	trace   string
+	cancel  context.CancelFunc
+	done    chan struct{}
+	stopped bool
+}
+
+// 创建编排器，不带播放接收器
 func NewOrchestrator(
 	rt *Runtime,
 	retriever memory.Retriever,
@@ -59,7 +69,7 @@ func NewOrchestratorWithPlayback(
 	playback playbackSink,
 ) *Orchestrator {
 	if ragTopK <= 0 {
-		ragTopK = 4 // 默认 RAG 检索数量
+		ragTopK = 4
 	}
 	o := &Orchestrator{
 		rt:        rt,
@@ -68,183 +78,194 @@ func NewOrchestratorWithPlayback(
 		tts:       tts,
 		ragTopK:   ragTopK,
 		playback:  playback,
-		cancels:   make(map[string]context.CancelFunc),
+		sessions:  make(map[string]*session),
 	}
-
-	// 订阅 ASR 识别完成事件，启动 LLM 生成
 	o.rt.Bus.Subscribe("asr.final", o.onASRFinal)
-	// 订阅 LLM token 生成事件，处理流式输出
-	o.rt.Bus.Subscribe("llm.token", o.onLLMToken)
-	// 订阅 LLM 完成事件，启动 TTS 合成
-	o.rt.Bus.Subscribe("llm.done", o.onLLMDone)
-	// 订阅 TTS chunk 事件，推送播放
-	o.rt.Bus.Subscribe("tts.chunk", o.onTTSChunk)
-	// 订阅打断事件，取消在途会话
 	o.rt.Bus.Subscribe("interrupt", o.onInterrupt)
-
 	return o
 }
 
-// onASRFinal 处理 ASR 识别完成事件
-// 流程：检索 RAG -> 构建 prompt -> 启动 LLM 流式生成
+// 设置角色设定，随每次请求发送给大模型
+func (o *Orchestrator) SetPersona(persona string) {
+	o.mu.Lock()
+	o.persona = persona
+	o.mu.Unlock()
+}
+
+// 识别完成后启动会话；同一会话号的在途任务会先被取消并等待退出
 func (o *Orchestrator) onASRFinal(evt bus.Event) {
 	text, ok := evt.Payload.(string)
-	if !ok || text == "" {
+	if !ok || strings.TrimSpace(text) == "" {
 		return
 	}
+	o.cancelAndWait(evt.SessionID, evt.TraceID, "superseded")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sessionID, traceID := evt.SessionID, evt.TraceID
-
+	s := &session{id: evt.SessionID, trace: evt.TraceID, cancel: cancel, done: make(chan struct{})}
 	o.mu.Lock()
-	o.cancels[sessionID] = cancel
+	o.sessions[s.id] = s
+	persona := o.persona
 	o.mu.Unlock()
 
-	// RAG 检索获取相关上下文
-	topK := o.ragTopK
-	var chunks []memory.Chunk
-	var err error
-	chunks, err = o.retriever.Search(ctx, text, topK)
-	if err != nil {
+	go func() {
+		defer close(s.done)
+		o.run(ctx, s, text, persona)
+	}()
+}
+
+// 会话主流程：检索、生成、分句合成、播放
+func (o *Orchestrator) run(ctx context.Context, s *session, text, persona string) {
+	pub := func(name string, payload any) {
+		if ctx.Err() != nil {
+			return
+		}
+		o.rt.Bus.Publish(bus.Event{Name: name, SessionID: s.id, TraceID: s.trace, Payload: payload})
+	}
+
+	var contexts []string
+	chunks, err := o.retriever.Search(ctx, text, o.ragTopK)
+	if err != nil && ctx.Err() == nil {
 		log.Printf("[orchestrator] retriever search failed: %v", err)
 	}
-
-	// 构建 prompt 和 context
-	var prompt string
-	var contextStrings []string
-	if len(chunks) > 0 {
-		var b strings.Builder
-		b.WriteString("相关上下文：\n")
-		for _, c := range chunks {
-			b.WriteString(c.Content)
-			b.WriteString("\n---\n")
-			contextStrings = append(contextStrings, c.Content)
-		}
-		b.WriteString("用户问题：")
-		b.WriteString(text)
-		prompt = b.String()
-	} else {
-		prompt = text
+	for _, c := range chunks {
+		contexts = append(contexts, c.Content)
 	}
-
-	// 发布 RAG 准备就绪事件
-	o.rt.Bus.Publish(bus.Event{
-		Name:      "rag.ready",
-		SessionID: sessionID,
-		TraceID:   traceID,
-		Payload:   len(chunks),
-	})
-
-	// 调用 LLM 流式生成
-	llmCtx, llmCancel := context.WithCancel(ctx)
-	o.mu.Lock()
-	o.cancels[sessionID+"_llm"] = llmCancel
-	o.mu.Unlock()
-
-	req := llm.Request{
-		SessionID: sessionID,
-		Prompt:    prompt,
-		Context:   contextStrings,
-	}
-
-	err = o.llm.Stream(llmCtx, req, func(token string) {
-		o.rt.Bus.Publish(bus.Event{
-			Name:      "llm.token",
-			SessionID: sessionID,
-			TraceID:   traceID,
-			Payload:   token,
-		})
-	})
-	if err != nil {
-		log.Printf("[orchestrator] llm stream failed: %v", err)
-		o.rt.Bus.Publish(bus.Event{
-			Name:      "error",
-			SessionID: sessionID,
-			TraceID:   traceID,
-			Payload:   err.Error(),
-		})
+	pub("rag.ready", len(chunks))
+	if ctx.Err() != nil {
 		return
 	}
 
-	// 发布 LLM 完成事件
-	o.rt.Bus.Publish(bus.Event{
-		Name:      "llm.done",
-		SessionID: sessionID,
-		TraceID:   traceID,
-	})
-	if err != nil {
-		log.Printf("[orchestrator] llm stream failed: %v", err)
-		o.rt.Bus.Publish(bus.Event{
-			Name:      "error",
-			SessionID: sessionID,
-			TraceID:   traceID,
-			Payload:   err.Error(),
-		})
-	}
-}
+	sentences := make(chan string, 16)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		o.speak(ctx, s, sentences, pub)
+	}()
 
-// onLLMToken 处理 LLM token 生成事件
-// 触发 TTS 合成并推送播放
-func (o *Orchestrator) onLLMToken(evt bus.Event) {
-	text, ok := evt.Payload.(string)
-	if !ok || text == "" {
-		return
-	}
-
-	// 调用 TTS 合成
-	err := o.tts.Stream(context.Background(), text, func(chunk []byte) {
-		o.rt.Bus.Publish(bus.Event{
-			Name:      "tts.chunk",
-			SessionID: evt.SessionID,
-			TraceID:   evt.TraceID,
-			Payload:   base64.StdEncoding.EncodeToString(chunk),
-		})
-		if o.playback != nil {
-			_ = o.playback.Queue(evt.SessionID, evt.TraceID, chunk)
+	splitter := newSentenceSplitter()
+	req := llm.Request{SessionID: s.id, Prompt: text, Context: contexts, Persona: persona}
+	llmErr := o.llm.Stream(ctx, req, func(token string) {
+		if ctx.Err() != nil {
+			return
+		}
+		pub("llm.token", token)
+		for _, sent := range splitter.Push(token) {
+			select {
+			case sentences <- sent:
+			case <-ctx.Done():
+				return
+			}
 		}
 	})
-	if err != nil {
-		log.Printf("[orchestrator] tts stream failed: %v", err)
+	if ctx.Err() == nil {
+		if rest := splitter.Flush(); rest != "" {
+			select {
+			case sentences <- rest:
+			case <-ctx.Done():
+			}
+		}
 	}
-}
+	close(sentences)
+	wg.Wait()
 
-// onLLMDone 处理 LLM 生成完成事件
-// 通知播放完成
-func (o *Orchestrator) onLLMDone(evt bus.Event) {
+	if ctx.Err() != nil {
+		return
+	}
+	if llmErr != nil {
+		log.Printf("[orchestrator] llm stream failed: %v", llmErr)
+		pub("error", map[string]string{"code": "llm_stream_failed", "message": llmErr.Error()})
+		o.finish(s)
+		return
+	}
+	pub("llm.finished", nil)
 	if o.playback != nil {
-		o.playback.Complete(evt.SessionID, evt.TraceID)
+		o.playback.Complete(s.id, s.trace)
+		if err := o.playback.Wait(ctx, s.id); err != nil && ctx.Err() == nil {
+			log.Printf("[orchestrator] playback wait: %v", err)
+		}
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	pub("llm.done", nil)
+	pub("session.done", nil)
+	o.finish(s)
+}
+
+// 按顺序逐句合成；每个分句一次合成调用，输出块立即入播放队列
+func (o *Orchestrator) speak(ctx context.Context, s *session, sentences <-chan string, pub func(string, any)) {
+	for sent := range sentences {
+		if ctx.Err() != nil {
+			continue
+		}
+		pub("llm.sentence", sent)
+		err := o.tts.Stream(ctx, sent, func(chunk []byte) {
+			if ctx.Err() != nil {
+				return
+			}
+			pub("tts.chunk.ready", len(chunk))
+			pub("tts.chunk", base64.StdEncoding.EncodeToString(chunk))
+			if o.playback != nil {
+				_ = o.playback.Queue(s.id, s.trace, chunk)
+			}
+		})
+		if err != nil && ctx.Err() == nil {
+			log.Printf("[orchestrator] tts stream failed: %v", err)
+			pub("tts.error", err.Error())
+		}
 	}
 }
 
-// onTTSChunk 处理 TTS 音频 chunk 事件
-func (o *Orchestrator) onTTSChunk(evt bus.Event) {
-	// 事件已在上游处理，这里保留用于扩展
+func (o *Orchestrator) finish(s *session) {
+	o.mu.Lock()
+	if o.sessions[s.id] == s {
+		delete(o.sessions, s.id)
+	}
+	o.mu.Unlock()
 }
 
-// onInterrupt 处理打断事件
-// 取消对应会话的所有在途操作
+// 打断：取消上下文、停止合成与播放，并等待在途协程退出后再报告完成
 func (o *Orchestrator) onInterrupt(evt bus.Event) {
-	sessionID := evt.SessionID
-
-	o.mu.Lock()
-	if cancel, ok := o.cancels[sessionID]; ok {
-		cancel()
-		delete(o.cancels, sessionID)
+	started := time.Now()
+	if !o.cancelAndWait(evt.SessionID, evt.TraceID, "interrupt") {
+		// 没有在途会话时仍要幂等地停掉合成与播放，排空上一轮残留
+		_ = o.tts.Stop(evt.SessionID)
+		if o.playback != nil {
+			o.playback.Stop(evt.SessionID, evt.TraceID, "interrupt")
+		}
+		return
 	}
-	if cancel, ok := o.cancels[sessionID+"_llm"]; ok {
-		cancel()
-		delete(o.cancels, sessionID+"_llm")
-	}
-	o.mu.Unlock()
-
-	// 停止播放
-	if o.playback != nil {
-		o.playback.Stop(sessionID, evt.TraceID, "interrupt")
-	}
+	o.rt.Bus.Publish(bus.Event{
+		Name:      "interrupt.done",
+		SessionID: evt.SessionID,
+		TraceID:   evt.TraceID,
+		Payload:   time.Since(started).Microseconds(),
+	})
 }
 
-// StartSession 启动新的语音会话
-// 返回会话 ID 和追踪 ID
+// 取消指定会话并等待其退出，返回是否存在在途会话
+func (o *Orchestrator) cancelAndWait(sessionID, traceID, reason string) bool {
+	o.mu.Lock()
+	s, ok := o.sessions[sessionID]
+	if ok {
+		delete(o.sessions, sessionID)
+		s.stopped = true
+	}
+	o.mu.Unlock()
+	if !ok {
+		return false
+	}
+	s.cancel()
+	_ = o.tts.Stop(sessionID)
+	if o.playback != nil {
+		o.playback.Stop(sessionID, traceID, reason)
+	}
+	<-s.done
+	return true
+}
+
+// StartSession 生成新的会话号和追踪号
 func (o *Orchestrator) StartSession() (string, string) {
 	sessionID := fmt.Sprintf("%d", time.Now().UnixNano())
 	traceID := fmt.Sprintf("%s-%d", sessionID, time.Now().UnixMilli())
@@ -253,18 +274,5 @@ func (o *Orchestrator) StartSession() (string, string) {
 
 // 取消指定会话
 func (o *Orchestrator) CancelSession(sessionID string) {
-	o.mu.Lock()
-	if cancel, ok := o.cancels[sessionID]; ok {
-		cancel()
-		delete(o.cancels, sessionID)
-	}
-	if cancel, ok := o.cancels[sessionID+"_llm"]; ok {
-		cancel()
-		delete(o.cancels, sessionID+"_llm")
-	}
-	o.mu.Unlock()
-
-	if o.playback != nil {
-		o.playback.Stop(sessionID, "", "cancel")
-	}
+	o.cancelAndWait(sessionID, "", "cancel")
 }

@@ -3,11 +3,12 @@ module norma
 go 1.24.4
 
 require (
-	github.com/Bithack/go-hnsw v0.0.0-20170629124716-52a932462077
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/getlantern/systray v1.2.2
 	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20260305053642-30c5194c9691
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.12.24
 	github.com/k2-fsa/sherpa-onnx-go-windows v1.12.28
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/spf13/viper v1.21.0
@@ -29,7 +30,6 @@ require (
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
@@ -62,7 +62,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	github.com/willf/bitset v1.1.11 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.35.0 // indirect

@@ -6,13 +6,10 @@ import (
 	"encoding/json"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-
-	hnsw "github.com/Bithack/go-hnsw"
 )
 
 const (
@@ -34,7 +31,7 @@ type DiskVectorStore struct {
 	path         string
 	docs         []vectorDoc
 	embedder     Embedder
-	hnswIndex    *hnsw.Hnsw
+	hnswIndex    *hnswIndex
 	hnswM        int
 	hnswEFBuild  int
 	hnswEFSearch int
@@ -160,20 +157,13 @@ func (s *DiskVectorStore) searchHNSWLocked(queryEmbedding []float32, topK int, o
 		ef = topK * 2
 	}
 
-	result := s.hnswIndex.Search(hnsw.Point(queryEmbedding), ef, topK)
 	hits := make([]Chunk, 0, topK)
-	for result.Len() > 0 {
-		item := result.Pop()
-		if item == nil {
-			break
-		}
-		docIdx := int(item.ID) - 1
-		if docIdx < 0 || docIdx >= len(s.docs) {
+	for _, item := range s.hnswIndex.Search(queryEmbedding, ef, topK) {
+		if item.ID < 0 || item.ID >= len(s.docs) {
 			continue
 		}
-		doc := s.docs[docIdx]
-		score := 1.0 / (1.0 + float64(item.D))
-		hits = append(hits, Chunk{DocID: doc.Path, ChunkID: doc.ChunkID, Score: score, Content: doc.Content})
+		doc := s.docs[item.ID]
+		hits = append(hits, Chunk{DocID: doc.Path, ChunkID: doc.ChunkID, Score: 1 - item.Dist, Content: doc.Content})
 	}
 	sort.Slice(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
 	if len(hits) > topK {
@@ -217,12 +207,9 @@ func (s *DiskVectorStore) rebuildHNSWLocked() error {
 		return nil
 	}
 
-	zero := make(hnsw.Point, dim)
-	idx := hnsw.New(s.hnswM, s.hnswEFBuild, zero)
-	idx.Grow(len(s.docs) + 1)
-
+	idx := newHNSW(s.hnswM, s.hnswEFBuild)
 	for i, d := range s.docs {
-		idx.Add(to32(d.Vec, dim), uint32(i+1))
+		idx.Add(i, to32(d.Vec, dim))
 	}
 
 	s.hnswIndex = idx
@@ -248,14 +235,6 @@ func (s *DiskVectorStore) load() error {
 		return err
 	}
 
-	hnswPath := s.hnswPath()
-	if _, err := os.Stat(hnswPath); err == nil {
-		if idx, _, loadErr := hnsw.Load(hnswPath); loadErr == nil {
-			s.hnswIndex = idx
-			return nil
-		}
-	}
-
 	return s.rebuildHNSWLocked()
 }
 
@@ -272,25 +251,7 @@ func (s *DiskVectorStore) save() error {
 		return err
 	}
 
-	if s.hnswIndex != nil {
-		if err := os.MkdirAll(filepath.Dir(s.hnswPath()), 0o755); err != nil {
-			return err
-		}
-		if err := s.hnswIndex.Save(s.hnswPath()); err != nil {
-			return err
-		}
-	} else {
-		_ = os.Remove(s.hnswPath())
-	}
-
 	return nil
-}
-
-func (s *DiskVectorStore) hnswPath() string {
-	if s.path == "" {
-		return ""
-	}
-	return s.path + ".hnsw"
 }
 
 func chunkID(path string, i int) string {
@@ -353,9 +314,14 @@ func cosine(a, b []float64) float64 {
 	if len(b) < n {
 		n = len(b)
 	}
-	dot := 0.0
+	dot, na, nb := 0.0, 0.0, 0.0
 	for i := 0; i < n; i++ {
 		dot += a[i] * b[i]
+		na += a[i] * a[i]
+		nb += b[i] * b[i]
 	}
-	return dot
+	if na == 0 || nb == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }

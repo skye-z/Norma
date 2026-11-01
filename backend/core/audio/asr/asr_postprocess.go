@@ -6,11 +6,12 @@ import (
 )
 
 var wakeKeywordNearHomophoneRe = regexp.MustCompile(
-	`^(弄嘛|弄吗|弄玛|诺吗|糯玛|喏玛|諾瑪|诺馬|诺麻|糯吗|糯麻)([s,，。！？!?.：:]*)`,
+	`^(弄嘛|弄吗|弄玛|诺吗|糯玛|喏玛|諾瑪|诺馬|诺麻|糯吗|糯麻|诺马)`,
 )
 
-var introTailNoiseRe = regexp.MustCompile(
-	`(请介绍一下你自己)(的?(影片|视频|視頻))([。.!！？?]?)`,
+// 静音或底噪下 Whisper 常见的幻觉输出，整句命中时视为无有效识别结果
+var whisperHallucinationRe = regexp.MustCompile(
+	`^[\s，。,.!！]*(谢谢(大家)?(收看|观看)|请不吝点赞.*|字幕(由|志愿者).*|多谢观看|Thanks for watching)[\s，。,.!！]*$`,
 )
 
 var zhHansCharReplacer = strings.NewReplacer(
@@ -33,20 +34,19 @@ var zhHansCharReplacer = strings.NewReplacer(
 	"視頻", "视频",
 )
 
+// PostProcessASRText 做繁简统一、唤醒词近音修正和幻觉过滤，不改写其余内容
 func PostProcessASRText(text, wakeKeyword string) string {
 	out := strings.TrimSpace(text)
 	if out == "" {
 		return ""
 	}
-
 	out = zhHansCharReplacer.Replace(out)
-
-	keyword := strings.TrimSpace(wakeKeyword)
-	if keyword != "" {
-		out = wakeKeywordNearHomophoneRe.ReplaceAllString(out, keyword+`2`)
+	if whisperHallucinationRe.MatchString(out) {
+		return ""
 	}
-
-	out = introTailNoiseRe.ReplaceAllString(out, `14`)
+	if keyword := strings.TrimSpace(wakeKeyword); keyword != "" {
+		out = wakeKeywordNearHomophoneRe.ReplaceAllString(out, keyword)
+	}
 	out = strings.ReplaceAll(out, "，,", "，")
 	out = strings.ReplaceAll(out, ",，", "，")
 	out = strings.ReplaceAll(out, "。。", "。")

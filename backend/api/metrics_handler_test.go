@@ -10,7 +10,7 @@ import (
 )
 
 func TestMetricsSummary(t *testing.T) {
-	tracker := metrics.NewTracker()
+	tracker := config.NewTracker()
 	tracker.RecordValue("audio.vad.start", 1)
 	h := NewMetricsHandler(tracker)
 	mux := http.NewServeMux()
@@ -22,7 +22,7 @@ func TestMetricsSummary(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var snap metrics.Snapshot
+	var snap config.Snapshot
 	if err := json.Unmarshal(rec.Body.Bytes(), &snap); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

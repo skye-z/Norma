@@ -1,4 +1,4 @@
-//go:build windows && cgo && sherpa_embedded && !whisper_embedded
+//go:build (windows || darwin) && cgo && sherpa_embedded && !whisper_embedded
 
 package audio
 

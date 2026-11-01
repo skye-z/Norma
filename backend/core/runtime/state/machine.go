@@ -47,12 +47,15 @@ func (m *Machine) Get() State {
 	return m.state
 }
 
-// 设置新状态
-func (m *Machine) Set(next State) {
+// 设置新状态；非法转换只记录审计、不改变状态，返回是否生效
+func (m *Machine) Set(next State) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	from := m.state
+	if from == next {
+		return true
+	}
 	legal := isLegalTransition(from, next)
 	m.appendHistory(Transition{
 		From:     from,
@@ -60,7 +63,10 @@ func (m *Machine) Set(next State) {
 		TsUnixMs: time.Now().UnixMilli(),
 		Legal:    legal,
 	})
-	m.state = next
+	if legal {
+		m.state = next
+	}
+	return legal
 }
 
 // 获取转换历史
@@ -76,15 +82,15 @@ func (m *Machine) GetHistory() []Transition {
 func isLegalTransition(from, to State) bool {
 	switch from {
 	case Idle:
-		return to == Listening
+		return to == Listening || to == Thinking
 	case Listening:
 		return to == Thinking || to == Speaking || to == Error || to == Interrupted || to == Idle
 	case Thinking:
-		return to == Speaking || to == Error || to == Interrupted || to == Idle
+		return to == Speaking || to == Listening || to == Error || to == Interrupted || to == Idle
 	case Speaking:
-		return to == Listening || to == Error || to == Interrupted || to == Idle
+		return to == Listening || to == Thinking || to == Error || to == Interrupted || to == Idle
 	case Interrupted:
-		return to == Listening
+		return to == Listening || to == Idle
 	case Error:
 		return to == Listening || to == Idle
 	}
@@ -98,3 +104,6 @@ func (m *Machine) appendHistory(t Transition) {
 		m.history = m.history[len(m.history)-historyLimit:]
 	}
 }
+
+// History 返回状态转换历史的副本
+func (m *Machine) History() []Transition { return m.GetHistory() }

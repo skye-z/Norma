@@ -1,4 +1,4 @@
-//go:build !windows || !cgo || !sherpa_embedded
+//go:build !(windows || darwin) || !cgo || !sherpa_embedded
 
 package audio
 
@@ -13,5 +13,5 @@ func NewSherpaEmbeddedWakeWord(encoderPath, decoderPath, joinerPath, tokensPath,
 	_ = tokensPath
 	_ = keywordsFilePath
 	_ = keyword
-	return &audio.UnavailableWakeWord{Reason: "embedded sherpa wake is only supported on windows"}
+	return &audio.UnavailableWakeWord{Reason: "embedded sherpa wake is only supported on windows and macos"}
 }

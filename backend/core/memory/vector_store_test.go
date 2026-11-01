@@ -25,8 +25,8 @@ func TestDiskVectorStoreSearch(t *testing.T) {
 		t.Fatalf("expected hits")
 	}
 
-	if _, err := os.Stat(base + ".hnsw"); err != nil {
-		t.Fatalf("expected hnsw index file: %v", err)
+	if _, err := os.Stat(base); err != nil {
+		t.Fatalf("expected vector file: %v", err)
 	}
 }
 

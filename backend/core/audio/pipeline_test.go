@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	vad "norma/backend/core/audio/vad"
 )
 
 type frameASRStub struct {
@@ -37,7 +39,7 @@ func (s *frameASRStub) TranscribeFrames(ctx context.Context, frames [][]float32,
 
 func TestPipelineUsesFrameASR(t *testing.T) {
 	asr := &frameASRStub{}
-	pipe := Pipeline{VAD: NewEnergyVAD(0.02), ASR: asr}
+	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), ASR: asr}
 	src := NewMockFrameSource(DefaultDemoFrames(), time.Millisecond)
 
 	finalCount := 0
@@ -63,7 +65,7 @@ func TestPipelineSupportsWakeWordMode(t *testing.T) {
 	asr := &frameASRStub{}
 	wake := &MockWakeWord{}
 	pipe := Pipeline{
-		VAD:      NewEnergyVAD(0.02),
+		VAD:      vad.NewEnergyVAD(0.02),
 		WakeWord: wake,
 		ASR:      asr,
 		WakeMode: WakeModeWakeWordVAD,
@@ -101,7 +103,7 @@ func (s *sliceFrameSource) Next(ctx context.Context) ([]float32, error) {
 
 func TestPipelineFlushesUtteranceOnEndOfStream(t *testing.T) {
 	asr := &frameASRStub{}
-	pipe := Pipeline{VAD: NewEnergyVAD(0.02), ASR: asr, SilenceFrames: 20}
+	pipe := Pipeline{VAD: vad.NewEnergyVAD(0.02), ASR: asr, SilenceFrames: 20}
 	speech := make([]float32, 160)
 	for i := range speech {
 		if i%2 == 0 {
