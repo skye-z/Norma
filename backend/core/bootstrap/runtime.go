@@ -443,7 +443,10 @@ func chooseRetriever(cfg *config.Config, engine *xorm.Engine, mgr *providers.Man
 	}
 
 	log.Printf("[rag] use hybrid retriever vector=%s embed_provider=%s", vecPath, cfg.RAG.EmbedProvider)
-	return memory.NewHybridRetriever(vec, fts, nil)
+	r := memory.NewHybridRetriever(vec, fts, nil)
+	// 记忆条目彼此独立，相邻合并会把无关条目拼进同一段上下文
+	r.SetPostProcessOptions(memory.RetrieverPostProcessOptions{EnableDedup: true, EnableRerank: true, RerankWeight: 0.15})
+	return r
 }
 
 // chooseEmbedder 选择嵌入向量生成模块

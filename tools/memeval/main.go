@@ -122,6 +122,10 @@ func main() {
 		sv := mkVec("static", e)
 		methods = append(methods, method{"vector-static", func(ctx context.Context, q string, k int) ([]memory.Chunk, error) { return sv.Search(ctx, q, k) }})
 		methods = append(methods, method{"hybrid-static", memory.NewHybridRetriever(sv, fts, nil).Search})
+		// 记忆条目彼此独立，相邻合并会把无关条目拼在一起
+		nm := memory.NewHybridRetriever(sv, fts, nil)
+		nm.SetPostProcessOptions(memory.RetrieverPostProcessOptions{EnableDedup: true, EnableRerank: true, RerankWeight: 0.15})
+		methods = append(methods, method{"hybrid-static-nomerge", nm.Search})
 	}
 	if *llmEndpoint != "" {
 		exp := llm.NewChatQueryExpander(*llmEndpoint, *llmModel, os.Getenv("NORMA_LLM_API_KEY"), 30*time.Second)
